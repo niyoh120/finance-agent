@@ -1,129 +1,110 @@
-# Finance MCP
+# Finance MCP & Microservices
 
-Discord 期权大单数据抓取器 + MCP 服务器，供 AI 分析使用。
+基于 Docker Compose 的微服务架构，包含 Discord 期权流抓取、股票数据轮询、MCP 服务以及管理后台。
 
-## 安装
+## 架构概览 (Microservices Architecture)
 
-```bash
-uv sync
-```
+项目采用 Monorepo 结构，所有服务共享核心逻辑 (`shared`)。
 
-## 配置
+| 服务 | 目录 | 语言 | 描述 | 端口 |
+| :--- | :--- | :--- | :--- | :--- |
+| **db** | - | PostgreSQL | 核心数据库 (PostgreSQL 15) | 5432 |
+| **stock-api** | `services/stock-api` | TypeScript | TradingView API 包装器 (Fastify) | 3000 |
+| **stock-scraper** | `services/stock-scraper` | Python | 股票数据轮询 | - |
+| **options-scraper** | `services/options-scraper` | Python | Discord 期权流抓取 | - |
+| **mcp-server** | `services/mcp-server` | Python | Model Context Protocol 服务器 | Stdio |
+| **admin** | `services/admin` | Python | 数据管理后台 (SQLAdmin) | 8000 |
 
-复制 `.env.example` 为 `.env` 并填写：
+## 快速开始 (Quick Start)
 
+### 1. 环境准备
+- Docker & Docker Compose
+- Python 3.11+ (仅本地开发需要)
+- Node.js 20+ (仅本地开发需要)
+
+### 2. 配置
+复制环境变量模版：
 ```bash
 cp .env.example .env
 ```
+编辑 `.env` 填入 Discord Token 和 Channel ID。
 
-### 获取 DISCORD_TOKEN
-
-> ⚠️ **风险提示**: 使用用户 token 违反 Discord ToS，有封号风险。建议使用小号。
-
-1. 打开 Discord 网页版 (discord.com/app) 或桌面客户端
-2. 按 `F12` 打开开发者工具
-3. 切换到 **Network** (网络) 标签
-4. 在 Discord 中随便点击一个频道触发请求
-5. 找到任意请求，点击查看 **Headers** (请求头)
-6. 找到 `Authorization` 字段，其值就是你的 token
-
-或者在 Console 中执行：
-```javascript
-(webpackChunkdiscord_app.push([[''],{},e=>{m=[];for(let c in e.c)m.push(e.c[c])}]),m).find(m=>m?.exports?.default?.getToken!==void 0).exports.default.getToken()
+### 3. 启动服务
+```bash
+docker compose up --build -d
 ```
 
-### 获取 DISCORD_CHANNEL_ID
-
-1. 在 Discord 设置中开启「开发者模式」(用户设置 → 高级 → 开发者模式)
-2. 右键点击目标频道 → 「复制频道 ID」
-
-### 环境变量
-
-- `DISCORD_TOKEN`: Discord 用户 token
-- `DISCORD_CHANNEL_ID`: 目标频道 ID
-
-## 使用
-
-### 启动抓取器
+### 4. 数据库初始化
+首次启动需要运行 Alembic 迁移以创建表结构：
 
 ```bash
-uv run scraper
+# 进入 stock-scraper 容器运行迁移 (因为该容器包含 shared 环境)
+docker compose run --rm stock-scraper uv run alembic upgrade head
 ```
 
-### 启动 MCP 服务器
+### 5. 数据迁移 (可选)
+如果你有旧版的 SQLite 数据 (`data/options_flow.db`)：
 
 ```bash
-uv run mcp-server
+docker compose run --rm stock-scraper python scripts/migrate_data.py
 ```
 
-### 启动管理界面
+## 服务详情
 
-```bash
-uv run admin
-```
+### Stock API
+- 提供 `GET /quote?symbol=NASDAQ:AAPL` 接口。
+- 使用 `@mathieuc/tradingview` 获取实时数据。
 
-访问 http://127.0.0.1:8000/admin 即可进行数据的增删改查。
+### Stock Scraper
+- 读取 `services/stock-scraper/config.yaml` 中的股票列表。
+- 定期调用 Stock API 并写入数据库。
 
-可通过环境变量配置：
-- `ADMIN_HOST`: 监听地址 (默认 127.0.0.1)
-- `ADMIN_PORT`: 端口号 (默认 8000)
+### Options Scraper
+- 监听 Discord 频道，解析 Unusual Whales 格式的期权大单流。
+- 去重并写入数据库。
 
-### Claude Desktop 配置
+### Admin UI
+访问: `http://localhost:8000/admin`
+- 查看和管理期权大单数据 (`OptionsFlow`)
+- 查看股票历史数据 (`StockPrice`)
 
-在 `claude_desktop_config.json` 中添加：
-
+### MCP Server
+Claude Desktop 配置示例:
 ```json
 {
   "mcpServers": {
-    "options-flow": {
-      "command": "uv",
-      "args": ["--directory", "/path/to/finance-mcp", "run", "mcp-server"]
+    "finance": {
+      "command": "docker",
+      "args": ["exec", "-i", "finance-agent-mcp-server-1", "python", "src/main.py"]
     }
   }
 }
 ```
+*(注: 需根据实际容器名调整)*
 
-## MCP 工具
+## 本地开发 (Local Development)
 
-- `query_options_flow`: 查询期权大单数据
-- `get_flow_summary`: 获取期权流向汇总统计  
-- `get_unusual_activity`: 获取异常期权活动
-
-## TradingView 股价服务
-
-从 TradingView 获取实时股价数据 (OHLCV) 并保存到数据库。
-
-### 安装
+项目使用 `uv` 管理 Python 工作区，`npm` 管理 TypeScript 服务。
 
 ```bash
-cd tradingview-service
-npm install
+# 安装 Python 依赖
+uv sync
+
+# 安装 TS 依赖
+cd services/stock-api && npm install
 ```
 
-### 配置
-
-复制 `.env.example` 为 `.env` 并配置：
-
-```bash
-cd tradingview-service
-cp .env.example .env
+### 目录结构
 ```
-
-环境变量：
-- `TV_SYMBOLS`: 股票代码列表，逗号分隔 (如 `NASDAQ:AAPL,NASDAQ:GOOGL`)
-- `TV_TIMEFRAME`: 时间粒度，分钟 (如 `1`, `5`, `15`, `60`, `D`)
-- `TV_DATABASE_PATH`: 数据库路径 (可选)
-- `TV_SESSION` / `TV_SIGNATURE`: TradingView 登录凭证 (可选，用于 Premium)
-
-### 运行
-
-```bash
-cd tradingview-service
-npm run dev
+├── services/           # 微服务源码
+│   ├── admin/          # 管理后台
+│   ├── mcp-server/     # MCP 服务
+│   ├── options-scraper/ # Discord 抓取
+│   ├── stock-api/      # TS API
+│   └── stock-scraper/  # 股票抓取
+├── shared/             # 共享 Python 模块 (Models, DB)
+├── scripts/            # 运维/迁移脚本
+├── alembic/            # 数据库迁移文件
+├── docker-compose.yml  # 容器编排
+└── pyproject.toml      # Workspace 配置
 ```
-
-数据将保存到 `data/stock_prices.db`，包含字段：
-- `symbol`: 股票代码
-- `timestamp`: 时间戳
-- `open`, `high`, `low`, `close`: OHLC 价格
-- `volume`: 成交量

@@ -1,35 +1,22 @@
 import json
 import logging
-import os
 from datetime import datetime, timedelta
-from pathlib import Path
 
 from dotenv import load_dotenv
 from mcp.server.fastmcp import FastMCP
 from sqlalchemy import func, select
 
-from .models import DATABASE_PATH, OptionsFlow, create_engine, create_session_maker, init_db
+# Shared imports
+from shared.models.options import OptionsFlow
+from shared.database import session_scope
 
 load_dotenv()
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
-db_path = Path(os.getenv("DATABASE_PATH", DATABASE_PATH))
-
 mcp = FastMCP("Options Flow", json_response=True)
-
-_engine = None
-_session_maker = None
-
-
-async def get_session():
-    global _engine, _session_maker
-    if _engine is None:
-        logger.info(f"Initializing database connection to {db_path}")
-        await init_db(db_path)
-        _engine = create_engine(db_path)
-        _session_maker = create_session_maker(_engine)
-    return _session_maker()
 
 
 @mcp.tool()
@@ -70,7 +57,7 @@ async def query_options_flow(
 
     stmt = stmt.order_by(OptionsFlow.timestamp.desc()).limit(limit)
 
-    async with await get_session() as session:
+    async with session_scope() as session:
         result = await session.execute(stmt)
         rows = result.scalars().all()
 
@@ -116,7 +103,7 @@ async def get_flow_summary(days: int = 1) -> str:
     """
     since = datetime.now() - timedelta(days=days)
 
-    async with await get_session() as session:
+    async with session_scope() as session:
         total_stmt = select(
             func.count(OptionsFlow.id).label("count"),
             func.sum(OptionsFlow.premium).label("total_premium"),
@@ -162,9 +149,12 @@ async def get_flow_summary(days: int = 1) -> str:
         "period_days": days,
         "total_trades": total.count or 0,
         "total_premium": total.total_premium or 0,
-        "by_side": {row.side: {"count": row.count, "premium": row.premium} for row in by_side},
+        "by_side": {
+            row.side: {"count": row.count, "premium": row.premium} for row in by_side
+        },
         "by_type": {
-            row.option_type: {"count": row.count, "premium": row.premium} for row in by_type
+            row.option_type: {"count": row.count, "premium": row.premium}
+            for row in by_type
         },
         "top_symbols": [
             {"symbol": row.symbol, "count": row.count, "premium": row.total_premium}
@@ -202,7 +192,7 @@ async def get_unusual_activity(
         .limit(limit)
     )
 
-    async with await get_session() as session:
+    async with session_scope() as session:
         result = await session.execute(stmt)
         rows = result.scalars().all()
 

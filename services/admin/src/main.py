@@ -1,16 +1,19 @@
 import logging
 import os
-from pathlib import Path
 
 import uvicorn
 from dotenv import load_dotenv
 from sqladmin import Admin, ModelView
 from starlette.applications import Starlette
 
-from .models import DATABASE_PATH, Base, OptionsFlow, create_engine, init_db
+from shared.models.options import OptionsFlow
+from shared.models.stocks import StockPrice
+from shared.database import get_engine
 
 load_dotenv()
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -75,29 +78,49 @@ class OptionsFlowAdmin(ModelView, model=OptionsFlow):
     icon = "fa-solid fa-chart-line"
 
 
-def create_app(db_path: Path | None = None) -> Starlette:
-    path = db_path or Path(os.getenv("DATABASE_PATH", DATABASE_PATH))
-    engine = create_engine(path)
+class StockPriceAdmin(ModelView, model=StockPrice):
+    column_list = [
+        StockPrice.id,
+        StockPrice.timestamp,
+        StockPrice.symbol,
+        StockPrice.close,
+        StockPrice.volume,
+        StockPrice.timeframe,
+    ]
+
+    column_searchable_list = [StockPrice.symbol]
+    column_sortable_list = [StockPrice.timestamp, StockPrice.symbol]
+    column_default_sort = [(StockPrice.timestamp, True)]
+
+    column_labels = {
+        StockPrice.timestamp: "时间",
+        StockPrice.symbol: "代码",
+        StockPrice.close: "收盘价",
+        StockPrice.volume: "成交量",
+        StockPrice.timeframe: "周期",
+    }
+
+    name = "股价"
+    name_plural = "股价"
+    icon = "fa-solid fa-chart-bar"
+
+
+def create_app() -> Starlette:
+    engine = get_engine()
 
     app = Starlette()
-    admin = Admin(app, engine, title="期权大单管理")
+    admin = Admin(app, engine, title="Finance Admin")
     admin.add_view(OptionsFlowAdmin)
-
-    @app.on_event("startup")
-    async def startup():
-        logger.info(f"Initializing database at {path}")
-        await init_db(path)
-        logger.info("Database initialized")
+    admin.add_view(StockPriceAdmin)
 
     return app
 
 
 def main():
-    db_path = Path(os.getenv("DATABASE_PATH", DATABASE_PATH))
-    host = os.getenv("ADMIN_HOST", "127.0.0.1")
+    host = os.getenv("ADMIN_HOST", "0.0.0.0")  # Use 0.0.0.0 for Docker
     port = int(os.getenv("ADMIN_PORT", "8000"))
 
-    app = create_app(db_path)
+    app = create_app()
     logger.info(f"Admin panel running at http://{host}:{port}/admin")
     uvicorn.run(app, host=host, port=port)
 

@@ -1,0 +1,92 @@
+services:
+  db:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
+      - POSTGRES_DB=${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # 1. TradingView API Wrapper (TypeScript)
+  stock-api:
+    build:
+      context: ./services/stock-api
+      dockerfile: Dockerfile
+    environment:
+      - PORT=3000
+      - TV_SESSION=${TV_SESSION}
+      - TV_SIGNATURE=${TV_SIGNATURE}
+    ports:
+      - "127.0.0.1:3000:3000"
+    restart: unless-stopped
+
+  # 2. Stock Scraper (Python)
+  stock-scraper:
+    build:
+      context: ./
+      dockerfile: ./services/stock-scraper/Dockerfile
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - STOCK_API_URL=http://stock-api:3000
+    volumes:
+      - ./services/stock-scraper/config.yaml:/app/config.yaml
+    depends_on:
+      stock-api:
+        condition: service_started
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 3. Discord Options Scraper (Python)
+  options-scraper:
+    build:
+      context: ./
+      dockerfile: ./services/options-scraper/Dockerfile
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - DISCORD_CHANNEL_ID=${DISCORD_CHANNEL_ID}
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 4. MCP Server (Python)
+  mcp-server:
+    build:
+      context: ./
+      dockerfile: ./services/mcp/Dockerfile
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+    stdin_open: true
+    tty: true
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 5. Admin UI (Python)
+  admin:
+    build:
+      context: ./
+      dockerfile: ./services/admin/Dockerfile
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
