@@ -1,8 +1,8 @@
-from datetime import datetime, date
+from collections.abc import AsyncGenerator
+from datetime import date, datetime
 from pathlib import Path
-from typing import AsyncGenerator
 
-from sqlalchemy import Date, DateTime, Float, Integer, String, Text, Index
+from sqlalchemy import Date, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 

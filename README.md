@@ -88,3 +88,42 @@ uv run admin
 - `query_options_flow`: 查询期权大单数据
 - `get_flow_summary`: 获取期权流向汇总统计  
 - `get_unusual_activity`: 获取异常期权活动
+
+## TradingView 股价服务
+
+从 TradingView 获取实时股价数据 (OHLCV) 并保存到数据库。
+
+### 安装
+
+```bash
+cd tradingview-service
+npm install
+```
+
+### 配置
+
+复制 `.env.example` 为 `.env` 并配置：
+
+```bash
+cd tradingview-service
+cp .env.example .env
+```
+
+环境变量：
+- `TV_SYMBOLS`: 股票代码列表，逗号分隔 (如 `NASDAQ:AAPL,NASDAQ:GOOGL`)
+- `TV_TIMEFRAME`: 时间粒度，分钟 (如 `1`, `5`, `15`, `60`, `D`)
+- `TV_DATABASE_PATH`: 数据库路径 (可选)
+- `TV_SESSION` / `TV_SIGNATURE`: TradingView 登录凭证 (可选，用于 Premium)
+
+### 运行
+
+```bash
+cd tradingview-service
+npm run dev
+```
+
+数据将保存到 `data/stock_prices.db`，包含字段：
+- `symbol`: 股票代码
+- `timestamp`: 时间戳
+- `open`, `high`, `low`, `close`: OHLC 价格
+- `volume`: 成交量
