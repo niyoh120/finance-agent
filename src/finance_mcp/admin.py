@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from sqladmin import Admin, ModelView
 from starlette.applications import Starlette
 
-from .models import DATABASE_PATH, OptionsFlow, create_engine, init_db, Base
+from .models import DATABASE_PATH, Base, OptionsFlow, create_engine, init_db
 
 load_dotenv()
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")

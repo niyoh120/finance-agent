@@ -1,6 +1,6 @@
 import re
 from dataclasses import dataclass
-from datetime import datetime, date
+from datetime import date, datetime
 from typing import Optional
 
 
@@ -29,16 +29,23 @@ class OptionsFlowData:
 
 # 🕑 Interval (5 Min) - Bid Side
 HEADER_PATTERN = re.compile(
-    r"🕑\s*Interval\s*\((\d+\s*Min)\)\s*-\s*(Bid|Ask)\s*Side", re.IGNORECASE
+    r"(?:🕑|:clock2:)?\s*Interval\s*\((\d+\s*Min)\)\s*-\s*(Bid|Ask)\s*Side", re.IGNORECASE
 )
 
-# BSX 80 P 03/20/2026 (64 DTE)
+# 🔥 Hot Contract - Ask Side
+HOT_CONTRACT_PATTERN = re.compile(
+    r"(?:🔥|:fire:)?\s*Hot Contract\s*-\s*(Bid|Ask)\s*Side", re.IGNORECASE
+)
+
+# **[MSTR 145 P 04/17/2026 (92 DTE)](...
+# Pattern matches Markdown links in embed description. Essential for parsing Unusual Whales format.
 CONTRACT_PATTERN = re.compile(
-    r"^([A-Z]+)\s+([\d.]+)\s+(P|C)\s+(\d{2}/\d{2}/\d{4})\s+\((\d+)\s*DTE\)", re.MULTILINE
+    r"\*\*\[([A-Z]+)\s+([\d.]+)\s+(P|C)\s+(\d{2}/\d{2}/\d{4})\s+\((\d+)\s*DTE\)", re.MULTILINE
 )
 
 # Key: Value patterns
 INTERVAL_VOLUME_PATTERN = re.compile(r"Interval Volume:\s*([\d,]+)")
+OVERALL_VOLUME_PATTERN = re.compile(r"Overall Volume:\s*([\d,]+)")
 OPEN_INTEREST_PATTERN = re.compile(r"Open Interest:\s*([\d,]+)")
 VOL_OI_PATTERN = re.compile(r"Vol/OI:\s*([\d.]+)")
 OTM_PATTERN = re.compile(r"OTM:\s*([\d.]+)%")
@@ -53,12 +60,17 @@ def parse_number(s: str) -> float:
 
 
 def parse_message(message_id: str, content: str, timestamp: datetime) -> Optional[OptionsFlowData]:
-    header_match = HEADER_PATTERN.search(content)
-    if not header_match:
-        return None
+    interval_match = HEADER_PATTERN.search(content)
+    hot_match = HOT_CONTRACT_PATTERN.search(content)
 
-    interval_type = header_match.group(1).replace(" ", "")
-    side = header_match.group(2).capitalize()
+    if interval_match:
+        interval_type = interval_match.group(1).replace(" ", "")
+        side = interval_match.group(2).capitalize()
+    elif hot_match:
+        interval_type = "Hot"
+        side = hot_match.group(1).capitalize()
+    else:
+        return None
 
     contract_match = CONTRACT_PATTERN.search(content)
     if not contract_match:
@@ -76,7 +88,11 @@ def parse_message(message_id: str, content: str, timestamp: datetime) -> Optiona
         m = pattern.search(content)
         return m.group(1) if m else default
 
-    interval_volume = int(parse_number(extract_or_zero(INTERVAL_VOLUME_PATTERN)))
+    interval_volume_str = extract_or_zero(INTERVAL_VOLUME_PATTERN)
+    if interval_volume_str == "0":
+        interval_volume_str = extract_or_zero(OVERALL_VOLUME_PATTERN)
+
+    interval_volume = int(parse_number(interval_volume_str))
     open_interest = int(parse_number(extract_or_zero(OPEN_INTEREST_PATTERN)))
     vol_oi = float(extract_or_zero(VOL_OI_PATTERN))
     otm_percent = float(extract_or_zero(OTM_PATTERN)) / 100
