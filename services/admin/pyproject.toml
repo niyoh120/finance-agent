@@ -1,0 +1,19 @@
+[project]
+name = "admin-ui"
+version = "0.1.0"
+description = "Admin UI for Finance MCP"
+requires-python = ">=3.11"
+dependencies = [
+    "sqladmin[full]",
+    "uvicorn",
+    "starlette",
+    "finance-shared",
+    "python-dotenv>=1.0.0",
+]
+
+[tool.uv.sources]
+finance-shared = { workspace = true }
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

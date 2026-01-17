@@ -1,46 +1,18 @@
 [project]
-name = "finance-mcp"
-version = "0.1.0"
-description = "Discord options flow scraper with MCP server for AI analysis"
-readme = "README.md"
+name = "finance-workspace"
+version = "0.0.0"
+description = "Workspace root for Finance MCP microservices"
 requires-python = ">=3.11"
 dependencies = [
-    "discord.py-self @ git+https://github.com/dolfies/discord.py-self.git",
-    "mcp>=1.0.0",
-    "python-dotenv>=1.0.0",
-    "aiosqlite>=0.19.0",
+    "alembic>=1.13.0",
+    "asyncpg>=0.29.0",
     "sqlalchemy[asyncio]>=2.0.0",
-    "sqladmin>=0.16.0",
-    "uvicorn>=0.27.0",
+    "python-dotenv>=1.0.0",
+    "finance-shared",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "ruff>=0.1.0",
-    "pytest>=7.0.0",
-    "pytest-asyncio>=0.21.0",
-]
+[tool.uv.sources]
+finance-shared = { workspace = true }
 
-[project.scripts]
-scraper = "finance_mcp.scraper:main"
-mcp-server = "finance_mcp.server:main"
-admin = "finance_mcp.admin:main"
-
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.metadata]
-allow-direct-references = true
-
-[tool.ruff]
-line-length = 100
-target-version = "py311"
-
-[tool.ruff.lint]
-select = ["E", "F", "I", "N", "W", "UP"]
-ignore = ["E501"]
-
-[tool.pytest.ini_options]
-asyncio_mode = "auto"
-testpaths = ["tests"]
+[tool.uv.workspace]
+members = ["shared", "services/stock-scraper"]

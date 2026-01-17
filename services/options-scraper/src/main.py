@@ -3,19 +3,24 @@ import json
 import logging
 import os
 from datetime import datetime, time, timezone
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import discord
 from dotenv import load_dotenv
 from sqlalchemy import select
-from sqlalchemy.dialects.sqlite import insert
+from sqlalchemy.dialects.postgresql import insert
 
-from .models import DATABASE_PATH, OptionsFlow, create_engine, create_session_maker, init_db
+# Shared imports
+from shared.models.options import OptionsFlow
+from shared.database import get_session_maker
+
+# Local imports
 from .parser import parse_message
 
 load_dotenv()
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s")
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
+)
 logger = logging.getLogger(__name__)
 
 
@@ -23,24 +28,19 @@ class OptionsFlowScraper(discord.Client):
     def __init__(
         self,
         channel_id: int,
-        db_path: Path,
         poll_interval: int = 300,
         start_date: datetime | None = None,
     ):
         super().__init__()
         self.channel_id = channel_id
-        self.db_path = db_path
         self.poll_interval = poll_interval
         self.start_date = start_date
         self._polling_task: asyncio.Task | None = None
-        self._engine = None
         self._session_maker = None
 
     async def on_ready(self):
         logger.info(f"Logged in as {self.user}")
-        await init_db(self.db_path)
-        self._engine = create_engine(self.db_path)
-        self._session_maker = create_session_maker(self._engine)
+        self._session_maker = get_session_maker()
         self._polling_task = asyncio.create_task(self._poll_loop())
 
     async def _poll_loop(self):
@@ -68,7 +68,9 @@ class OptionsFlowScraper(discord.Client):
                 is_trading_time = market_open <= current_time <= market_close
 
                 if not is_trading_time:
-                    logger.debug(f"Outside trading hours ({current_time} ET), skipping poll.")
+                    logger.debug(
+                        f"Outside trading hours ({current_time} ET), skipping poll."
+                    )
                 else:
                     try:
                         logger.debug("Polling for new messages...")
@@ -90,7 +92,9 @@ class OptionsFlowScraper(discord.Client):
                 after = discord.Object(id=int(last_id))
                 logger.info(f"Fetching messages after ID {last_id}")
             else:
-                start_date = self.start_date or datetime(2025, 12, 1, tzinfo=timezone.utc)
+                start_date = self.start_date or datetime(
+                    2025, 12, 1, tzinfo=timezone.utc
+                )
                 after = discord.Object(id=discord.utils.time_snowflake(start_date))
                 logger.info(
                     f"Fetching initial batch of messages starting from {start_date} (ID: {after.id})"
@@ -98,11 +102,15 @@ class OptionsFlowScraper(discord.Client):
 
             count = 0
             total_fetched = 0
-            async for message in channel.history(limit=100, after=after, oldest_first=True):
+            async for message in channel.history(
+                limit=100, after=after, oldest_first=True
+            ):
                 total_fetched += 1
 
                 if message.author.name != "UW Live Options Flow":
-                    logger.debug(f"Skipping message from {message.author.name} (ID: {message.id})")
+                    logger.debug(
+                        f"Skipping message from {message.author.name} (ID: {message.id})"
+                    )
                     continue
 
                 content = message.content
@@ -130,7 +138,9 @@ class OptionsFlowScraper(discord.Client):
                 else:
                     if total_fetched <= 5:
                         log_content = content[:200] if content else "<empty>"
-                        logger.warning(f"Failed to parse message {message.id}: {log_content!r}")
+                        logger.warning(
+                            f"Failed to parse message {message.id}: {log_content!r}"
+                        )
                         if not message.content and message.embeds:
                             logger.warning(f"Reconstructed content: {content!r}")
                             try:
@@ -143,7 +153,9 @@ class OptionsFlowScraper(discord.Client):
                     else:
                         logger.debug(f"Failed to parse message {message.id}")
 
-            logger.info(f"Processed {total_fetched} messages, inserted {count} new records")
+            logger.info(
+                f"Processed {total_fetched} messages, inserted {count} new records"
+            )
 
             if count > 0:
                 await session.commit()
@@ -189,16 +201,19 @@ class OptionsFlowScraper(discord.Client):
 def main():
     token = os.getenv("DISCORD_TOKEN")
     channel_id = os.getenv("DISCORD_CHANNEL_ID")
-    db_path = Path(os.getenv("DATABASE_PATH", DATABASE_PATH))
     poll_interval = int(os.getenv("POLL_INTERVAL_SECONDS", "300"))
 
     start_date_str = os.getenv("FETCH_START_DATE")
     start_date = None
     if start_date_str:
         try:
-            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").replace(tzinfo=timezone.utc)
+            start_date = datetime.strptime(start_date_str, "%Y-%m-%d").replace(
+                tzinfo=timezone.utc
+            )
         except ValueError:
-            logger.warning(f"Invalid FETCH_START_DATE format: {start_date_str}. Using default.")
+            logger.warning(
+                f"Invalid FETCH_START_DATE format: {start_date_str}. Using default."
+            )
 
     if not start_date:
         start_date = datetime(2025, 12, 1, tzinfo=timezone.utc)
@@ -209,7 +224,6 @@ def main():
 
     client = OptionsFlowScraper(
         channel_id=int(channel_id),
-        db_path=db_path,
         poll_interval=poll_interval,
         start_date=start_date,
     )

@@ -1,0 +1,13 @@
+symbols:
+  - NASDAQ:AAPL
+  - NASDAQ:NVDA
+  - NASDAQ:MSFT
+  - NASDAQ:GOOGL
+  - NASDAQ:TSLA
+interval: 1 # minutes (TV API uses string "1", "5", etc. but scraper might loop in seconds?)
+# Plan says "Loop -> Call API -> Save to PG".
+# .env has POLL_INTERVAL_SECONDS.
+# The `interval` here might be the timeframe to fetch from TV?
+# TV API param `interval`.
+# Let's assume we want 1 minute candles.
+timeframe: "1"
