@@ -98,6 +98,7 @@ docker compose run --rm stock-scraper python scripts/migrate_data.py
 访问: `http://localhost:8000/admin`
 - 查看和管理期权大单数据 (`OptionsFlow`)
 - 查看股票历史数据 (`StockPrice`)
+- 查看新闻数据 (`NewsArticle`)
 
 ### MCP Server
 Claude Desktop 配置示例:
