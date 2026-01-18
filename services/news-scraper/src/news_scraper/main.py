@@ -87,12 +87,8 @@ async def main():
 
 
 if __name__ == "__main__":
-    try:
-        # Use uvloop if available
-        import uvloop
+    import uvloop
 
-        uvloop.install()
-    except ImportError:
-        pass
+    uvloop.install()
 
     asyncio.run(main())
