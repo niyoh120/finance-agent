@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
 
 WORKDIR /app
 
@@ -11,4 +11,4 @@ RUN pip install --no-cache-dir /app/shared
 WORKDIR /app/admin
 RUN pip install --no-cache-dir .
 
-CMD ["python", "src/main.py"]
+CMD ["python", "-m", "admin.main"]

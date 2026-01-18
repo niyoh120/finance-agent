@@ -4,15 +4,24 @@ version = "0.0.0"
 description = "Workspace root for Finance MCP microservices"
 requires-python = ">=3.11"
 dependencies = [
-    "alembic>=1.13.0",
-    "asyncpg>=0.29.0",
-    "sqlalchemy[asyncio]>=2.0.0",
-    "python-dotenv>=1.0.0",
-    "finance-shared",
+  "aiosqlite>=0.22.1",
+  "alembic>=1.13.0",
+  "asyncpg>=0.29.0",
+  "finance-shared",
+  "python-dateutil>=2.9.0.post0",
+  "python-dotenv>=1.0.0",
+  "sqlalchemy[asyncio]>=2.0.0",
 ]
 
 [tool.uv.sources]
 finance-shared = { workspace = true }
 
 [tool.uv.workspace]
-members = ["shared", "services/stock-scraper", "services/news-scraper"]
+members = [
+  "shared",
+  "services/stock-scraper",
+  "services/news-scraper",
+  "services/options-scraper",
+  "services/admin",
+  "services/mcp-server",
+]

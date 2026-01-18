@@ -7,7 +7,6 @@ dependencies = [
   "finance-shared",
   "httpx>=0.27.0",
   "python-dotenv>=1.0.0",
-  "uvloop>=0.19.0",
 ]
 
 [build-system]

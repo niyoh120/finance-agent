@@ -1,7 +1,7 @@
 [project]
-name = "admin-ui"
+name = "admin"
 version = "0.1.0"
-description = "Admin UI for Finance MCP"
+description = "Admin for Finance MCP"
 requires-python = ">=3.11"
 dependencies = [
   "finance-shared",
@@ -10,6 +10,10 @@ dependencies = [
   "starlette",
   "uvicorn",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [tool.uv.sources]
 finance-shared = { workspace = true }

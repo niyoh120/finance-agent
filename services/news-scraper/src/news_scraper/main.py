@@ -2,19 +2,10 @@ import asyncio
 import logging
 import os
 import signal
-import sys
 
-# Ensure shared package is available
-try:
-    from shared.database import session_scope
-except ImportError:
-    # If running locally without installing shared, might need to adjust path
-    sys.path.append(
-        os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../"))
-    )
-    from shared.database import session_scope
+from shared.database import session_scope
 
-from scraper import BubbleSeekScraper
+from .scraper import BubbleSeekScraper
 
 # Configure logging
 logging.basicConfig(
@@ -87,8 +78,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    import uvloop
-
-    uvloop.install()
-
     asyncio.run(main())

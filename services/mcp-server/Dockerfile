@@ -11,4 +11,4 @@ RUN pip install --no-cache-dir /app/shared
 WORKDIR /app/mcp-server
 RUN pip install --no-cache-dir .
 
-CMD ["python", "src/main.py"]
+CMD ["python","src/main.py"]

@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Scrapes Discord for options flow"
 requires-python = ">=3.11"
 dependencies = [
-  "discord.py-self @ git+https://github.com/dolfies/discord.py-self.git",
+  "discord.py-self",
   "finance-shared",
   "python-dotenv>=1.0.0",
 ]

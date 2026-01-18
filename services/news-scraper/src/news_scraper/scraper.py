@@ -3,11 +3,10 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import httpx
+from shared.models import NewsArticle
 from sqlalchemy import desc, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from shared.models import NewsArticle
 
 logger = logging.getLogger(__name__)
 
@@ -100,7 +99,7 @@ class BubbleSeekScraper:
             offset += batch_size
 
             if offset >= 1000:
-                logger.warning(f"Reached offset limit 1000, stopping backfill")
+                logger.warning("Reached offset limit 1000, stopping backfill")
                 break
 
         logger.info(f"Backfill complete. Total saved: {total_saved}")
