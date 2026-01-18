@@ -3,12 +3,12 @@ import logging
 from datetime import datetime, timedelta
 
 from dotenv import load_dotenv
-from mcp.server.fastmcp import FastMCP
-from sqlalchemy import func, select
+from fastmcp import FastMCP
+from shared.database import session_scope
 
 # Shared imports
 from shared.models.options import OptionsFlow
-from shared.database import session_scope
+from sqlalchemy import func, select
 
 load_dotenv()
 logging.basicConfig(

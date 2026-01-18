@@ -1,2 +1,16 @@
 [tools]
 python = "3.12"
+
+[env]
+_.file = ".env"
+
+[tasks.install]
+run = "uv sync --all-packages"
+
+[tasks.admin]
+depends = ["install"]
+run = "uv run python -m admin.main"
+
+[tasks.news-scraper]
+depends = ["install"]
+run = "uv run python -m news_scraper.main"
