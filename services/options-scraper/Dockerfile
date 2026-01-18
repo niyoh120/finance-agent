@@ -21,7 +21,7 @@ RUN uv sync --frozen --package finance-shared
 
 COPY services/options-scraper/pyproject.toml services/options-scraper/pyproject.toml
 
-RUN uv sync --frozen --no-install-project --package news-scraper
+RUN uv sync --frozen --no-install-project --package options-scraper
 
 COPY services/options-scraper services/options-scraper
 

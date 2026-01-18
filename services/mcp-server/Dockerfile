@@ -1,14 +1,30 @@
-FROM python:3.11-slim
+FROM python:3.12-slim
+
+RUN pip install --no-cache-dir uv
 
 WORKDIR /app
 
-COPY shared /app/shared
-COPY services/mcp-server /app/mcp-server
+# 关键：把 workspace 根的锁文件拷进来
+COPY pyproject.toml uv.lock ./
 
-RUN pip install --no-cache-dir --upgrade pip
-RUN pip install --no-cache-dir /app/shared
+# 以及子包自身的 pyproject（uv 需要看到 workspace 成员定义/元数据）
+COPY shared/pyproject.toml shared/pyproject.toml
 
-WORKDIR /app/mcp-server
-RUN pip install --no-cache-dir .
+# 安装依赖（只装环境，不装源码）
+RUN uv sync --frozen --no-install-project --package finance-shared
 
-CMD ["python","src/main.py"]
+# 再拷贝源码（用缓存）
+COPY shared shared
+
+# 只同步/安装这个包
+RUN uv sync --frozen --package finance-shared
+
+COPY services/mcp-server/pyproject.toml services/mcp-server/pyproject.toml
+
+RUN uv sync --frozen --no-install-project --package mcp-server
+
+COPY services/mcp-server services/mcp-server
+
+RUN uv sync --frozen --package mcp-server
+
+CMD ["uv", "run", "python", "-m", "mcp_server.main"]
