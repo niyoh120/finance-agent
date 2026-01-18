@@ -14,3 +14,132 @@ run = "uv run python -m admin.main"
 [tasks.news-scraper]
 depends = ["install"]
 run = "uv run python -m news_scraper.main"
+
+[tasks.stock-scraper]
+depends = ["install"]
+run = "uv run python -m stock_scraper.main"
+
+[tasks.options-scraper]
+depends = ["install"]
+run = "uv run python -m options_scraper.main"
+
+[tasks.mcp-server]
+depends = ["install"]
+run = "uv run python -m mcp_server.main"
+
+[tasks.stock-api]
+run = "cd services/stock-api && npm run dev"
+
+[tasks.docker-build-admin]
+run = "docker build -f services/admin/Dockerfile -t {{vars.image_repo}}finance-admin:latest -t {{vars.image_repo}}finance-admin:{{exec(command='git rev-parse --short HEAD')}} ."
+
+[tasks.docker-build-news-scraper]
+run = "docker build -f services/news-scraper/Dockerfile -t {{vars.image_repo}}finance-news-scraper:latest -t {{vars.image_repo}}finance-news-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
+
+[tasks.docker-build-stock-scraper]
+run = "docker build -f services/stock-scraper/Dockerfile -t {{vars.image_repo}}finance-stock-scraper:latest -t {{vars.image_repo}}finance-stock-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
+
+[tasks.docker-build-options-scraper]
+run = "docker build -f services/options-scraper/Dockerfile -t {{vars.image_repo}}finance-options-scraper:latest -t {{vars.image_repo}}finance-options-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
+
+[tasks.docker-build-mcp-server]
+run = "docker build -f services/mcp-server/Dockerfile -t {{vars.image_repo}}finance-mcp-server:latest -t {{vars.image_repo}}finance-mcp-server:{{exec(command='git rev-parse --short HEAD')}} ."
+
+[tasks.docker-build-stock-api]
+run = "docker build -f services/stock-api/Dockerfile -t {{vars.image_repo}}finance-stock-api:latest -t {{vars.image_repo}}finance-stock-api:{{exec(command='git rev-parse --short HEAD')}} ."
+
+[tasks.docker-build-all]
+run = [
+  { tasks = [
+    "docker-build-admin",
+    "docker-build-news-scraper",
+    "docker-build-stock-scraper",
+    "docker-build-options-scraper",
+    "docker-build-mcp-server",
+    "docker-build-stock-api",
+  ] },
+]
+
+[tasks.docker-push-admin]
+run = [
+  "docker push {{vars.image_repo}}finance-admin:latest",
+  "docker push {{vars.image_repo}}finance-admin:{{exec(command='git rev-parse --short HEAD')}}",
+]
+
+[tasks.docker-push-news-scraper]
+run = [
+  "docker push {{vars.image_repo}}finance-news-scraper:latest",
+  "docker push {{vars.image_repo}}finance-news-scraper:{{exec(command='git rev-parse --short HEAD')}}",
+]
+
+[tasks.docker-push-stock-scraper]
+run = [
+  "docker push {{vars.image_repo}}finance-stock-scraper:latest",
+  "docker push {{vars.image_repo}}finance-stock-scraper:{{exec(command='git rev-parse --short HEAD')}}",
+]
+
+[tasks.docker-push-options-scraper]
+run = [
+  "docker push {{vars.image_repo}}finance-options-scraper:latest",
+  "docker push {{vars.image_repo}}finance-options-scraper:{{exec(command='git rev-parse --short HEAD')}}",
+]
+
+[tasks.docker-push-mcp-server]
+run = [
+  "docker push {{vars.image_repo}}finance-mcp-server:latest",
+  "docker push {{vars.image_repo}}finance-mcp-server:{{exec(command='git rev-parse --short HEAD')}}",
+]
+
+[tasks.docker-push-stock-api]
+run = [
+  "docker push {{vars.image_repo}}finance-stock-api:latest",
+  "docker push {{vars.image_repo}}finance-stock-api:{{exec(command='git rev-parse --short HEAD')}}",
+]
+
+[tasks.docker-push-all]
+run = [
+  { tasks = [
+    "docker-push-admin",
+    "docker-push-news-scraper",
+    "docker-push-stock-scraper",
+    "docker-push-options-scraper",
+    "docker-push-mcp-server",
+    "docker-push-stock-api",
+  ] },
+]
+
+[tasks.db-upgrade]
+depends = ["install"]
+run = "uv run alembic upgrade head"
+
+[tasks.db-downgrade]
+depends = ["install"]
+usage = '''
+arg "<revision>" help="目标 revision（例如: -1, base, head^, <rev_id>）"
+'''
+run = "uv run alembic downgrade ${usage_revision?}"
+
+[tasks.db-revision]
+depends = ["install"]
+usage = '''
+arg "<message>" help="迁移描述"
+'''
+run = 'uv run alembic revision -m "${usage_message?}" --autogenerate'
+
+[tasks.db-revision-manual]
+depends = ["install"]
+usage = '''
+arg "<message>" help="迁移描述"
+'''
+run = 'uv run alembic revision -m "${usage_message?}"'
+
+[tasks.db-current]
+depends = ["install"]
+run = "uv run alembic current"
+
+[tasks.db-history]
+depends = ["install"]
+run = "uv run alembic history"
+
+[vars]
+image_repo = "docker.io/niyoh/"
