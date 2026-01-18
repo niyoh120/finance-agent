@@ -6,9 +6,10 @@ from dotenv import load_dotenv
 from sqladmin import Admin, ModelView
 from starlette.applications import Starlette
 
+from shared.database import get_engine
+from shared.models.news import NewsArticle
 from shared.models.options import OptionsFlow
 from shared.models.stocks import StockPrice
-from shared.database import get_engine
 
 load_dotenv()
 logging.basicConfig(
@@ -105,6 +106,59 @@ class StockPriceAdmin(ModelView, model=StockPrice):
     icon = "fa-solid fa-chart-bar"
 
 
+class NewsArticleAdmin(ModelView, model=NewsArticle):
+    column_list = [
+        NewsArticle.id,
+        NewsArticle.published_at,
+        NewsArticle.type,
+        NewsArticle.title,
+        NewsArticle.author,
+        NewsArticle.symbols,
+        NewsArticle.importance,
+        NewsArticle.url,
+    ]
+
+    column_searchable_list = [
+        NewsArticle.external_id,
+        NewsArticle.type,
+        NewsArticle.title,
+        NewsArticle.content,
+        NewsArticle.author,
+    ]
+    column_sortable_list = [
+        NewsArticle.published_at,
+        NewsArticle.type,
+        NewsArticle.importance,
+    ]
+    column_default_sort = [(NewsArticle.published_at, True)]
+
+    column_labels = {
+        NewsArticle.external_id: "外部ID",
+        NewsArticle.type: "类型",
+        NewsArticle.title: "标题",
+        NewsArticle.content: "内容",
+        NewsArticle.original_content: "原始内容",
+        NewsArticle.url: "链接",
+        NewsArticle.author: "作者",
+        NewsArticle.symbols: "标的",
+        NewsArticle.tags: "标签",
+        NewsArticle.importance: "重要性",
+        NewsArticle.published_at: "发布时间",
+        NewsArticle.created_at: "入库时间",
+    }
+
+    form_excluded_columns = [NewsArticle.created_at]
+
+    can_create = False
+    can_edit = False
+    can_delete = True
+    can_view_details = True
+
+    name = "新闻"
+    name_plural = "新闻"
+    icon = "fa-regular fa-newspaper"
+
+
 def create_app() -> Starlette:
     engine = get_engine()
 
@@ -112,6 +166,7 @@ def create_app() -> Starlette:
     admin = Admin(app, engine, title="Finance Admin")
     admin.add_view(OptionsFlowAdmin)
     admin.add_view(StockPriceAdmin)
+    admin.add_view(NewsArticleAdmin)
 
     return app
 
