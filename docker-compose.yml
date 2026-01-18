@@ -60,7 +60,20 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # 4. MCP Server (Python)
+  # 4. News Scraper (Python)
+  news-scraper:
+    build:
+      context: ./
+      dockerfile: ./services/news-scraper/Dockerfile
+    environment:
+      - DATABASE_URL=${DATABASE_URL}
+      - SCRAPE_INTERVAL=60
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # 5. MCP Server (Python)
   mcp-server:
     build:
       context: ./

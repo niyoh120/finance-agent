@@ -15,4 +15,4 @@ dependencies = [
 finance-shared = { workspace = true }
 
 [tool.uv.workspace]
-members = ["shared", "services/stock-scraper"]
+members = ["shared", "services/stock-scraper", "services/news-scraper"]
