@@ -1,0 +1,26 @@
+.git
+.venv
+__pycache__/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+
+# Python tooling caches
+.ruff_cache/
+.mypy_cache/
+.pytest_cache/
+
+# Node
+**/node_modules/
+
+# Local build artifacts
+dist/
+services/stock-api/dist/
+
+# Local data
+data/
+
+# Env files
+.env
+.env.*
