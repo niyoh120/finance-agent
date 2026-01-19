@@ -31,7 +31,7 @@ run = "uv run python -m mcp_server.main"
 run = "cd services/stock-api && npm run dev"
 
 [tasks.docker-build-admin]
-run = "docker build -f services/admin/Dockerfile -t {{vars.image_repo}}finance-admin:latest -t {{vars.image_repo}}finance-admin:{{exec(command='git rev-parse --short HEAD')}} ."
+run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=admin --build-arg MODULE_ENTRY=admin.main -t {{vars.image_repo}}finance-admin:latest -t {{vars.image_repo}}finance-admin:{{exec(command='git rev-parse --short HEAD')}} ."
 
 [tasks.docker-build-news-scraper]
 run = "docker build -f services/news-scraper/Dockerfile -t {{vars.image_repo}}finance-news-scraper:latest -t {{vars.image_repo}}finance-news-scraper:{{exec(command='git rev-parse --short HEAD')}} ."

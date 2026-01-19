@@ -182,7 +182,7 @@ def main():
 
     # Prefer forwarded headers from a TLS-terminating reverse proxy.
     # Ensure your proxy passes `X-Forwarded-Proto: https`.
-    forwarded_allow_ips = os.getenv("FORWARDED_ALLOW_IPS")
+    forwarded_allow_ips = os.getenv("ADMIN_FORWARDED_ALLOW_IPS")
     uvicorn.run(
         app,
         host=host,
