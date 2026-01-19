@@ -85,8 +85,79 @@ docker compose run --rm stock-scraper python scripts/migrate_data.py
 
 ### Stock API
 - 无状态 HTTP 服务，包装 `@mathieuc/tradingview` 库。
-- 提供通用接口 `GET /quote?symbol=<SYMBOL>` (例如 `NASDAQ:AAPL`, `BINANCE:BTCUSDT`)。
-- 仅负责获取实时数据，**不负责存储**。
+- 仅负责获取 TradingView 数据，**不负责存储**（由 `stock-scraper` 写入 PostgreSQL）。
+- OpenAPI 文档：`GET /openapi.json`。
+
+#### 接口列表
+
+- `GET /health`
+  - 用途：健康检查
+  - 响应：`{"status":"ok"}`
+
+- `GET /openapi.json`
+  - 用途：返回 OpenAPI 3.0 JSON 描述（接口自说明）
+
+- `GET /quote?symbol=<SYMBOL>`
+  - 用途：获取实时行情快照
+  - 参数：
+    - `symbol`（必填）：例如 `NASDAQ:AAPL`、`BINANCE:BTCUSDT`
+  - 响应字段（核心）：`symbol/price/volume/open/high/low/prevClose/change/changePercent/bid/ask/status/timestamp`
+  - 示例：
+    - `curl "http://localhost:3000/quote?symbol=NASDAQ:AAPL"`
+
+- `GET /history?symbol=<SYMBOL>&timeframe=<TF>&range=<N>&to=<TS>`
+  - 用途：获取历史 K 线（OHLCV）
+  - 参数：
+    - `symbol`（必填）
+    - `timeframe`（可选，默认 `D`）：TradingView timeframe（如 `D`、`60`、`240` 等）
+    - `range`（可选，默认 `200`）：返回 N 根 K 线
+    - `to`（可选）：Unix 秒时间戳（结束时间，闭区间）
+  - 响应：`{ symbol, timeframe, range, to?, candles: Candle[] }`
+    - `Candle`：`{ time, timestamp, open, high, low, close, volume? }`（其中 `time` 为 Unix 秒）
+  - 示例：
+    - `curl "http://localhost:3000/history?symbol=NASDAQ:AAPL&timeframe=D&range=200"`
+
+- `GET /indicator?symbol=<SYMBOL>&indicatorId=<ID>&timeframe=<TF>&range=<N>&to=<TS>&options=<JSON>`
+  - 用途：获取 TradingView 技术指标输出（含高级会员账号可访问的私有/邀请制指标，视账号权限而定）
+  - 参数：
+    - `symbol`（必填）
+    - `indicatorId`（必填）：
+      - 内置指标：例如 `STD;EMA`、`STD;Supertrend`
+      - built-in 指标：形如 `Volume@tv-basicstudies-241`、`VbPFixed@tv-basicstudies-241!`
+    - `timeframe`（可选，默认 `D`）
+    - `range`（可选，默认 `200`）
+    - `to`（可选）：Unix 秒时间戳
+    - `options`（可选）：JSON 字符串（指标输入参数），例如 `{"Length":50}`
+  - 响应：`IndicatorResult`：
+    - `candles`: 对应 K 线（最新在前）
+    - `periods`: 指标每根 K 线的 plot 值（结构因指标而异）
+    - `plots`: plot 命名映射（部分指标才有）
+  - 示例：
+    - `curl --get "http://localhost:3000/indicator" \
+      --data-urlencode "symbol=NASDAQ:AAPL" \
+      --data-urlencode "indicatorId=STD;EMA" \
+      --data-urlencode "timeframe=D" \
+      --data-urlencode "range=200" \
+      --data-urlencode 'options={"Length":50}'`
+
+- `GET /ta?symbol=<SYMBOL>`
+  - 用途：获取 TradingView Technical Analysis（Recommend）汇总
+  - 参数：
+    - `symbol`（必填）
+  - 示例：
+    - `curl "http://localhost:3000/ta?symbol=NASDAQ:AAPL"`
+
+- `GET /indicators/private`
+  - 用途：列出当前账号的私有指标（TradingView “saved” 指标）
+  - 依赖：必须配置 `TV_SESSION`（建议同时配置 `TV_SIGNATURE`）
+  - 示例：
+    - `curl "http://localhost:3000/indicators/private"`
+
+#### TradingView 账号与权限说明
+- 默认匿名模式也可工作，但某些交易所数据、实时能力、私有/邀请制指标、部分 built-in 指标可能需要登录。
+- 通过环境变量注入 TradingView Cookie：
+  - `TV_SESSION`：对应 TradingView Cookie `sessionid`
+  - `TV_SIGNATURE`：对应 TradingView Cookie `sessionid_sign`
 
 ### Stock Scraper
 - **负责存储**：定期调用 Stock API 并将数据写入 PostgreSQL。
