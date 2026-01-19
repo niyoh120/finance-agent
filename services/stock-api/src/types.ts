@@ -13,3 +13,33 @@ export interface QuoteData {
   status: string;
   timestamp: number;
 }
+
+export interface Candle {
+  time: number;
+  timestamp: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume?: number;
+}
+
+export interface TechnicalAnalysis {
+  [timeframe: string]: {
+    Other: number;
+    All: number;
+    MA: number;
+  };
+}
+
+export interface IndicatorResult {
+  symbol: string;
+  timeframe: string;
+  range: number;
+  indicatorId: string;
+  candles: Candle[];
+  periods: unknown[];
+  plots?: Record<string, string>;
+  strategyReport?: unknown;
+  graphic?: unknown;
+}
