@@ -2,7 +2,6 @@ import json
 import logging
 from datetime import datetime, timedelta
 
-from dotenv import load_dotenv
 from fastmcp import FastMCP
 from shared.database import session_scope
 
@@ -10,7 +9,6 @@ from shared.database import session_scope
 from shared.models.options import OptionsFlow
 from sqlalchemy import func, select
 
-load_dotenv()
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )

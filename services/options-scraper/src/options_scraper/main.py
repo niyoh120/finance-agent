@@ -6,7 +6,6 @@ from datetime import datetime, time, timezone
 from zoneinfo import ZoneInfo
 
 import discord
-from dotenv import load_dotenv
 from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert
 
@@ -17,7 +16,6 @@ from shared.database import get_session_maker
 # Local imports
 from .parser import parse_message
 
-load_dotenv()
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )

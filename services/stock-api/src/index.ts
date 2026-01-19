@@ -1,8 +1,5 @@
 import Fastify from 'fastify';
-import dotenv from 'dotenv';
 import { getQuote } from './tv.js';
-
-dotenv.config();
 
 const fastify = Fastify({
   logger: true

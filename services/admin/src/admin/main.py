@@ -2,7 +2,6 @@ import logging
 import os
 
 import uvicorn
-from dotenv import load_dotenv
 from fastapi import FastAPI
 from shared.database import get_engine
 from shared.models.news import NewsArticle
@@ -10,7 +9,6 @@ from shared.models.options import OptionsFlow
 from shared.models.stocks import StockPrice
 from sqladmin import Admin, ModelView
 
-load_dotenv()
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
