@@ -7,7 +7,7 @@ dependencies = [
   "finance-shared",
   "python-dotenv>=1.0.0",
   "sqladmin[full]",
-  "starlette",
+  "fastapi",
   "uvicorn",
 ]
 

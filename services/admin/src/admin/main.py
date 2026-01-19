@@ -3,13 +3,12 @@ import os
 
 import uvicorn
 from dotenv import load_dotenv
-from sqladmin import Admin, ModelView
-from starlette.applications import Starlette
-
+from fastapi import FastAPI
 from shared.database import get_engine
 from shared.models.news import NewsArticle
 from shared.models.options import OptionsFlow
 from shared.models.stocks import StockPrice
+from sqladmin import Admin, ModelView
 
 load_dotenv()
 logging.basicConfig(
@@ -159,10 +158,14 @@ class NewsArticleAdmin(ModelView, model=NewsArticle):
     icon = "fa-regular fa-newspaper"
 
 
-def create_app() -> Starlette:
+def create_app() -> FastAPI:
     engine = get_engine()
 
-    app = Starlette()
+    # If the service is mounted below a path prefix (e.g. https://example.com/admin),
+    # set ADMIN_ROOT_PATH=/admin so url generation includes the prefix.
+    root_path = os.getenv("ADMIN_ROOT_PATH", "")
+    app = FastAPI(root_path=root_path) if root_path else FastAPI()
+
     admin = Admin(app, engine, title="Finance Admin")
     admin.add_view(OptionsFlowAdmin)
     admin.add_view(StockPriceAdmin)
@@ -176,8 +179,17 @@ def main():
     port = int(os.getenv("ADMIN_PORT", "8000"))
 
     app = create_app()
-    logger.info(f"Admin panel running at http://{host}:{port}/admin")
-    uvicorn.run(app, host=host, port=port)
+
+    # Prefer forwarded headers from a TLS-terminating reverse proxy.
+    # Ensure your proxy passes `X-Forwarded-Proto: https`.
+    forwarded_allow_ips = os.getenv("FORWARDED_ALLOW_IPS")
+    uvicorn.run(
+        app,
+        host=host,
+        port=port,
+        proxy_headers=True,
+        forwarded_allow_ips=forwarded_allow_ips,
+    )
 
 
 if __name__ == "__main__":
