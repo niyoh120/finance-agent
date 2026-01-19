@@ -9,7 +9,6 @@ dependencies = [
   "asyncpg>=0.29.0",
   "finance-shared",
   "python-dateutil>=2.9.0.post0",
-  "python-dotenv>=1.0.0",
   "sqlalchemy[asyncio]>=2.0.0",
 ]
 

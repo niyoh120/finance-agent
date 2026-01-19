@@ -6,12 +6,11 @@ requires-python = ">=3.11"
 dependencies = [
   "finance-shared",
   "mcp",
-  "python-dotenv>=1.0.0",
 ]
 
 [build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
+requires = ["uv_build>=0.9.26,<0.10.0"]
+build-backend = "uv_build"
 
 [tool.uv.sources]
 finance-shared = { workspace = true }

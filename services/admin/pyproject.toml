@@ -5,7 +5,6 @@ description = "Admin for Finance MCP"
 requires-python = ">=3.11"
 dependencies = [
   "finance-shared",
-  "python-dotenv>=1.0.0",
   "sqladmin[full]",
   "fastapi",
   "uvicorn",
