@@ -2,7 +2,10 @@ services:
     news-scraper:
         build:
             context: ./
-            dockerfile: ./services/news-scraper/Dockerfile
+            dockerfile: ./services/Dockerfile
+            args:
+                MODULE_NAME: news-scraper
+                MODULE_ENTRY: news_scraper.main
         environment:
             - DATABASE_URL=${DATABASE_URL}
             - SCRAPE_INTERVAL=60
@@ -11,7 +14,7 @@ services:
         develop:
             watch:
                 - action: rebuild
-                  path: ./services/news-scraper/Dockerfile
+                  path: ./services/Dockerfile
 
     # admin:
     #     build:
