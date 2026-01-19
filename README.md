@@ -29,6 +29,8 @@ cp .env.example .env
 ```
 编辑 `.env` 填入 Discord Token 和 Channel ID。
 
+> 项目使用 `mise` 从根目录 `.env` 注入环境变量（见 `mise.toml`），应用代码本身不再读取 `.env`。
+
 ### 获取 TradingView Session (可选)
 如果需要访问实时数据或某些特定交易所的数据，建议配置 Session。
 
@@ -130,7 +132,7 @@ docker compose up --build
   - 创建数据库: `finance`
   - 确保用户 `postgres` 密码为 `postgres` (或修改 .env)
 - **Node.js**: v20+
-- **Python**: v3.11+ (并安装 `uv`)
+- **Python**: v3.11+（推荐用 `mise` 管理 Python/工具链）
 
 #### 2. 环境变量
 修改根目录 `.env` 文件，将主机名从容器名改为 `localhost`：
@@ -142,11 +144,12 @@ STOCK_API_URL=http://localhost:3000
 ```
 
 #### 3. 安装依赖
-**Python (Monorepo)**:
-在项目根目录运行，这将创建一个包含所有服务依赖的虚拟环境：
+推荐用 `mise` 统一安装（会执行 `uv sync --all-packages`）：
 ```bash
-uv sync
+mise run install
 ```
+
+（等价命令：在项目根目录运行 `uv sync --all-packages`）
 
 **TypeScript (Stock API)**:
 ```bash
@@ -158,34 +161,37 @@ npm install
 
 **终端 1: Stock API**
 ```bash
-cd services/stock-api
-# 确保该目录下也有 .env 文件，或通过 export 设置环境变量
-cp ../../.env .env 
-npm run dev
+# 推荐：使用 mise（会从根目录 .env 注入环境变量）
+mise run stock-api
+
+# 或者手动运行
+# cd services/stock-api
+# npm run dev
 ```
 
 **终端 2: Stock Scraper (股票轮询)**
 ```bash
-# 回到根目录
-# 指定配置文件路径
-export CONFIG_PATH=services/stock-scraper/config.yaml
-uv run python services/stock-scraper/src/main.py
+# 推荐：使用 mise（会从根目录 .env 注入环境变量）
+mise run stock-scraper
+
+# 如需指定配置文件路径
+# CONFIG_PATH=services/stock-scraper/config.yaml mise run stock-scraper
 ```
 
 **终端 3: Options Scraper (Discord 抓取)**
 ```bash
-uv run python services/options-scraper/src/main.py
+mise run options-scraper
 ```
 
 **终端 4: Admin UI**
 ```bash
-uv run python services/admin/src/main.py
+mise run admin
 # 访问 http://localhost:8000/admin
 ```
 
 **终端 5: MCP Server**
 ```bash
-uv run python services/mcp-server/src/main.py
+mise run mcp-server
 ```
 
 ### 目录结构
