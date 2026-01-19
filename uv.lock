@@ -882,12 +882,14 @@ version = "0.1.0"
 source = { editable = "services/mcp-server" }
 dependencies = [
     { name = "finance-shared" },
+    { name = "httpx" },
     { name = "mcp" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "finance-shared", editable = "shared" },
+    { name = "httpx", specifier = ">=0.27.0" },
     { name = "mcp" },
 ]
 

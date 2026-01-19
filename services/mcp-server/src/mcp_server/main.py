@@ -1,12 +1,16 @@
 import json
 import logging
-from datetime import datetime, timedelta
+import os
+from datetime import datetime, timedelta, timezone
+from typing import Any
 
+import httpx
 from fastmcp import FastMCP
 from shared.database import session_scope
 
-# Shared imports
+from shared.models.news import NewsArticle
 from shared.models.options import OptionsFlow
+from shared.models.stocks import StockPrice
 from sqlalchemy import func, select
 
 logging.basicConfig(
@@ -14,7 +18,285 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("Options Flow", json_response=True)
+mcp = FastMCP("Finance", json_response=True)
+
+
+def get_stock_api_url() -> str:
+    return os.getenv("STOCK_API_URL", "http://stock-api:3000")
+
+
+def safe_int(value: Any) -> int | None:
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str):
+        stripped = value.strip()
+        if not stripped:
+            return None
+        try:
+            return int(stripped)
+        except ValueError:
+            return None
+    return None
+
+
+def parse_iso_datetime(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+@mcp.tool()
+async def query_stock_prices(
+    symbol: str,
+    timeframe: str = "1",
+    days: int | None = 7,
+    start: str | None = None,
+    end: str | None = None,
+    limit: int = 500,
+    order: str = "asc",
+) -> str:
+    if limit <= 0:
+        return json.dumps({"error": "limit must be > 0"}, indent=2)
+
+    normalized_symbol = symbol.strip().upper()
+    normalized_timeframe = timeframe.strip() or "1"
+
+    if start and days is not None:
+        return json.dumps({"error": "use either start/end or days, not both"}, indent=2)
+
+    if start:
+        since = parse_iso_datetime(start)
+        until = parse_iso_datetime(end) if end else datetime.now(tz=timezone.utc)
+    else:
+        since_days = days if days is not None else 7
+        since = datetime.now(tz=timezone.utc) - timedelta(days=since_days)
+        until = datetime.now(tz=timezone.utc)
+
+    stmt = (
+        select(StockPrice)
+        .where(StockPrice.symbol == normalized_symbol)
+        .where(StockPrice.timeframe == normalized_timeframe)
+        .where(StockPrice.timestamp >= since)
+        .where(StockPrice.timestamp <= until)
+    )
+
+    stmt = stmt.order_by(
+        StockPrice.timestamp.desc()
+        if order.lower() == "desc"
+        else StockPrice.timestamp.asc()
+    ).limit(limit)
+
+    async with session_scope() as session:
+        result = await session.execute(stmt)
+        rows = result.scalars().all()
+
+    payload = {
+        "symbol": normalized_symbol,
+        "timeframe": normalized_timeframe,
+        "start": since.isoformat(),
+        "end": until.isoformat(),
+        "order": order,
+        "count": len(rows),
+        "rows": [
+            {
+                "timestamp": row.timestamp.isoformat(),
+                "open": row.open,
+                "high": row.high,
+                "low": row.low,
+                "close": row.close,
+                "volume": row.volume,
+            }
+            for row in rows
+        ],
+    }
+
+    return json.dumps(payload, indent=2)
+
+
+@mcp.tool()
+async def get_latest_stock_price(symbol: str, timeframe: str = "1") -> str:
+    normalized_symbol = symbol.strip().upper()
+    normalized_timeframe = timeframe.strip() or "1"
+
+    stmt = (
+        select(StockPrice)
+        .where(StockPrice.symbol == normalized_symbol)
+        .where(StockPrice.timeframe == normalized_timeframe)
+        .order_by(StockPrice.timestamp.desc())
+        .limit(1)
+    )
+
+    async with session_scope() as session:
+        result = await session.execute(stmt)
+        row = result.scalar_one_or_none()
+
+    if row is None:
+        return json.dumps(
+            {
+                "symbol": normalized_symbol,
+                "timeframe": normalized_timeframe,
+                "row": None,
+            },
+            indent=2,
+        )
+
+    return json.dumps(
+        {
+            "symbol": normalized_symbol,
+            "timeframe": normalized_timeframe,
+            "row": {
+                "timestamp": row.timestamp.isoformat(),
+                "open": row.open,
+                "high": row.high,
+                "low": row.low,
+                "close": row.close,
+                "volume": row.volume,
+            },
+        },
+        indent=2,
+    )
+
+
+@mcp.tool()
+async def query_news_articles(
+    days: int = 7,
+    symbols: list[str] | None = None,
+    type: str | None = None,
+    limit: int = 50,
+    offset: int = 0,
+) -> str:
+    if limit <= 0:
+        return json.dumps({"error": "limit must be > 0"}, indent=2)
+    if offset < 0:
+        return json.dumps({"error": "offset must be >= 0"}, indent=2)
+
+    since = datetime.now(tz=timezone.utc) - timedelta(days=days)
+
+    stmt = select(NewsArticle).where(NewsArticle.published_at >= since)
+
+    if type:
+        stmt = stmt.where(NewsArticle.type == type)
+
+    if symbols:
+        normalized_symbols = [
+            s.strip().upper() for s in symbols if isinstance(s, str) and s.strip()
+        ]
+        if normalized_symbols:
+            stmt = stmt.where(NewsArticle.symbols.overlap(normalized_symbols))
+
+    stmt = stmt.order_by(NewsArticle.published_at.desc()).offset(offset).limit(limit)
+
+    async with session_scope() as session:
+        result = await session.execute(stmt)
+        rows = result.scalars().all()
+
+    payload = {
+        "since": since.isoformat(),
+        "limit": limit,
+        "offset": offset,
+        "count": len(rows),
+        "articles": [
+            {
+                "external_id": row.external_id,
+                "type": row.type,
+                "title": row.title,
+                "url": row.url,
+                "author": row.author,
+                "symbols": row.symbols,
+                "tags": row.tags,
+                "importance": row.importance,
+                "published_at": row.published_at.isoformat(),
+            }
+            for row in rows
+        ],
+    }
+
+    return json.dumps(payload, indent=2)
+
+
+async def fetch_stock_api_json(path: str, params: dict[str, str]) -> dict[str, Any]:
+    url = get_stock_api_url().rstrip("/") + path
+    timeout = httpx.Timeout(30.0)
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        resp = await client.get(url, params=params)
+        resp.raise_for_status()
+        payload = resp.json()
+        if isinstance(payload, dict):
+            return payload
+        raise ValueError("stock-api response is not a JSON object")
+
+
+@mcp.tool()
+async def fetch_stock_history(
+    symbol: str,
+    timeframe: str = "D",
+    range: int = 200,
+    to: int | None = None,
+) -> str:
+    params: dict[str, str] = {
+        "symbol": symbol,
+        "timeframe": timeframe,
+        "range": str(range),
+    }
+    if to is not None:
+        params["to"] = str(to)
+
+    try:
+        payload = await fetch_stock_api_json("/history", params)
+        return json.dumps(payload, indent=2)
+    except Exception as exc:
+        return json.dumps({"error": str(exc)}, indent=2)
+
+
+@mcp.tool()
+async def fetch_indicator(
+    symbol: str,
+    indicator_id: str,
+    timeframe: str = "D",
+    range: int = 200,
+    to: int | None = None,
+    options: dict[str, Any] | None = None,
+) -> str:
+    params: dict[str, str] = {
+        "symbol": symbol,
+        "indicatorId": indicator_id,
+        "timeframe": timeframe,
+        "range": str(range),
+    }
+    if to is not None:
+        params["to"] = str(to)
+    if options is not None:
+        params["options"] = json.dumps(options)
+
+    try:
+        payload = await fetch_stock_api_json("/indicator", params)
+        return json.dumps(payload, indent=2)
+    except Exception as exc:
+        return json.dumps({"error": str(exc)}, indent=2)
+
+
+@mcp.tool()
+async def fetch_technical_analysis(symbol: str) -> str:
+    try:
+        payload = await fetch_stock_api_json("/ta", {"symbol": symbol})
+        return json.dumps(payload, indent=2)
+    except Exception as exc:
+        return json.dumps({"error": str(exc)}, indent=2)
+
+
+@mcp.tool()
+async def list_private_indicators() -> str:
+    try:
+        payload = await fetch_stock_api_json("/indicators/private", {})
+        return json.dumps(payload, indent=2)
+    except Exception as exc:
+        return json.dumps({"error": str(exc)}, indent=2)
 
 
 @mcp.tool()
