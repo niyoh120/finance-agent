@@ -58,3 +58,7 @@ tradingview-service/dist/
 
 .sisyphus
 opencode.json
+.chainlit/
+services/wyckoff-agent/.pytest_cache/
+services/wyckoff-agent/.artifacts/
+services/wyckoff-agent/chainlit.md

@@ -23,4 +23,5 @@ members = [
   "services/options-scraper",
   "services/admin",
   "services/mcp-server",
+  "services/wyckoff-agent",
 ]
