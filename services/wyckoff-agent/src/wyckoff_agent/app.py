@@ -1,14 +1,17 @@
-import os
-
 import chainlit as cl
 
-from .pipeline import run_default
+from .pipeline import run_default, run_intraday
 from .router import decide_route
+from .schemas import Timeframe
 
 
-async def _render_default(symbol: str) -> None:
+async def _render_analysis(symbol: str, use_intraday: bool = False) -> None:
+    """运行分析并渲染结果"""
     try:
-        artifacts = await run_default(symbol)
+        if use_intraday:
+            artifacts = await run_intraday(symbol)
+        else:
+            artifacts = await run_default(symbol)
     except Exception as exc:
         await cl.Message(content=f"运行失败：{exc}").send()
         return
@@ -42,17 +45,15 @@ async def _render_default(symbol: str) -> None:
     await cl.Message(content=artifacts.analysis.details).send()
 
 
+@cl.data_layer
+def get_data_layer():
+    return None
+
+
 @cl.on_chat_start
 async def on_chat_start() -> None:
-    # Use Chainlit user-provided env (configured via chainlit.toml user_env).
-    user_env = cl.user_session.get("env") or {}
-    if isinstance(user_env, dict):
-        for k, v in user_env.items():
-            if isinstance(k, str) and k and v is not None:
-                os.environ.setdefault(k, str(v))
-
     res = await cl.AskUserMessage(
-        content="请输入股票代码（例如 NASDAQ:AAPL）：",
+        content=r"请输入股票代码, 例如 NASDAQ:AAPL :",
         timeout=90,
         raise_on_timeout=False,
     ).send()
@@ -66,7 +67,7 @@ async def on_chat_start() -> None:
         return
 
     cl.user_session.set("symbol", symbol)
-    await _render_default(symbol)
+    await _render_analysis(symbol)
 
 
 @cl.on_message
@@ -78,7 +79,7 @@ async def on_message(msg: cl.Message) -> None:
         if not symbol:
             await cl.Message(content="当前会话未设置标的，请先输入股票代码。").send()
             return
-        await _render_default(symbol)
+        await _render_analysis(symbol)
         return
 
     symbol = cl.user_session.get("symbol")
@@ -93,5 +94,6 @@ async def on_message(msg: cl.Message) -> None:
         content=f"路由：{decision.reason}（{','.join([t.value for t in decision.timeframes])}）"
     ).send()
 
-    # For now we always run default; later we will branch per decision.
-    await _render_default(symbol)
+    # 根据路由决策选择分析流程
+    use_intraday = Timeframe.minute_1 in decision.timeframes
+    await _render_analysis(symbol, use_intraday=use_intraday)

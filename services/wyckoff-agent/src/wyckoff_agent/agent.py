@@ -1,42 +1,47 @@
+"""威科夫分析 Agent 构建
+
+该模块提供 Agent 构建逻辑，Agent 通过 MCP toolset 获取数据，
+并输出结构化的威科夫分析结果。
+"""
+
 from __future__ import annotations
 
 import os
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
 
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.models.openai import OpenAIResponsesModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
-from .compress import extract_pivots
-from .data_fetch import MarketDataWindow, fetch_window
-from .indicators import compute_moving_averages
-from .schemas import (
-    CandlesMeta,
-    InstrumentType,
-    Scenario,
-    Strategy,
-    Timeframe,
-    WyckoffAnalysisResult,
-    WyckoffContext,
-)
-from .wyckoff_candidates import find_volume_spikes, guess_accumulation_zone
+from .mcp_tools import create_mcp_toolset
+from .schemas import WyckoffOverlay
 
 
 @dataclass(frozen=True)
 class AgentConfig:
+    """Agent 配置"""
+
     openai_base_url: str
     openai_api_key: str
     openai_model: str
 
 
 def load_agent_config() -> AgentConfig:
+    """从环境变量加载 Agent 配置
+
+    环境变量：
+    - OPENAI_BASE_URL: OpenAI API base URL（默认官方 API）
+    - OPENAI_API_KEY: OpenAI API key
+    - OPENAI_MODEL: 模型名称（默认 gpt-4o）
+
+    Returns:
+        AgentConfig 实例
+    """
     base_url = os.getenv("OPENAI_BASE_URL", "").strip()
     api_key = os.getenv("OPENAI_API_KEY", "").strip()
     model = os.getenv("OPENAI_MODEL", "").strip() or "gpt-4o"
 
     if not base_url:
-        # Allow default OpenAI if user only provides API key.
         base_url = "https://api.openai.com/v1"
 
     return AgentConfig(
@@ -44,148 +49,69 @@ def load_agent_config() -> AgentConfig:
     )
 
 
-def build_llm() -> Agent[None, str]:
+# System prompt for Wyckoff analysis
+_WYCKOFF_SYSTEM_PROMPT = """\
+你是交易史上最伟大的人物：理查德·D·威科夫（Richard D. Wyckoff）。
+
+## 工作流程
+1. 使用 fetch_stock_history 工具获取股票 K 线数据
+   - 根据用户需求自主决定 symbol、timeframe、range 参数
+   - 例如："4H 周期覆盖 1 年" → timeframe='240', range=2000
+   - 例如："日线最近 200 根" → timeframe='D', range=200
+   - 例如："1 分钟线日内" → timeframe='1', range=5000（注意 1 分钟线数据有 14 天限制）
+
+2. 分析 K 线数据，识别威科夫结构
+   - Phase A-E 阶段（不要强行凑齐，只输出能合理识别的部分）
+   - 关键事件：SC/AR/ST/Spring/LPS/SOS/UTAD/JAC/SOW 等
+   - 吸筹/派发区间：y_low/y_high 用 Phase B 收盘价密集区间，避免极端影线
+
+3. 输出结构化分析结果
+   - wyckoff_context: 价格周期背景（accumulation/distribution/markup/markdown/range）
+   - phases: 阶段列表（每个阶段包含：名称、时间范围、置信度、理由）
+   - events: 事件列表（每个事件包含：类型、时间、价格、理由）
+   - zones: 区间列表（吸筹/派发区，包含时间范围和价格区间）
+   - scenarios: 至少 3 种后续走势情景（概率之和约 1）
+   - strategies: 至少 3 套交易策略（正股多/短期期权/LEAPS call 等）
+
+## 要求
+- 客观、严谨，不迎合用户
+- 输出为中文，术语保持英文（SC/AR/ST 等）
+- 每个判断必须有明确依据（价格结构、成交量、时间关系）
+- 事件的 timestamp 必须对应 K 线数据中的实际时间点
+- zones 的 x0/x1 用关键事件区间（例如从 SC 到最后一次 SOS/JAC）
+"""
+
+
+def build_wyckoff_agent() -> Agent[None, WyckoffOverlay]:
+    """构建威科夫分析 Agent
+
+    该 Agent 具备以下能力：
+    1. 通过 MCP toolset 调用 fetch_stock_history 获取 K 线数据
+    2. 分析威科夫结构并输出 WyckoffOverlay
+
+    Returns:
+        配置好的 Agent 实例，输出类型为 WyckoffOverlay
+    """
     cfg = load_agent_config()
-    model = OpenAIChatModel(
+
+    if not cfg.openai_api_key:
+        raise RuntimeError("缺少 OPENAI_API_KEY 环境变量")
+
+    # 创建 OpenAI model
+    model = OpenAIResponsesModel(
         cfg.openai_model,
         provider=OpenAIProvider(
             base_url=cfg.openai_base_url, api_key=cfg.openai_api_key
         ),
     )
 
-    system_prompt = (
-        "你是交易史上最伟大的人物：理查德·D·威科夫（Richard D. Wyckoff）。\n"
-        "你必须客观、严谨，不迎合用户。\n"
-        "输出必须为中文，术语使用威科夫体系（SC/AR/ST/Spring/LPS/SOS/UTAD/Phase A-E等）。\n"
-        "注意：不要强行凑齐阶段或事件，只输出你能从数据中合理识别到的部分。"
-    )
+    # 创建 MCP toolset
+    mcp_toolset = create_mcp_toolset()
 
-    return Agent(model=model, system_prompt=system_prompt)
-
-
-async def analyze_symbol_default(symbol: str) -> WyckoffAnalysisResult:
-    """Default analysis: 4H timeframe over ~1 year."""
-
-    now = datetime.now(tz=UTC)
-    window_4h = MarketDataWindow(
-        timeframe=Timeframe.hour_4, start=now - timedelta(days=365), end=now
-    )
-    candles_4h = await fetch_window(symbol=symbol, window=window_4h)
-
-    ma_4h = (
-        compute_moving_averages(timeframe=Timeframe.hour_4, candles=candles_4h)
-        if candles_4h
-        else None
-    )
-
-    zones = []
-    zone = guess_accumulation_zone(candles=candles_4h, timeframe=Timeframe.hour_4)
-    if zone is not None:
-        zones.append(zone)
-
-    events = []
-    events.extend(find_volume_spikes(candles=candles_4h, timeframe=Timeframe.hour_4))
-
-    context = WyckoffContext(
-        background="待由智能体进一步归因", state="unknown", confidence=0.2
-    )
-
-    # For now, scenarios/strategies are placeholder; later tasks will make LLM produce them.
-    scenarios = [
-        Scenario(
-            name="占位：延续震荡",
-            probability=0.4,
-            triggers=["价格继续在区间内反复"],
-            invalidation=["有效放量突破上沿"],
-        ),
-        Scenario(
-            name="占位：向上突破",
-            probability=0.35,
-            triggers=["放量突破区间上沿"],
-            invalidation=["突破后快速回落并跌破区间中枢"],
-        ),
-        Scenario(
-            name="占位：向下破位",
-            probability=0.25,
-            triggers=["跌破区间下沿且回抽失败"],
-            invalidation=["快速收回失地并站回区间"],
-        ),
-    ]
-
-    strategies = [
-        Strategy(
-            name="占位：正股做多（突破）",
-            instrument_type=InstrumentType.STOCK_LONG,
-            entry="放量突破区间上沿后回踩不破再介入",
-            stop="回踩跌破上沿且收盘无法收回",
-            take_profit="前高附近分批止盈；若放量加速可用 MA50 跟踪",
-            risk_notes="突破失败容易形成假突破；注意仓位与滑点。",
-        )
-    ]
-
-    meta = []
-    if candles_4h:
-        meta.append(
-            CandlesMeta(
-                timeframe=Timeframe.hour_4,
-                start=window_4h.start,
-                end=window_4h.end,
-                count=len(candles_4h),
-            )
-        )
-
-    return WyckoffAnalysisResult(
-        symbol=symbol,
-        generated_at=now,
-        timeframes_used=[Timeframe.hour_4],
-        candles_meta=meta,
-        wyckoff_context=context,
-        phases=[],
-        events=events,
-        zones=zones,
-        moving_averages=[ma_4h] if ma_4h is not None else [],
-        scenarios=scenarios,
-        strategies=strategies,
-        summary="占位：默认 4H/1Y 结构已生成（待 LLM 威科夫归因）",
-        details="占位：目前只做了数据拉取、均线与候选事件生成；下一步接入 LLM 生成威科夫阶段/事件理由与策略。",
-    )
-
-
-async def analyze_intraday(symbol: str) -> WyckoffAnalysisResult:
-    """Intraday analysis: 1m up to 14 days, plus 60m context."""
-
-    now = datetime.now(tz=UTC)
-    w_1m = MarketDataWindow(
-        timeframe=Timeframe.minute_1, start=now - timedelta(days=14), end=now
-    )
-    candles_1m = await fetch_window(symbol=symbol, window=w_1m)
-
-    pivots = extract_pivots(candles=candles_1m)
-
-    # Minimal result: we store pivots count in details.
-    context = WyckoffContext(
-        background="日内：以结构拐点/量能为主", state="unknown", confidence=0.2
-    )
-
-    return WyckoffAnalysisResult(
-        symbol=symbol,
-        generated_at=now,
-        timeframes_used=[Timeframe.minute_1],
-        candles_meta=[
-            CandlesMeta(
-                timeframe=Timeframe.minute_1,
-                start=w_1m.start,
-                end=w_1m.end,
-                count=len(candles_1m),
-            )
-        ],
-        wyckoff_context=context,
-        phases=[],
-        events=[],
-        zones=[],
-        moving_averages=[],
-        scenarios=[],
-        strategies=[],
-        summary="占位：日内 1m/14d 数据已拉取并压缩",
-        details=f"拐点数={len(pivots.pivots)}；{pivots.notes}",
+    return Agent(
+        model=model,
+        system_prompt=_WYCKOFF_SYSTEM_PROMPT,
+        output_type=WyckoffOverlay,  # 结构化输出
+        toolsets=[mcp_toolset],  # MCP 作为工具
+        retries=2,  # 允许重试（如果 LLM 输出格式错误）
     )

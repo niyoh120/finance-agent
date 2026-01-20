@@ -8,11 +8,15 @@ dependencies = [
   "plotly>=5.20.0",
   "kaleido>=0.2.1",
   "pandas>=2.0.0",
-  "pydantic-ai>=0.0.49",
-  "mcp",
+  "mcp-server",
   "httpx>=0.27.0",
+  "pydantic-ai>=1.44.0",
+  "mcp>=1.25.0",
 ]
 
 [build-system]
 requires = ["uv_build>=0.9.26,<0.10.0"]
 build-backend = "uv_build"
+
+[tool.uv.sources]
+mcp-server = { workspace = true }
