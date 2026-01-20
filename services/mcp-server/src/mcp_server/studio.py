@@ -1,7 +1,7 @@
 from .mcp import mcp
 
 
-def main() -> None:
+def main():
     mcp.run()
 
 

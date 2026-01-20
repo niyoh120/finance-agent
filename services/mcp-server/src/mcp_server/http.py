@@ -1,9 +1,4 @@
 from .mcp import mcp
 
-
-def main() -> None:
-    mcp.run()
-
-
 if __name__ == "__main__":
-    main()
+    mcp.run(transport="http", port=8087)
