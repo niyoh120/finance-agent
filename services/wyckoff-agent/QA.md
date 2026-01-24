@@ -22,6 +22,11 @@
   - Attachments: `wyckoff.png`, `analysis.json`, `figure.json`
 - Then run `/update` and confirm chart refresh.
 
+## Debugging
+- Set `WYCKOFF_LOG_LEVEL=DEBUG` to log MCP tool call/return messages.
+- Optional: `WYCKOFF_MCP_TIMEOUT=120` to extend MCP stdio timeout.
+- Ensure `FINANCE_STOCK_API_URL` is set when running `mise run wyckoff-agent`.
+
 ## Known limitations
 - If `STOCK_API_URL` is unset or stock-api is not running, data will be empty (candles=0).
 - Phase/Zone/Event accuracy currently depends heavily on LLM overlay prompt; deterministic Wyckoff detection is not fully implemented yet.

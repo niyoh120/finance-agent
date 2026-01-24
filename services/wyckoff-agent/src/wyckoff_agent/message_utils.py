@@ -7,11 +7,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import TYPE_CHECKING
 
 from pydantic_ai.messages import ModelMessage, ToolReturnPart
 
 from .schemas import Candle, Timeframe
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -67,7 +70,7 @@ def extract_timeframe_from_messages(
     return None
 
 
-def _parse_candles_from_tool_return(content: str) -> list[Candle]:
+def _parse_candles_from_tool_return(content: dict) -> list[Candle]:
     """从工具返回内容中解析 K 线数据
 
     Args:
@@ -76,27 +79,23 @@ def _parse_candles_from_tool_return(content: str) -> list[Candle]:
     Returns:
         解析后的 Candle 列表
     """
-    try:
-        data = json.loads(content)
-
-        # 提取 candles 字段
-        candles_raw = data.get("candles", [])
-        if not isinstance(candles_raw, list):
-            return []
-
-        # 转换为 Candle 对象
-        candles = []
-        for c in candles_raw:
-            try:
-                candles.append(Candle.model_validate(c))
-            except Exception:
-                # 跳过无法解析的 candle
-                continue
-
-        return candles
-
-    except (json.JSONDecodeError, ValueError, TypeError):
+    logger.info("Tool return content type=%s", type(content).__name__)
+    # 提取 candles 字段
+    candles_raw = content.get("candles", [])
+    if not isinstance(candles_raw, list):
+        logger.info("Tool return candles is not list")
         return []
+
+    # 转换为 Candle 对象
+    candles = []
+    for c in candles_raw:
+        try:
+            candles.append(Candle.model_validate(c))
+        except Exception:
+            logger.info("Failed to parse candle payload")
+            continue
+
+    return candles
 
 
 def _parse_timeframe_from_tool_return(content: str) -> Timeframe | None:
@@ -116,7 +115,7 @@ def _parse_timeframe_from_tool_return(content: str) -> Timeframe | None:
             return _map_timeframe(tf_str)
 
     except (json.JSONDecodeError, ValueError, TypeError):
-        pass
+        logger.debug("Tool return timeframe JSON parse failed")
 
     return None
 

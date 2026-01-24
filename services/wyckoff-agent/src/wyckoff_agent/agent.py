@@ -10,7 +10,9 @@ import os
 from dataclasses import dataclass
 
 from pydantic_ai import Agent
-from pydantic_ai.models.openai import OpenAIResponsesModel
+from pydantic_ai.models.google import GoogleModel
+from pydantic_ai.models.openai import OpenAIChatModel
+from pydantic_ai.providers.google import GoogleProvider
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from .mcp_tools import create_mcp_toolset
@@ -47,6 +49,28 @@ def load_agent_config() -> AgentConfig:
     return AgentConfig(
         openai_base_url=base_url, openai_api_key=api_key, openai_model=model
     )
+
+
+def get_model():
+    cfg = load_agent_config()
+
+    if not cfg.openai_api_key:
+        raise RuntimeError("缺少 OPENAI_API_KEY 环境变量")
+
+    # 创建 OpenAI model
+    # model = OpenAIChatModel(
+    #     cfg.openai_model,
+    #     provider=OpenAIProvider(
+    #         base_url=cfg.openai_base_url, api_key=cfg.openai_api_key
+    #     ),
+    # )
+    model = GoogleModel(
+        cfg.openai_model,
+        provider=GoogleProvider(
+            base_url=cfg.openai_base_url, api_key=cfg.openai_api_key
+        ),
+    )
+    return model
 
 
 # System prompt for Wyckoff analysis
@@ -92,26 +116,40 @@ def build_wyckoff_agent() -> Agent[None, WyckoffOverlay]:
     Returns:
         配置好的 Agent 实例，输出类型为 WyckoffOverlay
     """
-    cfg = load_agent_config()
-
-    if not cfg.openai_api_key:
-        raise RuntimeError("缺少 OPENAI_API_KEY 环境变量")
-
-    # 创建 OpenAI model
-    model = OpenAIResponsesModel(
-        cfg.openai_model,
-        provider=OpenAIProvider(
-            base_url=cfg.openai_base_url, api_key=cfg.openai_api_key
-        ),
-    )
 
     # 创建 MCP toolset
     mcp_toolset = create_mcp_toolset()
 
     return Agent(
-        model=model,
+        model=get_model(),
         system_prompt=_WYCKOFF_SYSTEM_PROMPT,
         output_type=WyckoffOverlay,  # 结构化输出
         toolsets=[mcp_toolset],  # MCP 作为工具
         retries=2,  # 允许重试（如果 LLM 输出格式错误）
+    )
+
+
+_CHAT_PROMPT = """
+角色设定：
+
+你现在是交易史上最伟大的人物理查德·D·威科夫（Richard D. Wyckoff）。你的任务如下
+
+- 预测几种可能的后续走势，要给出每种走势的大致概率，从高到低排序。
+
+- 给出几种详细的交易策略，比如做多正股、短期期权、leaps call、做空正股等等，要包含止盈和止损点和必要的风险提示。
+
+请检查并确认分析结果是完全符合威科夫技术分析方法的，然后再发出给我。
+
+后续的交流要秉持客观严谨的态度，不要为了迎合我的想法修改自己的判断。如果你需要更多数据来辅助分析，请使用工具获取相关数据。
+"""
+
+
+def build_chat_agent() -> Agent[None, str]:
+    # 创建 MCP toolset
+    mcp_toolset = create_mcp_toolset()
+
+    return Agent(
+        model=get_model(),
+        system_prompt=_CHAT_PROMPT,
+        toolsets=[mcp_toolset],  # MCP 作为工具
     )

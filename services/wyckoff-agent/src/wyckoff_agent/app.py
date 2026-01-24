@@ -1,17 +1,34 @@
+import logging
+from email import message
+
 import chainlit as cl
+from pydantic_ai import (
+    ModelMessage,
+    ModelResponse,
+    TextPart,
+)
 
-from .pipeline import run_default, run_intraday
-from .router import decide_route
-from .schemas import Timeframe
+from .agent import build_chat_agent, build_wyckoff_agent
+from .logging_utils import configure_logging
+from .pipeline import run_default
+
+configure_logging()
+
+logger = logging.getLogger(__name__)
 
 
-async def _render_analysis(symbol: str, use_intraday: bool = False) -> None:
+async def save_chat_history(messages: list[ModelMessage]):
+    cl.user_session.set("__chat_history", messages)
+
+
+async def get_chat_history() -> list[ModelMessage] | None:
+    return cl.user_session.get("__chat_history", [])
+
+
+async def _render_analysis(agent, symbol_message: str) -> None:
     """运行分析并渲染结果"""
     try:
-        if use_intraday:
-            artifacts = await run_intraday(symbol)
-        else:
-            artifacts = await run_default(symbol)
+        artifacts, messages = await run_default(agent, symbol_message)
     except Exception as exc:
         await cl.Message(content=f"运行失败：{exc}").send()
         return
@@ -44,6 +61,8 @@ async def _render_analysis(symbol: str, use_intraday: bool = False) -> None:
     await cl.Message(content=artifacts.analysis.summary, elements=elements).send()
     await cl.Message(content=artifacts.analysis.details).send()
 
+    await save_chat_history(messages)
+
 
 @cl.data_layer
 def get_data_layer():
@@ -53,47 +72,57 @@ def get_data_layer():
 @cl.on_chat_start
 async def on_chat_start() -> None:
     res = await cl.AskUserMessage(
-        content=r"请输入股票代码, 例如 NASDAQ:AAPL :",
+        content="请输入股票代码",
         timeout=90,
         raise_on_timeout=False,
     ).send()
 
-    symbol = None
+    symbol_msg = None
     if res and isinstance(res, dict):
-        symbol = (res.get("output") or "").strip()
+        symbol_msg = (res.get("output") or "").strip()
 
-    if not symbol:
+    if not symbol_msg:
         await cl.Message(content="未收到股票代码。你也可以直接提问并带上代码。").send()
         return
 
-    cl.user_session.set("symbol", symbol)
-    await _render_analysis(symbol)
+    agent = build_wyckoff_agent()
+
+    await _render_analysis(agent, symbol_msg)
+
+
+def get_model_message(output) -> str | None:
+    msg = ModelResponse(parts=[TextPart(output)])
+    first_part = msg.parts[0]
+    if isinstance(first_part, TextPart):
+        return first_part.content
+    return None
 
 
 @cl.on_message
 async def on_message(msg: cl.Message) -> None:
-    text = (msg.content or "").strip()
+    agent = cl.user_session.get("agent")
+    if agent is None:
+        agent = build_chat_agent()
+        cl.user_session.set("agent", agent)
 
-    if text.startswith("/update"):
-        symbol = cl.user_session.get("symbol")
-        if not symbol:
-            await cl.Message(content="当前会话未设置标的，请先输入股票代码。").send()
-            return
-        await _render_analysis(symbol)
-        return
+    chat_history = await get_chat_history()
 
-    symbol = cl.user_session.get("symbol")
-    if not symbol:
-        await cl.Message(
-            content="当前会话未设置标的，请先输入股票代码（例如 NASDAQ:AAPL）。"
-        ).send()
-        return
+    reply_msg = None
+    async with agent.run_stream(
+        user_prompt=msg.content, message_history=chat_history
+    ) as result:
+        async for output in result.stream_output():
+            text = get_model_message(output)
+            if not text:
+                continue
+            if reply_msg is None:
+                reply_msg = await cl.Message(content="").send()
+            await reply_msg.stream_token(text)
+        await save_chat_history(result.all_messages())
+        if reply_msg:
+            await reply_msg.send()
 
-    decision = decide_route(user_text=text)
-    await cl.Message(
-        content=f"路由：{decision.reason}（{','.join([t.value for t in decision.timeframes])}）"
-    ).send()
 
-    # 根据路由决策选择分析流程
-    use_intraday = Timeframe.minute_1 in decision.timeframes
-    await _render_analysis(symbol, use_intraday=use_intraday)
+@cl.on_chat_resume
+async def on_chat_resume(thread):
+    pass

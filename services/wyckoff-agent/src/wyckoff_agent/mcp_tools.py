@@ -6,12 +6,18 @@
 
 from __future__ import annotations
 
+import logging
 import os
 
+from pydantic_ai import AbstractToolset
 from pydantic_ai.mcp import MCPServerStdio
 
+from .logging_utils import configure_logging
 
-def create_mcp_toolset() -> MCPServerStdio:
+logger = logging.getLogger(__name__)
+
+
+def create_mcp_toolset() -> AbstractToolset:
     """创建 Finance MCP Server toolset
 
     该 toolset 会启动 MCP server 子进程，并通过 stdio 通信。
@@ -23,16 +29,28 @@ def create_mcp_toolset() -> MCPServerStdio:
 
     配置通过环境变量：
     - WYCKOFF_MCP_COMMAND: MCP server 启动命令 (默认: uv)
-    - WYCKOFF_MCP_ARGS: MCP server 参数 (默认: "run python -m mcp_server.main")
+    - WYCKOFF_MCP_ARGS: MCP server 参数 (默认: "run python -m mcp_server.studio")
 
     Returns:
         配置好的 MCPServerStdio 实例
     """
+    configure_logging()
+
     cmd = os.getenv("WYCKOFF_MCP_COMMAND", "uv")
-    args_s = os.getenv("WYCKOFF_MCP_ARGS", "run python -m mcp_server.main")
+    args_s = os.getenv("WYCKOFF_MCP_ARGS", "run python -m mcp_server.studio")
+    timeout = int(os.getenv("WYCKOFF_MCP_TIMEOUT", "120"))
+    env = dict(os.environ)
+
+    logger.info("MCP toolset start: cmd=%s args=%s timeout=%ss", cmd, args_s, timeout)
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(
+            "MCP toolset env: FINANCE_STOCK_API_URL=%s",
+            env.get("FINANCE_STOCK_API_URL"),
+        )
 
     return MCPServerStdio(
         cmd,
         args=args_s.split(),
-        timeout=60,  # MCP server 启动和工具调用超时
-    )
+        env=env,
+        timeout=timeout,  # MCP server 启动和工具调用超时
+    ).filtered(lambda ctx, tool_def: "history" in tool_def.name)
