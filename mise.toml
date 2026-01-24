@@ -25,7 +25,7 @@ run = "uv run python -m options_scraper.main"
 
 [tasks.mcp-server]
 depends = ["install"]
-run = "uv run python -m mcp_server.main"
+run = "uv run python -m mcp_server.http"
 
 [tasks.wyckoff-agent]
 depends = ["install"]
@@ -33,7 +33,8 @@ dir = "services/wyckoff-agent"
 run = "uv run python -m chainlit run app.py -w -h"
 
 [tasks.stock-api]
-run = "cd services/stock-api && npm run dev"
+dir = "services/stock-api"
+run = "npm run dev"
 
 [tasks.docker-build-admin]
 run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=admin --build-arg MODULE_ENTRY=admin.main -t {{vars.image_repo}}finance-admin:latest -t {{vars.image_repo}}finance-admin:{{exec(command='git rev-parse --short HEAD')}} ."
