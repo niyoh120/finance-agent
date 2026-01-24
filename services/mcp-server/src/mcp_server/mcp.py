@@ -7,8 +7,7 @@ from typing import Annotated, Any
 import httpx
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
-from pydantic import Field
-from pydantic import ValidationError
+from pydantic import Field, ValidationError
 from shared.database import session_scope
 from shared.models.news import NewsArticle
 from shared.models.options import OptionsFlow
@@ -20,12 +19,12 @@ from .schemas import (
     NewsArticleItem,
     NewsArticlesResult,
     OptionsFlowItem,
+    OptionsSide,
+    OptionType,
     SideStats,
     StockHistoryResult,
-    TopSymbol,
     Timeframe,
-    OptionType,
-    OptionsSide,
+    TopSymbol,
     TypeStats,
 )
 
@@ -34,7 +33,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-mcp = FastMCP("Finance", json_response=True)
+mcp = FastMCP("Finance")
 
 
 def get_stock_api_url() -> str:
@@ -186,11 +185,7 @@ async def query_news_articles(
         if normalized_symbols:
             stmt = stmt.where(NewsArticle.symbols.overlap(normalized_symbols))
 
-    stmt = (
-        stmt.order_by(NewsArticle.published_at.desc())
-        .offset(offset)
-        .limit(limit)
-    )
+    stmt = stmt.order_by(NewsArticle.published_at.desc()).offset(offset).limit(limit)
 
     async with session_scope() as session:
         result = await session.execute(stmt)
@@ -428,7 +423,7 @@ async def get_flow_summary(
             ge=1,
             le=365,
         ),
-    ] = 1
+    ] = 1,
 ) -> FlowSummaryResult:
     """获取期权流向汇总统计.
 

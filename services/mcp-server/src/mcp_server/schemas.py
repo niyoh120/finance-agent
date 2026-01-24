@@ -98,7 +98,7 @@ class StockHistoryResult(McpBaseModel):
     symbol: str = Field(description="股票代码")
     timeframe: str = Field(description="时间周期")
     range: int = Field(description="请求的数据点数量")
-    to: int | None = Field(description="结束时间戳 (Unix timestamp, 秒)")
+    to: int | None = Field(description="结束时间戳 (Unix timestamp, 秒)", default=None)
     candles: list[Candle] = Field(description="K 线数据列表")
 
 
