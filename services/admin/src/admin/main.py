@@ -4,14 +4,13 @@ import os
 import uvicorn
 from fastapi import FastAPI
 from shared.database import get_engine
+from shared.logging import configure_logging
 from shared.models.news import NewsArticle
 from shared.models.options import OptionsFlow
 from shared.models.stocks import StockPrice
 from sqladmin import Admin, ModelView
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+configure_logging(service="admin")
 logger = logging.getLogger(__name__)
 
 
@@ -160,8 +159,8 @@ def create_app() -> FastAPI:
     engine = get_engine()
 
     # If the service is mounted below a path prefix (e.g. https://example.com/admin),
-    # set ADMIN_ROOT_PATH=/admin so url generation includes the prefix.
-    root_path = os.getenv("ADMIN_ROOT_PATH", "")
+    # set FA_ADMIN_ROOT_PATH=/admin so url generation includes the prefix.
+    root_path = os.getenv("FA_ADMIN_ROOT_PATH", "")
     app = FastAPI(root_path=root_path) if root_path else FastAPI()
 
     admin = Admin(app, engine, title="Finance Admin")
@@ -173,18 +172,19 @@ def create_app() -> FastAPI:
 
 
 def main():
-    host = os.getenv("ADMIN_HOST", "0.0.0.0")  # Use 0.0.0.0 for Docker
-    port = int(os.getenv("ADMIN_PORT", "8000"))
+    host = os.getenv("FA_ADMIN_HOST", "0.0.0.0")  # Use 0.0.0.0 for Docker
+    port = int(os.getenv("FA_ADMIN_PORT", "8000"))
 
     app = create_app()
 
     # Prefer forwarded headers from a TLS-terminating reverse proxy.
     # Ensure your proxy passes `X-Forwarded-Proto: https`.
-    forwarded_allow_ips = os.getenv("ADMIN_FORWARDED_ALLOW_IPS")
+    forwarded_allow_ips = os.getenv("FA_ADMIN_FORWARDED_ALLOW_IPS")
     uvicorn.run(
         app,
         host=host,
         port=port,
+        log_config=None,
         proxy_headers=True,
         forwarded_allow_ips=forwarded_allow_ips,
     )

@@ -36,17 +36,22 @@ def create_mcp_toolset() -> AbstractToolset:
     """
     configure_logging()
 
-    cmd = os.getenv("WYCKOFF_MCP_COMMAND", "uv")
-    args_s = os.getenv("WYCKOFF_MCP_ARGS", "run python -m mcp_server.studio")
-    timeout = int(os.getenv("WYCKOFF_MCP_TIMEOUT", "120"))
+    cmd = os.getenv("FA_WYCKOFF_MCP_COMMAND", "uv")
+    args_s = os.getenv("FA_WYCKOFF_MCP_ARGS", "run python -m mcp_server.studio")
+    timeout = int(os.getenv("FA_WYCKOFF_MCP_TIMEOUT", "120"))
     env = dict(os.environ)
 
+    # MCP 子进程必须显式传递 parent env，否则在某些 studio/子进程模式下可能丢失配置。
+    env.setdefault(
+        "FA_MCP_SERVER_STOCK_API_URL",
+        os.getenv("FA_MCP_SERVER_STOCK_API_URL", "http://stock-api:3000"),
+    )
+
     logger.info("MCP toolset start: cmd=%s args=%s timeout=%ss", cmd, args_s, timeout)
-    if logger.isEnabledFor(logging.DEBUG):
-        logger.debug(
-            "MCP toolset env: FINANCE_STOCK_API_URL=%s",
-            env.get("FINANCE_STOCK_API_URL"),
-        )
+    logger.debug(
+        "MCP toolset env: FA_MCP_SERVER_STOCK_API_URL=%s",
+        env.get("FA_MCP_SERVER_STOCK_API_URL"),
+    )
 
     return MCPServerStdio(
         cmd,

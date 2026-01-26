@@ -5,8 +5,8 @@ import { Candle, IndicatorResult, QuoteData, TechnicalAnalysis } from './types.j
 type TradingViewModule = typeof TradingView;
 
 function createClient(): Client {
-  const token = process.env.TV_SESSION;
-  const signature = process.env.TV_SIGNATURE;
+  const token = process.env.FA_STOCK_API_TV_SESSION;
+  const signature = process.env.FA_STOCK_API_TV_SIGNATURE;
 
   if (token) {
     return new TradingView.Client({
@@ -173,8 +173,8 @@ export async function getIndicator(params: {
 }): Promise<IndicatorResult> {
   const { symbol, timeframe, range, indicatorId, to, options } = params;
 
-  const session = process.env.TV_SESSION ?? '';
-  const signature = process.env.TV_SIGNATURE ?? '';
+  const session = process.env.FA_STOCK_API_TV_SESSION ?? '';
+  const signature = process.env.FA_STOCK_API_TV_SIGNATURE ?? '';
 
   const indicator: PineIndicator | BuiltInIndicator = indicatorId.includes('@')
     ? new TradingView.BuiltInIndicator(indicatorId)
@@ -262,12 +262,12 @@ export async function getIndicator(params: {
 }
 
 export async function getPrivateIndicators(): Promise<Array<{ id: string; version: string; name: string; access: string; type: string }>> {
-  const session = process.env.TV_SESSION;
+  const session = process.env.FA_STOCK_API_TV_SESSION;
   if (!session) {
-    throw new Error('TV_SESSION is required to fetch private indicators');
+    throw new Error('FA_STOCK_API_TV_SESSION is required to fetch private indicators');
   }
 
-  const signature = process.env.TV_SIGNATURE ?? '';
+  const signature = process.env.FA_STOCK_API_TV_SIGNATURE ?? '';
   const list = await TradingView.getPrivateIndicators(session, signature);
 
   return list.map((i: any) => ({

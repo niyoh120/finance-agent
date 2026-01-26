@@ -11,16 +11,16 @@ from sqlalchemy.ext.asyncio import (
 
 
 def get_database_url() -> str:
-    url = os.getenv("DATABASE_URL")
+    url = os.getenv("FA_DATABASE_URL")
     if not url:
-        raise ValueError("DATABASE_URL environment variable is not set")
+        raise ValueError("FA_DATABASE_URL environment variable is not set")
     return url
 
 
 def create_engine_instance() -> AsyncEngine:
     return create_async_engine(
         get_database_url(),
-        echo=os.getenv("SQL_ECHO", "false").lower() == "true",
+        echo=os.getenv("FA_SQL_ECHO", "false").lower() == "true",
         pool_pre_ping=True,
     )
 

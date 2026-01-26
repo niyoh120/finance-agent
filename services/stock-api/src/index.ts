@@ -11,7 +11,7 @@ const fastify = Fastify({
   logger: true
 });
 
-const PORT = parseInt(process.env.PORT || '3000');
+const PORT = parseInt(process.env.FA_STOCK_API_PORT || '3000', 10);
 
 function asInt(value: string | undefined, fallback: number): number {
   if (value === undefined) return fallback;

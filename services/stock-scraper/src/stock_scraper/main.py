@@ -7,18 +7,17 @@ from typing import Any
 import aiohttp
 import yaml
 from shared.database import session_scope
+from shared.logging import configure_logging
 from shared.models.stocks import StockPrice
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+configure_logging(service="stock-scraper")
 logger = logging.getLogger(__name__)
 
 
 def get_stock_api_url() -> str:
-    return os.getenv("STOCK_API_URL", "http://stock-api:3000")
+    return os.getenv("FA_STOCK_SCRAPER_API_URL", "http://stock-api:3000")
 
 
 def safe_float(value: Any, default: float = 0.0) -> float:
@@ -207,7 +206,14 @@ async def sync_symbol(
 
 
 async def main() -> None:
-    config_path = os.getenv("CONFIG_PATH", "config.yaml")
+    config_path = os.getenv("FA_STOCK_SCRAPER_CONFIG_PATH")
+    if not config_path:
+        if os.path.exists("config.yaml"):
+            config_path = "config.yaml"
+        elif os.path.exists("services/stock-scraper/config.yaml"):
+            config_path = "services/stock-scraper/config.yaml"
+        else:
+            config_path = "config.yaml"
     if not os.path.exists(config_path):
         logger.error("Config not found at %s", config_path)
         return
@@ -220,7 +226,7 @@ async def main() -> None:
     range_bars = int(config.get("history_range", 200))
     backfill_pages = int(config.get("backfill_pages", 10))
 
-    poll_interval = int(os.getenv("POLL_INTERVAL_SECONDS", "300"))
+    poll_interval = int(os.getenv("FA_STOCK_SCRAPER_POLL_INTERVAL", "300"))
 
     logger.info(
         "Starting Stock Scraper: %s symbols, timeframe=%s, range=%s, poll=%ss",

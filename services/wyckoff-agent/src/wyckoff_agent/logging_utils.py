@@ -4,20 +4,16 @@ from __future__ import annotations
 
 import json
 import logging
-import os
 from typing import Iterable
 
 from pydantic_ai.messages import ModelMessage
 
-_LOG_FORMAT = "%(asctime)s - %(levelname)s - %(name)s - %(message)s"
+from shared.logging import configure_logging as _configure_shared_logging
 
 
 def configure_logging() -> None:
     """Configure default logging format and level."""
-    level_name = os.getenv("WYCKOFF_LOG_LEVEL", "DEBUG").upper().strip()
-    level = logging.getLevelName(level_name)
-    assert isinstance(level, int)
-    logging.basicConfig(level=level, format=_LOG_FORMAT)
+    _configure_shared_logging(service="wyckoff")
 
 
 def log_agent_messages(

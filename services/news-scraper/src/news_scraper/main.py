@@ -4,14 +4,11 @@ import os
 import signal
 
 from shared.database import session_scope
+from shared.logging import configure_logging
 
 from .scraper import BubbleSeekScraper
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+configure_logging(service="news-scraper")
 logger = logging.getLogger(__name__)
 
 
@@ -42,7 +39,7 @@ async def run_scraper():
                 async with session_scope() as session:
                     await scraper.save_events(session, events)
 
-            sleep_time = int(os.getenv("SCRAPE_INTERVAL", "60"))
+            sleep_time = int(os.getenv("FA_NEWS_SCRAPER_INTERVAL", "60"))
             logger.info(f"Sleeping for {sleep_time} seconds...")
             await asyncio.sleep(sleep_time)
 

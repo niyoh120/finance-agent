@@ -9,6 +9,7 @@ from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 from pydantic import Field, ValidationError
 from shared.database import session_scope
+from shared.logging import configure_logging
 from shared.models.news import NewsArticle
 from shared.models.options import OptionsFlow
 from shared.models.stocks import StockPrice
@@ -28,16 +29,14 @@ from .schemas import (
     TypeStats,
 )
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+configure_logging(service="mcp-server")
 logger = logging.getLogger(__name__)
 
 mcp = FastMCP("Finance")
 
 
 def get_stock_api_url() -> str:
-    return os.getenv("FINANCE_STOCK_API_URL", "http://stock-api:3000")
+    return os.getenv("FA_MCP_SERVER_STOCK_API_URL", "http://stock-api:3000")
 
 
 def safe_int(value: Any) -> int | None:
@@ -272,7 +271,7 @@ async def fetch_stock_history(
 
     try:
         payload = await fetch_stock_api_json("/history", params)
-        return StockHistoryResult.model_validate(payload)
+        return StockHistoryResult.model_validate(payload, extra="ignore")
     except ValidationError as exc:
         raise ToolError(f"stock-api 返回格式不符合预期: {exc}")
     except httpx.HTTPStatusError as exc:

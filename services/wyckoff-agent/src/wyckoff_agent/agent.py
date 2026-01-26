@@ -32,16 +32,16 @@ def load_agent_config() -> AgentConfig:
     """从环境变量加载 Agent 配置
 
     环境变量：
-    - OPENAI_BASE_URL: OpenAI API base URL（默认官方 API）
-    - OPENAI_API_KEY: OpenAI API key
-    - OPENAI_MODEL: 模型名称（默认 gpt-4o）
+    - FA_WYCKOFF_OPENAI_BASE_URL: OpenAI API base URL（默认官方 API）
+    - FA_WYCKOFF_OPENAI_API_KEY: OpenAI API key
+    - FA_WYCKOFF_OPENAI_MODEL: 模型名称（默认 gpt-4o）
 
     Returns:
         AgentConfig 实例
     """
-    base_url = os.getenv("OPENAI_BASE_URL", "").strip()
-    api_key = os.getenv("OPENAI_API_KEY", "").strip()
-    model = os.getenv("OPENAI_MODEL", "").strip() or "gpt-4o"
+    base_url = os.getenv("FA_WYCKOFF_OPENAI_BASE_URL", "").strip()
+    api_key = os.getenv("FA_WYCKOFF_OPENAI_API_KEY", "").strip()
+    model = os.getenv("FA_WYCKOFF_OPENAI_MODEL", "").strip() or "gpt-4o"
 
     if not base_url:
         base_url = "https://api.openai.com/v1"
@@ -55,7 +55,7 @@ def get_model():
     cfg = load_agent_config()
 
     if not cfg.openai_api_key:
-        raise RuntimeError("缺少 OPENAI_API_KEY 环境变量")
+        raise RuntimeError("缺少 FA_WYCKOFF_OPENAI_API_KEY 环境变量")
 
     # 创建 OpenAI model
     # model = OpenAIChatModel(

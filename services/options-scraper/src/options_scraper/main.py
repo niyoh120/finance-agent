@@ -12,13 +12,12 @@ from sqlalchemy.dialects.postgresql import insert
 # Shared imports
 from shared.models.options import OptionsFlow
 from shared.database import get_session_maker
+from shared.logging import configure_logging
 
 # Local imports
 from .parser import parse_message
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
-)
+configure_logging(service="options-scraper")
 logger = logging.getLogger(__name__)
 
 
@@ -197,11 +196,11 @@ class OptionsFlowScraper(discord.Client):
 
 
 def main():
-    token = os.getenv("DISCORD_TOKEN")
-    channel_id = os.getenv("DISCORD_CHANNEL_ID")
-    poll_interval = int(os.getenv("POLL_INTERVAL_SECONDS", "300"))
+    token = os.getenv("FA_OPTIONS_SCRAPER_DISCORD_TOKEN")
+    channel_id = os.getenv("FA_OPTIONS_SCRAPER_CHANNEL_ID")
+    poll_interval = int(os.getenv("FA_OPTIONS_SCRAPER_POLL_INTERVAL", "300"))
 
-    start_date_str = os.getenv("FETCH_START_DATE")
+    start_date_str = os.getenv("FA_OPTIONS_SCRAPER_START_DATE")
     start_date = None
     if start_date_str:
         try:
@@ -210,14 +209,16 @@ def main():
             )
         except ValueError:
             logger.warning(
-                f"Invalid FETCH_START_DATE format: {start_date_str}. Using default."
+                f"Invalid FA_OPTIONS_SCRAPER_START_DATE format: {start_date_str}. Using default."
             )
 
     if not start_date:
         start_date = datetime(2025, 12, 1, tzinfo=timezone.utc)
 
     if not token or not channel_id:
-        logger.error("DISCORD_TOKEN and DISCORD_CHANNEL_ID are required")
+        logger.error(
+            "FA_OPTIONS_SCRAPER_DISCORD_TOKEN and FA_OPTIONS_SCRAPER_CHANNEL_ID are required"
+        )
         return
 
     client = OptionsFlowScraper(
