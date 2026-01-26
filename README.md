@@ -27,7 +27,7 @@
 ```bash
 cp .env.example .env
 ```
-编辑 `.env` 填入 Discord Token 和 Channel ID。
+编辑 `.env` 填入 Discord Token 和 Channel ID（主要用于 `options-scraper`）。
 
 > 项目使用 `mise` 从根目录 `.env` 注入环境变量（见 `mise.toml`），应用代码本身不再读取 `.env`。
 
@@ -37,15 +37,15 @@ cp .env.example .env
 1. 登录 [TradingView](https://www.tradingview.com/)。
 2. 打开开发者工具 (F12) -> Application (应用) -> Cookies。
 3. 找到 `https://www.tradingview.com` 下的 Cookies：
-   - `sessionid` -> 对应环境变量 `TV_SESSION`
-   - `sessionid_sign` -> 对应环境变量 `TV_SIGNATURE`
+   - `sessionid` -> 对应环境变量 `FA_STOCK_API_TV_SESSION`
+   - `sessionid_sign` -> 对应环境变量 `FA_STOCK_API_TV_SIGNATURE`
 
-### 获取 DISCORD_CHANNEL_ID
+### 获取 FA_OPTIONS_SCRAPER_CHANNEL_ID
 
 1. 在 Discord 设置中开启「开发者模式」(用户设置 → 高级 → 开发者模式)
 2. 右键点击目标频道 → 「复制频道 ID」
 
-### 获取 DISCORD_TOKEN
+### 获取 FA_OPTIONS_SCRAPER_DISCORD_TOKEN
 
 > ⚠️ **风险提示**: 使用用户 token 违反 Discord ToS，有封号风险。建议使用小号。
 
@@ -149,15 +149,15 @@ docker compose run --rm stock-scraper python scripts/migrate_data.py
 
 - `GET /indicators/private`
   - 用途：列出当前账号的私有指标（TradingView “saved” 指标）
-  - 依赖：必须配置 `TV_SESSION`（建议同时配置 `TV_SIGNATURE`）
+  - 依赖：必须配置 `FA_STOCK_API_TV_SESSION`（建议同时配置 `FA_STOCK_API_TV_SIGNATURE`）
   - 示例：
     - `curl "http://localhost:3000/indicators/private"`
 
 #### TradingView 账号与权限说明
 - 默认匿名模式也可工作，但某些交易所数据、实时能力、私有/邀请制指标、部分 built-in 指标可能需要登录。
 - 通过环境变量注入 TradingView Cookie：
-  - `TV_SESSION`：对应 TradingView Cookie `sessionid`
-  - `TV_SIGNATURE`：对应 TradingView Cookie `sessionid_sign`
+  - `FA_STOCK_API_TV_SESSION`：对应 TradingView Cookie `sessionid`
+  - `FA_STOCK_API_TV_SIGNATURE`：对应 TradingView Cookie `sessionid_sign`
 
 ### Stock Scraper
 - **负责存储**：定期调用 Stock API 并将数据写入 PostgreSQL。
@@ -210,8 +210,9 @@ docker compose up --build
 
 ```bash
 # .env
-DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/finance
-STOCK_API_URL=http://localhost:3000
+FA_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/finance
+FA_STOCK_SCRAPER_API_URL=http://localhost:3000
+FA_MCP_SERVER_STOCK_API_URL=http://localhost:3000
 ```
 
 #### 3. 安装依赖
@@ -246,7 +247,7 @@ mise run stock-api
 mise run stock-scraper
 
 # 如需指定配置文件路径
-# CONFIG_PATH=services/stock-scraper/config.yaml mise run stock-scraper
+# FA_STOCK_SCRAPER_CONFIG_PATH=services/stock-scraper/config.yaml mise run stock-scraper
 ```
 
 **终端 3: Options Scraper (Discord 抓取)**

@@ -2,11 +2,11 @@
 
 ## Prereqs
 - `mise run install`
-- Ensure `STOCK_API_URL` points to running `stock-api` (e.g. `http://localhost:3000`)
+- Ensure `FA_MCP_SERVER_STOCK_API_URL` points to running `stock-api` (e.g. `http://localhost:3000`)
 - Ensure OpenAI-compatible endpoint configured:
-  - `OPENAI_API_KEY`
-  - `OPENAI_BASE_URL` (optional, defaults to `https://api.openai.com/v1`)
-  - `OPENAI_MODEL` (optional, defaults `gpt-4o`)
+  - `FA_WYCKOFF_OPENAI_API_KEY`
+  - `FA_WYCKOFF_OPENAI_BASE_URL` (optional, defaults to `https://api.openai.com/v1`)
+  - `FA_WYCKOFF_OPENAI_MODEL` (optional, defaults `gpt-4o`)
 
 ## Run services
 1) Start stock-api:
@@ -23,10 +23,10 @@
 - Then run `/update` and confirm chart refresh.
 
 ## Debugging
-- Set `WYCKOFF_LOG_LEVEL=DEBUG` to log MCP tool call/return messages.
-- Optional: `WYCKOFF_MCP_TIMEOUT=120` to extend MCP stdio timeout.
-- Ensure `FINANCE_STOCK_API_URL` is set when running `mise run wyckoff-agent`.
+- Set `FA_WYCKOFF_LOG_LEVEL=DEBUG` to log MCP tool call/return messages.
+- Optional: `FA_WYCKOFF_MCP_TIMEOUT=120` to extend MCP stdio timeout.
+- Ensure `FA_MCP_SERVER_STOCK_API_URL` is set when running `mise run wyckoff-agent`.
 
 ## Known limitations
-- If `STOCK_API_URL` is unset or stock-api is not running, data will be empty (candles=0).
+- If `FA_MCP_SERVER_STOCK_API_URL` is unset or stock-api is not running, data will be empty (candles=0).
 - Phase/Zone/Event accuracy currently depends heavily on LLM overlay prompt; deterministic Wyckoff detection is not fully implemented yet.
