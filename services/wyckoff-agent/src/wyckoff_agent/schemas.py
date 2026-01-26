@@ -20,7 +20,6 @@ class Timeframe(str, Enum):
 
 class Candle(BaseModel):
     time: int = Field(description="Unix 秒")
-    timestamp: int = Field(description="Unix 毫秒")
     open: float
     high: float
     low: float

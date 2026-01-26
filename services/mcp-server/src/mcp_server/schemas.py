@@ -84,7 +84,6 @@ class Candle(McpBaseModel):
     """K 线蜡烛图数据点."""
 
     time: int = Field(description="时间戳 (Unix timestamp, 秒)")
-    timestamp: int = Field(description="时间戳 (Unix timestamp, 毫秒)")
     open: float = Field(description="开盘价")
     high: float = Field(description="最高价")
     low: float = Field(description="最低价")
