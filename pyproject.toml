@@ -24,4 +24,5 @@ members = [
   "services/admin",
   "services/mcp-server",
   "services/wyckoff-agent",
+  "services/trade-agent",
 ]

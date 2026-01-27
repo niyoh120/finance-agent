@@ -12,6 +12,8 @@ dependencies = [
   "httpx>=0.27.0",
   "pydantic-ai>=1.44.0",
   "mcp>=1.25.0",
+  "agno>=2.4.3",
+  "fastapi[standard]>=0.128.0",
 ]
 
 [build-system]

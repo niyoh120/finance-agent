@@ -32,6 +32,11 @@ depends = ["install"]
 dir = "services/wyckoff-agent"
 run = "uv run python -m chainlit run app.py -h"
 
+[tasks.trade-agent]
+depends = ["install"]
+dir = "services/trade-agent"
+run = "uv run python -m trade_agent.app"
+
 [tasks.stock-api]
 dir = "services/stock-api"
 run = "npm run dev"
