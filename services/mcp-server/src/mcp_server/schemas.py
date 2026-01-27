@@ -153,3 +153,167 @@ class FlowSummaryResult(McpBaseModel):
     by_side: dict[str, SideStats] = Field(description="按交易方向统计")
     by_type: dict[str, TypeStats] = Field(description="按期权类型统计")
     top_symbols: list[TopSymbol] = Field(description="Top 10 活跃标的")
+
+
+# =============================
+# Macro data output models
+# =============================
+
+
+class MacroReportItem(McpBaseModel):
+    """宏观报告快照。
+
+    报告来自 The Dial (indexbha.com)，包含当期总指数评分及对比变化，
+    用于快速判断宏观金融环境的风险与流动性状态。
+    """
+
+    report_date: str = Field(description="报告日期 (YYYY-MM-DD)")
+    current_snapshot_date: str | None = Field(description="当前快照日期 (YYYY-MM-DD)")
+    compare_date: str | None = Field(description="对比日期 (YYYY-MM-DD)")
+    generated_at: str | None = Field(description="报告生成时间 (ISO 8601)")
+    current_score: float | None = Field(description="总指数当前评分")
+    compare_score: float | None = Field(description="对比日评分")
+    change: float | None = Field(description="评分变化值")
+    change_pct: float | None = Field(description="评分变化百分比")
+
+
+class MacroReportsResult(McpBaseModel):
+    """宏观报告查询结果。
+
+    返回指定日期范围内的报告快照列表，适合用于回顾总指数趋势或
+    作为分析其他宏观子模块的入口。
+    """
+
+    start_date: str = Field(description="查询起始日期 (YYYY-MM-DD)")
+    end_date: str = Field(description="查询结束日期 (YYYY-MM-DD)")
+    limit: int = Field(description="返回数量限制")
+    offset: int = Field(description="结果偏移量")
+    count: int = Field(description="实际返回数量")
+    reports: list[MacroReportItem] = Field(description="宏观报告列表")
+
+
+class MacroModuleSnapshotItem(McpBaseModel):
+    """宏观模块快照。
+
+    The Dial 将宏观指标按模块拆分（如流动性、利率、风险偏好等），
+    每条记录代表某一模块在特定报告日的评分与变化。
+    """
+
+    report_date: str = Field(description="报告日期 (YYYY-MM-DD)")
+    module_id: str = Field(description="模块标识 (英文)")
+    name: str | None = Field(description="模块名称 (英文)")
+    name_cn: str | None = Field(description="模块名称 (中文)")
+    current_score: float | None = Field(description="当前评分")
+    compare_score: float | None = Field(description="对比日评分")
+    change: float | None = Field(description="评分变化值")
+    change_pct: float | None = Field(description="评分变化百分比")
+
+
+class MacroModuleSnapshotsResult(McpBaseModel):
+    """宏观模块快照查询结果。
+
+    用于查看模块级别评分的横截面变化（同一天多个模块）或时间序列变化。
+    """
+
+    start_date: str = Field(description="查询起始日期 (YYYY-MM-DD)")
+    end_date: str = Field(description="查询结束日期 (YYYY-MM-DD)")
+    limit: int = Field(description="返回数量限制")
+    offset: int = Field(description="结果偏移量")
+    count: int = Field(description="实际返回数量")
+    modules: list[MacroModuleSnapshotItem] = Field(description="模块快照列表")
+
+
+class MacroFactorSnapshotItem(McpBaseModel):
+    """宏观因子快照。
+
+    因子是模块下的具体指标（如 SOFR、VIX、美元指数等）。
+    该快照提供当前值、分位、对比变化等，用于分析驱动模块变化的具体来源。
+    """
+
+    report_date: str = Field(description="报告日期 (YYYY-MM-DD)")
+    module_id: str = Field(description="模块标识 (英文)")
+    module_name: str | None = Field(description="模块名称 (英文)")
+    module_name_cn: str | None = Field(description="模块名称 (中文)")
+    factor_id: str = Field(description="因子标识 (英文)")
+    name: str | None = Field(description="因子名称 (英文)")
+    name_cn: str | None = Field(description="因子名称 (中文)")
+    display_only: bool | None = Field(description="是否仅展示 (不参与评分)")
+    current_value: float | None = Field(description="当前值")
+    current_value_formatted: str | None = Field(description="当前值格式化展示")
+    current_percentile: float | None = Field(description="当前分位")
+    compare_value: float | None = Field(description="对比日数值")
+    compare_value_formatted: str | None = Field(description="对比日数值格式化展示")
+    compare_percentile: float | None = Field(description="对比分位")
+    value_change: float | None = Field(description="数值变化")
+    value_change_pct: float | None = Field(description="数值变化百分比")
+    percentile_change: float | None = Field(description="分位变化")
+    percentile_change_pct: float | None = Field(description="分位变化百分比")
+    color: str | None = Field(description="颜色标记 (风险级别提示)")
+
+
+class MacroFactorSnapshotsResult(McpBaseModel):
+    """宏观因子快照查询结果。
+
+    适合用于深入分析某一模块或因子的细节变化，以及识别主导变化的指标。
+    """
+
+    start_date: str = Field(description="查询起始日期 (YYYY-MM-DD)")
+    end_date: str = Field(description="查询结束日期 (YYYY-MM-DD)")
+    limit: int = Field(description="返回数量限制")
+    offset: int = Field(description="结果偏移量")
+    count: int = Field(description="实际返回数量")
+    factors: list[MacroFactorSnapshotItem] = Field(description="因子快照列表")
+
+
+class MacroModuleHistoryItem(McpBaseModel):
+    """宏观模块历史序列。
+
+    按日期记录模块评分的时间序列数据，可用于趋势分析、回测或可视化。
+    """
+
+    date: str = Field(description="日期 (YYYY-MM-DD)")
+    module_id: str = Field(description="模块标识 (英文)")
+    module_name: str | None = Field(description="模块名称 (英文)")
+    module_name_cn: str | None = Field(description="模块名称 (中文)")
+    value: float | None = Field(description="模块评分")
+    percentile: float | None = Field(description="模块评分分位")
+
+
+class MacroModuleHistoryResult(McpBaseModel):
+    """宏观模块历史查询结果。
+
+    返回指定模块在日期范围内的评分序列，按时间升序排列。
+    """
+
+    module_id: str = Field(description="模块标识 (英文)")
+    start_date: str = Field(description="查询起始日期 (YYYY-MM-DD)")
+    end_date: str = Field(description="查询结束日期 (YYYY-MM-DD)")
+    limit: int = Field(description="返回数量限制")
+    offset: int = Field(description="结果偏移量")
+    count: int = Field(description="实际返回数量")
+    history: list[MacroModuleHistoryItem] = Field(description="模块历史序列")
+
+
+class MacroTotalIndexHistoryItem(McpBaseModel):
+    """宏观总指数历史序列。
+
+    反映整体宏观环境变化的时间序列数据，适合作为宏观风险/流动性的总览指标。
+    """
+
+    date: str = Field(description="日期 (YYYY-MM-DD)")
+    value: float | None = Field(description="总指数评分")
+    percentile: float | None = Field(description="总指数分位")
+
+
+class MacroTotalIndexHistoryResult(McpBaseModel):
+    """宏观总指数历史查询结果。
+
+    返回指定日期范围内的总指数历史序列，按时间升序排列。
+    """
+
+    start_date: str = Field(description="查询起始日期 (YYYY-MM-DD)")
+    end_date: str = Field(description="查询结束日期 (YYYY-MM-DD)")
+    limit: int = Field(description="返回数量限制")
+    offset: int = Field(description="结果偏移量")
+    count: int = Field(description="实际返回数量")
+    history: list[MacroTotalIndexHistoryItem] = Field(description="总指数历史序列")

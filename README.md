@@ -71,8 +71,8 @@ docker compose up --build -d
 首次启动需要运行 Alembic 迁移以创建表结构：
 
 ```bash
-# 进入 stock-scraper 容器运行迁移 (因为该容器包含 shared 环境)
-docker compose run --rm stock-scraper uv run alembic upgrade head
+# 使用一次性 migrate 镜像运行迁移
+docker compose --profile migrate run --rm migrate
 ```
 
 ### 5. 数据迁移 (可选)
@@ -179,6 +179,8 @@ docker compose run --rm stock-scraper python scripts/migrate_data.py
 - 查看新闻数据 (`NewsArticle`)
 
 ### MCP Server
+- 提供新闻、期权、股票与宏观数据查询工具。
+- 宏观工具覆盖：报告快照、模块/因子快照、模块历史、总指数历史。
 Claude Desktop 配置示例:
 ```json
 {

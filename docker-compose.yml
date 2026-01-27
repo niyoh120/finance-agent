@@ -35,6 +35,15 @@ services:
                 - action: rebuild
                   path: ./services/Dockerfile
 
+    migrate:
+        build:
+            context: ./
+            dockerfile: ./services/migrate/Dockerfile
+        environment:
+            - FA_DATABASE_URL=${FA_DATABASE_URL}
+        profiles:
+            - migrate
+
     # admin:
     #     build:
     #         context: ./

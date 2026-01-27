@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Any
 
 import httpx
@@ -10,6 +10,13 @@ from fastmcp.exceptions import ToolError
 from pydantic import Field, ValidationError
 from shared.database import session_scope
 from shared.logging import configure_logging
+from shared.models.macro import (
+    MacroFactorSnapshot,
+    MacroModuleHistory,
+    MacroModuleSnapshot,
+    MacroReport,
+    MacroTotalIndexHistory,
+)
 from shared.models.news import NewsArticle
 from shared.models.options import OptionsFlow
 from shared.models.stocks import StockPrice
@@ -17,6 +24,16 @@ from sqlalchemy import func, select
 
 from .schemas import (
     FlowSummaryResult,
+    MacroFactorSnapshotItem,
+    MacroFactorSnapshotsResult,
+    MacroModuleHistoryItem,
+    MacroModuleHistoryResult,
+    MacroModuleSnapshotItem,
+    MacroModuleSnapshotsResult,
+    MacroReportItem,
+    MacroReportsResult,
+    MacroTotalIndexHistoryItem,
+    MacroTotalIndexHistoryResult,
     NewsArticleItem,
     NewsArticlesResult,
     OptionsFlowItem,
@@ -62,6 +79,31 @@ def parse_iso_datetime(value: str) -> datetime:
     if parsed.tzinfo is None:
         return parsed.replace(tzinfo=timezone.utc)
     return parsed
+
+
+def parse_iso_date(value: str) -> date:
+    try:
+        return date.fromisoformat(value)
+    except ValueError as exc:
+        raise ToolError(f"日期格式错误: {value}") from exc
+
+
+def resolve_date_range(
+    days: int | None, start_date: str | None, end_date: str | None
+) -> tuple[date, date]:
+    today = datetime.now(tz=timezone.utc).date()
+    if start_date:
+        start = parse_iso_date(start_date)
+        end = parse_iso_date(end_date) if end_date else today
+    else:
+        if days is None:
+            raise ToolError("days 不能为空")
+        end = parse_iso_date(end_date) if end_date else today
+        start = end - timedelta(days=days)
+
+    if start > end:
+        raise ToolError("start_date 不能晚于 end_date")
+    return start, end
 
 
 # @mcp.tool()
@@ -206,6 +248,453 @@ async def query_news_articles(
                 tags=row.tags or [],
                 importance=row.importance,
                 published_at=row.published_at.isoformat(),
+            )
+            for row in rows
+        ],
+    )
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def query_macro_reports(
+    days: Annotated[
+        int,
+        Field(
+            description="查询最近N天的宏观报告",
+            ge=1,
+            le=3650,
+        ),
+    ] = 90,
+    start_date: Annotated[
+        str | None,
+        Field(
+            description="起始日期 (YYYY-MM-DD)。提供后将忽略 days",
+        ),
+    ] = None,
+    end_date: Annotated[
+        str | None,
+        Field(description="结束日期 (YYYY-MM-DD)，留空则为今天"),
+    ] = None,
+    limit: Annotated[
+        int,
+        Field(
+            description="返回结果数量限制",
+            ge=1,
+            le=500,
+        ),
+    ] = 100,
+    offset: Annotated[
+        int,
+        Field(
+            description="结果偏移量，用于分页",
+            ge=0,
+        ),
+    ] = 0,
+) -> MacroReportsResult:
+    """查询 The Dial 宏观报告快照。
+
+    报告包含总指数评分、对比变化与生成时间，是宏观环境的“总览快照”。
+    适用于快速回顾宏观风险趋势或作为深入查询模块/因子的入口。
+    返回结果按报告日期降序排列 (最新的在前)。
+    """
+
+    start, end = resolve_date_range(days, start_date, end_date)
+
+    stmt = (
+        select(MacroReport)
+        .where(MacroReport.report_date >= start)
+        .where(MacroReport.report_date <= end)
+        .order_by(MacroReport.report_date.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+
+    async with session_scope() as session:
+        result = await session.execute(stmt)
+        rows = result.scalars().all()
+
+    return MacroReportsResult(
+        start_date=start.isoformat(),
+        end_date=end.isoformat(),
+        limit=limit,
+        offset=offset,
+        count=len(rows),
+        reports=[
+            MacroReportItem(
+                report_date=row.report_date.isoformat(),
+                current_snapshot_date=(
+                    row.current_snapshot_date.isoformat()
+                    if row.current_snapshot_date
+                    else None
+                ),
+                compare_date=(
+                    row.compare_date.isoformat() if row.compare_date else None
+                ),
+                generated_at=(
+                    row.generated_at.isoformat() if row.generated_at else None
+                ),
+                current_score=row.current_score,
+                compare_score=row.compare_score,
+                change=row.change,
+                change_pct=row.change_pct,
+            )
+            for row in rows
+        ],
+    )
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def query_macro_module_snapshots(
+    module_id: Annotated[
+        str | None,
+        Field(description="模块ID (如 liquidity, rates)，留空则返回所有模块"),
+    ] = None,
+    days: Annotated[
+        int,
+        Field(
+            description="查询最近N天的模块快照",
+            ge=1,
+            le=3650,
+        ),
+    ] = 30,
+    start_date: Annotated[
+        str | None,
+        Field(description="起始日期 (YYYY-MM-DD)。提供后将忽略 days"),
+    ] = None,
+    end_date: Annotated[
+        str | None,
+        Field(description="结束日期 (YYYY-MM-DD)，留空则为今天"),
+    ] = None,
+    limit: Annotated[
+        int,
+        Field(
+            description="返回结果数量限制",
+            ge=1,
+            le=1000,
+        ),
+    ] = 200,
+    offset: Annotated[
+        int,
+        Field(
+            description="结果偏移量，用于分页",
+            ge=0,
+        ),
+    ] = 0,
+) -> MacroModuleSnapshotsResult:
+    """查询宏观模块快照。
+
+    模块快照提供 The Dial 各宏观模块（如流动性、利率、风险偏好等）
+    在每个报告日的评分与变化，用于比较不同模块的相对强弱。
+    返回结果按报告日期降序排列 (最新的在前)。
+    """
+
+    start, end = resolve_date_range(days, start_date, end_date)
+
+    stmt = (
+        select(MacroModuleSnapshot)
+        .where(MacroModuleSnapshot.report_date >= start)
+        .where(MacroModuleSnapshot.report_date <= end)
+    )
+    if module_id:
+        stmt = stmt.where(MacroModuleSnapshot.module_id == module_id.strip())
+
+    stmt = (
+        stmt.order_by(
+            MacroModuleSnapshot.report_date.desc(),
+            MacroModuleSnapshot.module_id.asc(),
+        )
+        .offset(offset)
+        .limit(limit)
+    )
+
+    async with session_scope() as session:
+        result = await session.execute(stmt)
+        rows = result.scalars().all()
+
+    return MacroModuleSnapshotsResult(
+        start_date=start.isoformat(),
+        end_date=end.isoformat(),
+        limit=limit,
+        offset=offset,
+        count=len(rows),
+        modules=[
+            MacroModuleSnapshotItem(
+                report_date=row.report_date.isoformat(),
+                module_id=row.module_id,
+                name=row.name,
+                name_cn=row.name_cn,
+                current_score=row.current_score,
+                compare_score=row.compare_score,
+                change=row.change,
+                change_pct=row.change_pct,
+            )
+            for row in rows
+        ],
+    )
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def query_macro_factor_snapshots(
+    module_id: Annotated[
+        str | None,
+        Field(description="模块ID (如 liquidity)，留空则返回所有模块"),
+    ] = None,
+    factor_id: Annotated[
+        str | None,
+        Field(description="因子ID (如 vix, sofr)，留空则返回所有因子"),
+    ] = None,
+    display_only: Annotated[
+        bool | None,
+        Field(description="仅返回展示型因子 (不参与评分)。留空则不过滤"),
+    ] = None,
+    days: Annotated[
+        int,
+        Field(
+            description="查询最近N天的因子快照",
+            ge=1,
+            le=3650,
+        ),
+    ] = 30,
+    start_date: Annotated[
+        str | None,
+        Field(description="起始日期 (YYYY-MM-DD)。提供后将忽略 days"),
+    ] = None,
+    end_date: Annotated[
+        str | None,
+        Field(description="结束日期 (YYYY-MM-DD)，留空则为今天"),
+    ] = None,
+    limit: Annotated[
+        int,
+        Field(
+            description="返回结果数量限制",
+            ge=1,
+            le=1000,
+        ),
+    ] = 200,
+    offset: Annotated[
+        int,
+        Field(
+            description="结果偏移量，用于分页",
+            ge=0,
+        ),
+    ] = 0,
+) -> MacroFactorSnapshotsResult:
+    """查询宏观因子快照。
+
+    因子是驱动模块变化的具体指标（如 SOFR、VIX、美元指数等）。
+    该查询提供当前值、分位和对比变化，便于定位模块评分变化的来源。
+    返回结果按报告日期降序排列 (最新的在前)。
+    """
+
+    start, end = resolve_date_range(days, start_date, end_date)
+
+    stmt = (
+        select(MacroFactorSnapshot)
+        .where(MacroFactorSnapshot.report_date >= start)
+        .where(MacroFactorSnapshot.report_date <= end)
+    )
+    if module_id:
+        stmt = stmt.where(MacroFactorSnapshot.module_id == module_id.strip())
+    if factor_id:
+        stmt = stmt.where(MacroFactorSnapshot.factor_id == factor_id.strip())
+    if display_only is not None:
+        stmt = stmt.where(MacroFactorSnapshot.display_only == display_only)
+
+    stmt = (
+        stmt.order_by(
+            MacroFactorSnapshot.report_date.desc(),
+            MacroFactorSnapshot.module_id.asc(),
+            MacroFactorSnapshot.factor_id.asc(),
+        )
+        .offset(offset)
+        .limit(limit)
+    )
+
+    async with session_scope() as session:
+        result = await session.execute(stmt)
+        rows = result.scalars().all()
+
+    return MacroFactorSnapshotsResult(
+        start_date=start.isoformat(),
+        end_date=end.isoformat(),
+        limit=limit,
+        offset=offset,
+        count=len(rows),
+        factors=[
+            MacroFactorSnapshotItem(
+                report_date=row.report_date.isoformat(),
+                module_id=row.module_id,
+                module_name=row.module_name,
+                module_name_cn=row.module_name_cn,
+                factor_id=row.factor_id,
+                name=row.name,
+                name_cn=row.name_cn,
+                display_only=row.display_only,
+                current_value=row.current_value,
+                current_value_formatted=row.current_value_formatted,
+                current_percentile=row.current_percentile,
+                compare_value=row.compare_value,
+                compare_value_formatted=row.compare_value_formatted,
+                compare_percentile=row.compare_percentile,
+                value_change=row.value_change,
+                value_change_pct=row.value_change_pct,
+                percentile_change=row.percentile_change,
+                percentile_change_pct=row.percentile_change_pct,
+                color=row.color,
+            )
+            for row in rows
+        ],
+    )
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def query_macro_module_history(
+    module_id: Annotated[
+        str,
+        Field(description="模块ID (如 liquidity, funding, rates)", min_length=1),
+    ],
+    days: Annotated[
+        int,
+        Field(
+            description="查询最近N天的模块评分序列",
+            ge=1,
+            le=3650,
+        ),
+    ] = 365,
+    start_date: Annotated[
+        str | None,
+        Field(description="起始日期 (YYYY-MM-DD)。提供后将忽略 days"),
+    ] = None,
+    end_date: Annotated[
+        str | None,
+        Field(description="结束日期 (YYYY-MM-DD)，留空则为今天"),
+    ] = None,
+    limit: Annotated[
+        int,
+        Field(
+            description="返回结果数量限制",
+            ge=1,
+            le=10000,
+        ),
+    ] = 2000,
+    offset: Annotated[
+        int,
+        Field(
+            description="结果偏移量，用于分页",
+            ge=0,
+        ),
+    ] = 0,
+) -> MacroModuleHistoryResult:
+    """查询宏观模块评分的历史时间序列。
+
+    该接口用于分析某一模块在时间维度的趋势与拐点，
+    适合用于回测或与价格/风险指标进行对比分析。
+    返回结果按日期升序排列 (最早的在前)。
+    """
+
+    start, end = resolve_date_range(days, start_date, end_date)
+
+    stmt = (
+        select(MacroModuleHistory)
+        .where(MacroModuleHistory.module_id == module_id.strip())
+        .where(MacroModuleHistory.date >= start)
+        .where(MacroModuleHistory.date <= end)
+        .order_by(MacroModuleHistory.date.asc())
+        .offset(offset)
+        .limit(limit)
+    )
+
+    async with session_scope() as session:
+        result = await session.execute(stmt)
+        rows = result.scalars().all()
+
+    return MacroModuleHistoryResult(
+        module_id=module_id.strip(),
+        start_date=start.isoformat(),
+        end_date=end.isoformat(),
+        limit=limit,
+        offset=offset,
+        count=len(rows),
+        history=[
+            MacroModuleHistoryItem(
+                date=row.date.isoformat(),
+                module_id=row.module_id,
+                module_name=row.module_name,
+                module_name_cn=row.module_name_cn,
+                value=row.value,
+                percentile=row.percentile,
+            )
+            for row in rows
+        ],
+    )
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def query_macro_total_index_history(
+    days: Annotated[
+        int,
+        Field(
+            description="查询最近N天的总指数序列",
+            ge=1,
+            le=3650,
+        ),
+    ] = 365,
+    start_date: Annotated[
+        str | None,
+        Field(description="起始日期 (YYYY-MM-DD)。提供后将忽略 days"),
+    ] = None,
+    end_date: Annotated[
+        str | None,
+        Field(description="结束日期 (YYYY-MM-DD)，留空则为今天"),
+    ] = None,
+    limit: Annotated[
+        int,
+        Field(
+            description="返回结果数量限制",
+            ge=1,
+            le=10000,
+        ),
+    ] = 2000,
+    offset: Annotated[
+        int,
+        Field(
+            description="结果偏移量，用于分页",
+            ge=0,
+        ),
+    ] = 0,
+) -> MacroTotalIndexHistoryResult:
+    """查询宏观总指数的历史时间序列。
+
+    总指数反映整体宏观环境的风险/流动性状态，
+    可用于与市场波动、资金流向等指标进行综合对比分析。
+    返回结果按日期升序排列 (最早的在前)。
+    """
+
+    start, end = resolve_date_range(days, start_date, end_date)
+
+    stmt = (
+        select(MacroTotalIndexHistory)
+        .where(MacroTotalIndexHistory.date >= start)
+        .where(MacroTotalIndexHistory.date <= end)
+        .order_by(MacroTotalIndexHistory.date.asc())
+        .offset(offset)
+        .limit(limit)
+    )
+
+    async with session_scope() as session:
+        result = await session.execute(stmt)
+        rows = result.scalars().all()
+
+    return MacroTotalIndexHistoryResult(
+        start_date=start.isoformat(),
+        end_date=end.isoformat(),
+        limit=limit,
+        offset=offset,
+        count=len(rows),
+        history=[
+            MacroTotalIndexHistoryItem(
+                date=row.date.isoformat(),
+                value=row.value,
+                percentile=row.percentile,
             )
             for row in rows
         ],

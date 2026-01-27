@@ -48,20 +48,23 @@ run = "npm run dev"
 [tasks.docker-build-admin]
 run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=admin --build-arg MODULE_ENTRY=admin.main -t {{vars.image_repo}}finance-admin:latest -t {{vars.image_repo}}finance-admin:{{exec(command='git rev-parse --short HEAD')}} ."
 
+[tasks.docker-build-migrate]
+run = "docker build -f services/migrate/Dockerfile -t {{vars.image_repo}}finance-migrate:latest -t {{vars.image_repo}}finance-migrate:{{exec(command='git rev-parse --short HEAD')}} ."
+
 [tasks.docker-build-macro-scraper]
 run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=macro-scraper --build-arg MODULE_ENTRY=macro_scraper.main -t {{vars.image_repo}}finance-macro-scraper:latest -t {{vars.image_repo}}finance-macro-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
 
 [tasks.docker-build-news-scraper]
-run = "docker build -f services/news-scraper/Dockerfile -t {{vars.image_repo}}finance-news-scraper:latest -t {{vars.image_repo}}finance-news-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
+run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=news-scraper --build-arg MODULE_ENTRY=news_scraper.main -t {{vars.image_repo}}finance-news-scraper:latest -t {{vars.image_repo}}finance-news-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
 
 [tasks.docker-build-stock-scraper]
-run = "docker build -f services/stock-scraper/Dockerfile -t {{vars.image_repo}}finance-stock-scraper:latest -t {{vars.image_repo}}finance-stock-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
+run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=stock-scraper --build-arg MODULE_ENTRY=stock_scraper.main -t {{vars.image_repo}}finance-stock-scraper:latest -t {{vars.image_repo}}finance-stock-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
 
 [tasks.docker-build-options-scraper]
-run = "docker build -f services/options-scraper/Dockerfile -t {{vars.image_repo}}finance-options-scraper:latest -t {{vars.image_repo}}finance-options-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
+run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=options-scraper --build-arg MODULE_ENTRY=options_scraper.main -t {{vars.image_repo}}finance-options-scraper:latest -t {{vars.image_repo}}finance-options-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
 
 [tasks.docker-build-mcp-server]
-run = "docker build -f services/mcp-server/Dockerfile -t {{vars.image_repo}}finance-mcp-server:latest -t {{vars.image_repo}}finance-mcp-server:{{exec(command='git rev-parse --short HEAD')}} ."
+run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=mcp-server --build-arg MODULE_ENTRY=mcp_server.http -t {{vars.image_repo}}finance-mcp-server:latest -t {{vars.image_repo}}finance-mcp-server:{{exec(command='git rev-parse --short HEAD')}} ."
 
 [tasks.docker-build-stock-api]
 run = "docker build -f services/stock-api/Dockerfile -t {{vars.image_repo}}finance-stock-api:latest -t {{vars.image_repo}}finance-stock-api:{{exec(command='git rev-parse --short HEAD')}} ."
@@ -69,10 +72,9 @@ run = "docker build -f services/stock-api/Dockerfile -t {{vars.image_repo}}finan
 [tasks.docker-build-all]
 run = [
   { tasks = [
-    "docker-build-admin",
+    "docker-build-migrate",
     "docker-build-macro-scraper",
     "docker-build-news-scraper",
-    "docker-build-stock-scraper",
     "docker-build-options-scraper",
     "docker-build-mcp-server",
     "docker-build-stock-api",
@@ -83,6 +85,12 @@ run = [
 run = [
   "docker push {{vars.image_repo}}finance-admin:latest",
   "docker push {{vars.image_repo}}finance-admin:{{exec(command='git rev-parse --short HEAD')}}",
+]
+
+[tasks.docker-push-migrate]
+run = [
+  "docker push {{vars.image_repo}}finance-migrate:latest",
+  "docker push {{vars.image_repo}}finance-migrate:{{exec(command='git rev-parse --short HEAD')}}",
 ]
 
 [tasks.docker-push-macro-scraper]
@@ -124,14 +132,67 @@ run = [
 [tasks.docker-push-all]
 run = [
   { tasks = [
-    "docker-push-admin",
+    "docker-push-migrate",
     "docker-push-macro-scraper",
     "docker-push-news-scraper",
-    "docker-push-stock-scraper",
     "docker-push-options-scraper",
     "docker-push-mcp-server",
     "docker-push-stock-api",
   ] },
+]
+
+[tasks.docker-build-push-admin]
+run = [
+  { tasks = ["docker-build-admin"] },
+  { tasks = ["docker-push-admin"] },
+]
+
+[tasks.docker-build-push-migrate]
+run = [
+  { tasks = ["docker-build-migrate"] },
+  { tasks = ["docker-push-migrate"] },
+]
+
+[tasks.docker-build-push-macro-scraper]
+run = [
+  { tasks = ["docker-build-macro-scraper"] },
+  { tasks = ["docker-push-macro-scraper"] },
+]
+
+[tasks.docker-build-push-news-scraper]
+run = [
+  { tasks = ["docker-build-news-scraper"] },
+  { tasks = ["docker-push-news-scraper"] },
+]
+
+[tasks.docker-build-push-stock-scraper]
+run = [
+  { tasks = ["docker-build-stock-scraper"] },
+  { tasks = ["docker-push-stock-scraper"] },
+]
+
+[tasks.docker-build-push-options-scraper]
+run = [
+  { tasks = ["docker-build-options-scraper"] },
+  { tasks = ["docker-push-options-scraper"] },
+]
+
+[tasks.docker-build-push-mcp-server]
+run = [
+  { tasks = ["docker-build-mcp-server"] },
+  { tasks = ["docker-push-mcp-server"] },
+]
+
+[tasks.docker-build-push-stock-api]
+run = [
+  { tasks = ["docker-build-stock-api"] },
+  { tasks = ["docker-push-stock-api"] },
+]
+
+[tasks.docker-build-push-all]
+run = [
+  { tasks = ["docker-build-all"] },
+  { tasks = ["docker-push-all"] },
 ]
 
 [tasks.db-upgrade]
