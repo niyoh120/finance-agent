@@ -75,13 +75,6 @@ docker compose up --build -d
 docker compose --profile migrate run --rm migrate
 ```
 
-### 5. 数据迁移 (可选)
-如果你有旧版的 SQLite 数据 (`data/options_flow.db`)：
-
-```bash
-docker compose run --rm stock-scraper python scripts/migrate_data.py
-```
-
 ## 服务详情
 
 ### Stock API
