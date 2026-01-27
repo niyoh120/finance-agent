@@ -15,6 +15,10 @@ run = "uv run python -m admin.main"
 depends = ["install"]
 run = "uv run python -m news_scraper.main"
 
+[tasks.macro-scraper]
+depends = ["install"]
+run = "uv run python -m macro_scraper.main"
+
 [tasks.stock-scraper]
 depends = ["install"]
 run = "uv run python -m stock_scraper.main"
@@ -44,6 +48,9 @@ run = "npm run dev"
 [tasks.docker-build-admin]
 run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=admin --build-arg MODULE_ENTRY=admin.main -t {{vars.image_repo}}finance-admin:latest -t {{vars.image_repo}}finance-admin:{{exec(command='git rev-parse --short HEAD')}} ."
 
+[tasks.docker-build-macro-scraper]
+run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=macro-scraper --build-arg MODULE_ENTRY=macro_scraper.main -t {{vars.image_repo}}finance-macro-scraper:latest -t {{vars.image_repo}}finance-macro-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
+
 [tasks.docker-build-news-scraper]
 run = "docker build -f services/news-scraper/Dockerfile -t {{vars.image_repo}}finance-news-scraper:latest -t {{vars.image_repo}}finance-news-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
 
@@ -63,6 +70,7 @@ run = "docker build -f services/stock-api/Dockerfile -t {{vars.image_repo}}finan
 run = [
   { tasks = [
     "docker-build-admin",
+    "docker-build-macro-scraper",
     "docker-build-news-scraper",
     "docker-build-stock-scraper",
     "docker-build-options-scraper",
@@ -75,6 +83,12 @@ run = [
 run = [
   "docker push {{vars.image_repo}}finance-admin:latest",
   "docker push {{vars.image_repo}}finance-admin:{{exec(command='git rev-parse --short HEAD')}}",
+]
+
+[tasks.docker-push-macro-scraper]
+run = [
+  "docker push {{vars.image_repo}}finance-macro-scraper:latest",
+  "docker push {{vars.image_repo}}finance-macro-scraper:{{exec(command='git rev-parse --short HEAD')}}",
 ]
 
 [tasks.docker-push-news-scraper]
@@ -111,6 +125,7 @@ run = [
 run = [
   { tasks = [
     "docker-push-admin",
+    "docker-push-macro-scraper",
     "docker-push-news-scraper",
     "docker-push-stock-scraper",
     "docker-push-options-scraper",

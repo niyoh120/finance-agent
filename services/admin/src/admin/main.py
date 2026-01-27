@@ -5,6 +5,13 @@ import uvicorn
 from fastapi import FastAPI
 from shared.database import get_engine
 from shared.logging import configure_logging
+from shared.models.macro import (
+    MacroFactorSnapshot,
+    MacroModuleHistory,
+    MacroModuleSnapshot,
+    MacroReport,
+    MacroTotalIndexHistory,
+)
 from shared.models.news import NewsArticle
 from shared.models.options import OptionsFlow
 from shared.models.stocks import StockPrice
@@ -155,6 +162,229 @@ class NewsArticleAdmin(ModelView, model=NewsArticle):
     icon = "fa-regular fa-newspaper"
 
 
+class MacroReportAdmin(ModelView, model=MacroReport):
+    column_list = [
+        MacroReport.id,
+        MacroReport.report_date,
+        MacroReport.current_snapshot_date,
+        MacroReport.compare_date,
+        MacroReport.current_score,
+        MacroReport.compare_score,
+        MacroReport.change,
+        MacroReport.change_pct,
+        MacroReport.generated_at,
+    ]
+
+    column_sortable_list = [MacroReport.report_date, MacroReport.generated_at]
+    column_default_sort = [(MacroReport.report_date, True)]
+
+    column_labels = {
+        MacroReport.report_date: "报告日期",
+        MacroReport.current_snapshot_date: "快照日期",
+        MacroReport.compare_date: "对比日期",
+        MacroReport.current_score: "当前得分",
+        MacroReport.compare_score: "对比得分",
+        MacroReport.change: "变化",
+        MacroReport.change_pct: "变化%",
+        MacroReport.generated_at: "生成时间",
+        MacroReport.created_at: "入库时间",
+    }
+
+    form_excluded_columns = [MacroReport.created_at]
+
+    can_create = False
+    can_edit = False
+    can_delete = True
+    can_view_details = True
+
+    name = "宏观报告"
+    name_plural = "宏观报告"
+    icon = "fa-solid fa-chart-line"
+
+
+class MacroModuleSnapshotAdmin(ModelView, model=MacroModuleSnapshot):
+    column_list = [
+        MacroModuleSnapshot.id,
+        MacroModuleSnapshot.report_date,
+        MacroModuleSnapshot.module_id,
+        MacroModuleSnapshot.name,
+        MacroModuleSnapshot.current_score,
+        MacroModuleSnapshot.compare_score,
+        MacroModuleSnapshot.change,
+        MacroModuleSnapshot.change_pct,
+    ]
+
+    column_searchable_list = [
+        MacroModuleSnapshot.module_id,
+        MacroModuleSnapshot.name,
+    ]
+    column_sortable_list = [
+        MacroModuleSnapshot.report_date,
+        MacroModuleSnapshot.module_id,
+        MacroModuleSnapshot.current_score,
+    ]
+    column_default_sort = [(MacroModuleSnapshot.report_date, True)]
+
+    column_labels = {
+        MacroModuleSnapshot.report_date: "报告日期",
+        MacroModuleSnapshot.module_id: "模块ID",
+        MacroModuleSnapshot.name: "模块名称",
+        MacroModuleSnapshot.name_cn: "模块名称(中文)",
+        MacroModuleSnapshot.current_score: "当前得分",
+        MacroModuleSnapshot.compare_score: "对比得分",
+        MacroModuleSnapshot.change: "变化",
+        MacroModuleSnapshot.change_pct: "变化%",
+        MacroModuleSnapshot.created_at: "入库时间",
+    }
+
+    form_excluded_columns = [MacroModuleSnapshot.created_at]
+
+    can_create = False
+    can_edit = False
+    can_delete = True
+    can_view_details = True
+
+    name = "宏观模块快照"
+    name_plural = "宏观模块快照"
+    icon = "fa-solid fa-chart-area"
+
+
+class MacroFactorSnapshotAdmin(ModelView, model=MacroFactorSnapshot):
+    column_list = [
+        MacroFactorSnapshot.id,
+        MacroFactorSnapshot.report_date,
+        MacroFactorSnapshot.module_id,
+        MacroFactorSnapshot.factor_id,
+        MacroFactorSnapshot.name,
+        MacroFactorSnapshot.current_value,
+        MacroFactorSnapshot.current_percentile,
+        MacroFactorSnapshot.color,
+        MacroFactorSnapshot.display_only,
+    ]
+
+    column_searchable_list = [
+        MacroFactorSnapshot.module_id,
+        MacroFactorSnapshot.factor_id,
+        MacroFactorSnapshot.name,
+    ]
+    column_sortable_list = [
+        MacroFactorSnapshot.report_date,
+        MacroFactorSnapshot.module_id,
+        MacroFactorSnapshot.factor_id,
+    ]
+    column_default_sort = [(MacroFactorSnapshot.report_date, True)]
+
+    column_labels = {
+        MacroFactorSnapshot.report_date: "报告日期",
+        MacroFactorSnapshot.module_id: "模块ID",
+        MacroFactorSnapshot.module_name: "模块名称",
+        MacroFactorSnapshot.module_name_cn: "模块名称(中文)",
+        MacroFactorSnapshot.factor_id: "因子ID",
+        MacroFactorSnapshot.name: "因子名称",
+        MacroFactorSnapshot.name_cn: "因子名称(中文)",
+        MacroFactorSnapshot.current_value: "当前值",
+        MacroFactorSnapshot.current_value_formatted: "当前值(格式化)",
+        MacroFactorSnapshot.current_percentile: "当前分位",
+        MacroFactorSnapshot.compare_value: "对比值",
+        MacroFactorSnapshot.compare_value_formatted: "对比值(格式化)",
+        MacroFactorSnapshot.compare_percentile: "对比分位",
+        MacroFactorSnapshot.value_change: "值变化",
+        MacroFactorSnapshot.value_change_pct: "值变化%",
+        MacroFactorSnapshot.percentile_change: "分位变化",
+        MacroFactorSnapshot.percentile_change_pct: "分位变化%",
+        MacroFactorSnapshot.color: "颜色",
+        MacroFactorSnapshot.display_only: "仅展示",
+        MacroFactorSnapshot.created_at: "入库时间",
+    }
+
+    form_excluded_columns = [MacroFactorSnapshot.created_at]
+
+    can_create = False
+    can_edit = False
+    can_delete = True
+    can_view_details = True
+
+    name = "宏观因子快照"
+    name_plural = "宏观因子快照"
+    icon = "fa-solid fa-filter"
+
+
+class MacroModuleHistoryAdmin(ModelView, model=MacroModuleHistory):
+    column_list = [
+        MacroModuleHistory.id,
+        MacroModuleHistory.date,
+        MacroModuleHistory.module_id,
+        MacroModuleHistory.module_name,
+        MacroModuleHistory.value,
+        MacroModuleHistory.percentile,
+    ]
+
+    column_searchable_list = [
+        MacroModuleHistory.module_id,
+        MacroModuleHistory.module_name,
+    ]
+    column_sortable_list = [
+        MacroModuleHistory.date,
+        MacroModuleHistory.module_id,
+        MacroModuleHistory.value,
+    ]
+    column_default_sort = [(MacroModuleHistory.date, True)]
+
+    column_labels = {
+        MacroModuleHistory.date: "日期",
+        MacroModuleHistory.module_id: "模块ID",
+        MacroModuleHistory.module_name: "模块名称",
+        MacroModuleHistory.module_name_cn: "模块名称(中文)",
+        MacroModuleHistory.value: "值",
+        MacroModuleHistory.percentile: "分位",
+        MacroModuleHistory.created_at: "入库时间",
+    }
+
+    form_excluded_columns = [MacroModuleHistory.created_at]
+
+    can_create = False
+    can_edit = False
+    can_delete = True
+    can_view_details = True
+
+    name = "宏观模块历史"
+    name_plural = "宏观模块历史"
+    icon = "fa-solid fa-clock-rotate-left"
+
+
+class MacroTotalIndexHistoryAdmin(ModelView, model=MacroTotalIndexHistory):
+    column_list = [
+        MacroTotalIndexHistory.id,
+        MacroTotalIndexHistory.date,
+        MacroTotalIndexHistory.value,
+        MacroTotalIndexHistory.percentile,
+    ]
+
+    column_sortable_list = [
+        MacroTotalIndexHistory.date,
+        MacroTotalIndexHistory.value,
+    ]
+    column_default_sort = [(MacroTotalIndexHistory.date, True)]
+
+    column_labels = {
+        MacroTotalIndexHistory.date: "日期",
+        MacroTotalIndexHistory.value: "总指数",
+        MacroTotalIndexHistory.percentile: "分位",
+        MacroTotalIndexHistory.created_at: "入库时间",
+    }
+
+    form_excluded_columns = [MacroTotalIndexHistory.created_at]
+
+    can_create = False
+    can_edit = False
+    can_delete = True
+    can_view_details = True
+
+    name = "宏观总指数历史"
+    name_plural = "宏观总指数历史"
+    icon = "fa-solid fa-wave-square"
+
+
 def create_app() -> FastAPI:
     engine = get_engine()
 
@@ -167,6 +397,11 @@ def create_app() -> FastAPI:
     admin.add_view(OptionsFlowAdmin)
     admin.add_view(StockPriceAdmin)
     admin.add_view(NewsArticleAdmin)
+    admin.add_view(MacroReportAdmin)
+    admin.add_view(MacroModuleSnapshotAdmin)
+    admin.add_view(MacroFactorSnapshotAdmin)
+    admin.add_view(MacroModuleHistoryAdmin)
+    admin.add_view(MacroTotalIndexHistoryAdmin)
 
     return app
 

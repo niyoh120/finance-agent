@@ -16,6 +16,25 @@ services:
                 - action: rebuild
                   path: ./services/Dockerfile
 
+    macro-scraper:
+        build:
+            context: ./
+            dockerfile: ./services/Dockerfile
+            args:
+                MODULE_NAME: macro-scraper
+                MODULE_ENTRY: macro_scraper.main
+        environment:
+            - FA_DATABASE_URL=${FA_DATABASE_URL}
+            - FA_MACRO_SCRAPER_BASE_URL=${FA_MACRO_SCRAPER_BASE_URL}
+            - FA_MACRO_SCRAPER_POLL_INTERVAL=3600
+            - FA_MACRO_SCRAPER_HISTORY_DAYS=365
+        restart: unless-stopped
+
+        develop:
+            watch:
+                - action: rebuild
+                  path: ./services/Dockerfile
+
     # admin:
     #     build:
     #         context: ./

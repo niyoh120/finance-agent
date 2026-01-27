@@ -18,6 +18,7 @@ finance-shared = { workspace = true }
 [tool.uv.workspace]
 members = [
   "shared",
+  "services/macro-scraper",
   "services/stock-scraper",
   "services/news-scraper",
   "services/options-scraper",

@@ -11,6 +11,7 @@
 | **db** | - | PostgreSQL | 核心数据库 (PostgreSQL 15) | 5432 |
 | **stock-api** | `services/stock-api` | TypeScript | TradingView API 包装器 (Fastify) | 3000 |
 | **stock-scraper** | `services/stock-scraper` | Python | 股票数据轮询 | - |
+| **macro-scraper** | `services/macro-scraper` | Python | 宏观金融数据抓取 | - |
 | **options-scraper** | `services/options-scraper` | Python | Discord 期权流抓取 | - |
 | **mcp-server** | `services/mcp-server` | Python | Model Context Protocol 服务器 | Stdio |
 | **admin** | `services/admin` | Python | 数据管理后台 (SQLAdmin) | 8000 |
@@ -163,6 +164,10 @@ docker compose run --rm stock-scraper python scripts/migrate_data.py
 - **负责存储**：定期调用 Stock API 并将数据写入 PostgreSQL。
 - **可配置**：监控列表在 `services/stock-scraper/config.yaml` 中定义。
 
+### Macro Scraper
+- 从 The Dial API (`indexbha.com`) 拉取宏观指标与历史序列并写入数据库。
+- 通过 `FA_MACRO_SCRAPER_*` 控制轮询与回溯天数。
+
 ### Options Scraper
 - 监听 Discord 频道，解析 Unusual Whales 格式的期权大单流。
 - 去重并写入数据库。
@@ -250,18 +255,23 @@ mise run stock-scraper
 # FA_STOCK_SCRAPER_CONFIG_PATH=services/stock-scraper/config.yaml mise run stock-scraper
 ```
 
-**终端 3: Options Scraper (Discord 抓取)**
+**终端 3: Macro Scraper (宏观抓取)**
+```bash
+mise run macro-scraper
+```
+
+**终端 4: Options Scraper (Discord 抓取)**
 ```bash
 mise run options-scraper
 ```
 
-**终端 4: Admin UI**
+**终端 5: Admin UI**
 ```bash
 mise run admin
 # 访问 http://localhost:8000/admin
 ```
 
-**终端 5: MCP Server**
+**终端 6: MCP Server**
 ```bash
 mise run mcp-server
 ```
@@ -270,6 +280,7 @@ mise run mcp-server
 ```
 ├── services/           # 微服务源码
 │   ├── admin/          # 管理后台
+│   ├── macro-scraper/  # 宏观抓取
 │   ├── mcp-server/     # MCP 服务
 │   ├── options-scraper/ # Discord 抓取
 │   ├── stock-api/      # TS API
