@@ -3,12 +3,12 @@ from __future__ import annotations
 from agno.agent import Agent
 from agno.tools.yfinance import YFinanceTools
 
-from ...config import AppConfig, build_model
+from ...config import AppConfig
 from ...models import FundamentalSignal
 
 
 def build_fundamental_analyst(config: AppConfig) -> Agent:
-    model = build_model(config.models["fundamental"])
+    model = config.get_model_for_agent("fundamental")
 
     return Agent(
         name="Fundamental Analyst",

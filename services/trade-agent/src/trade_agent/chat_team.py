@@ -10,7 +10,7 @@ from .agents import (
     build_technical_analyst,
     build_wyckoff_analyst,
 )
-from .config import AppConfig, build_model
+from .config import AppConfig
 
 
 def build_chat_team(config: AppConfig) -> Team:
@@ -18,7 +18,7 @@ def build_chat_team(config: AppConfig) -> Team:
 
     team = Team(
         name="Trade Analyst Team",
-        model=build_model(config.models["portfolio"]),
+        model=config.get_model_for_agent("portfolio"),
         db=db,
         members=[
             build_technical_analyst(config),

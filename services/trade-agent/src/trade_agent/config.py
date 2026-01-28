@@ -51,6 +51,19 @@ class AppConfig(BaseModel):
     risk_parameters: RiskConfig = RiskConfig()
     analysis: AnalysisConfig = AnalysisConfig()
 
+    def get_model_for_agent(self, agent_name: str) -> Any:
+        """Get the model for a specific agent, fallback to 'default' if not found."""
+        model_config = self.models.get(agent_name)
+        if not model_config:
+            model_config = self.models.get("default")
+
+        if not model_config:
+            raise ValueError(
+                f"No model configuration found for agent '{agent_name}' and no 'default' model defined."
+            )
+
+        return build_model(model_config)
+
 
 _ENV_PATTERN = re.compile(r"\$\{([A-Z0-9_]+)\}")
 

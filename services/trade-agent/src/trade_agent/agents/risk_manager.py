@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from agno.agent import Agent
 
-from ..config import AppConfig, build_model
+from ..config import AppConfig
 from ..models import RiskLimits
 from ..tools import calculate_risk_limits
 
@@ -10,7 +10,7 @@ from ..tools import calculate_risk_limits
 class RiskManager:
     def __init__(self, config: AppConfig) -> None:
         self._config = config
-        self._model = build_model(config.models["risk"])
+        self._model = config.get_model_for_agent("risk")
 
     def calculate_hard_limits(self, prices: list[float]) -> RiskLimits:
         params = self._config.risk_parameters

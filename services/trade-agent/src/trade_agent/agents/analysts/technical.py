@@ -4,13 +4,13 @@ from agno.agent import Agent
 from agno.tools.mcp import MCPTools
 from agno.tools.yfinance import YFinanceTools
 
-from ...config import AppConfig, build_model
+from ...config import AppConfig
 from ...models import TechnicalSignal
 from ...tools import TechnicalIndicatorTools
 
 
 def build_technical_analyst(config: AppConfig) -> Agent:
-    model = build_model(config.models["technical"])
+    model = config.get_model_for_agent("technical")
     mcp_tools = MCPTools(
         url=config.mcp_server.url,
         include_tools=["fetch_stock_history"],

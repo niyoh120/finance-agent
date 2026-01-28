@@ -4,12 +4,12 @@ from agno.agent import Agent
 from agno.tools.mcp import MCPTools
 from agno.tools.yfinance import YFinanceTools
 
-from ...config import AppConfig, build_model
+from ...config import AppConfig
 from ...models import SentimentSignal
 
 
 def build_sentiment_analyst(config: AppConfig) -> Agent:
-    model = build_model(config.models["sentiment"])
+    model = config.get_model_for_agent("sentiment")
     mcp_tools = MCPTools(
         url=config.mcp_server.url,
         include_tools=["query_news_articles"],

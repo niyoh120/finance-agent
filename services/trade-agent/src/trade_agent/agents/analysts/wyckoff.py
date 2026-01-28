@@ -3,12 +3,12 @@ from __future__ import annotations
 from agno.agent import Agent
 from agno.tools.mcp import MCPTools
 
-from ...config import AppConfig, build_model
+from ...config import AppConfig
 from ...models import WyckoffSignal
 
 
 def build_wyckoff_analyst(config: AppConfig) -> Agent:
-    model = build_model(config.models["wyckoff"])
+    model = config.get_model_for_agent("wyckoff")
     mcp_tools = MCPTools(
         url=config.mcp_server.url,
         include_tools=["fetch_stock_history"],
