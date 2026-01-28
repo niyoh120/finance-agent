@@ -5,6 +5,7 @@ from typing import Any
 
 from agno.os import AgentOS
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from shared.logging import configure_logging
 
@@ -21,10 +22,8 @@ analysis_engine = AnalysisEngine(config)
 analysis_workflow = build_analysis_workflow(config)
 chat_team = build_chat_team(config)
 
-agent_os = AgentOS(teams=[chat_team], workflows=[analysis_workflow])
-
 app = FastAPI(title="Trade Agent API")
-app.mount("/agent-os", agent_os.get_app())
+agent_os = AgentOS(base_app=app, teams=[chat_team], workflows=[analysis_workflow])
 
 
 class AnalysisRequest(BaseModel):
@@ -55,7 +54,16 @@ def chat(request: ChatRequest) -> ChatResponse:
     return ChatResponse(content=response.content)
 
 
-if __name__ == "__main__":
-    import uvicorn
+app = agent_os.get_app()
 
-    uvicorn.run(app, host="0.0.0.0", port=8089)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+if __name__ == "__main__":
+    agent_os.serve(app=app, host="0.0.0.0", port=8089)
