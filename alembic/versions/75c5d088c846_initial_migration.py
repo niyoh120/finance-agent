@@ -18,30 +18,6 @@ depends_on = None
 
 
 def upgrade() -> None:
-    # stock_prices
-    op.create_table(
-        "stock_prices",
-        sa.Column("id", sa.Integer(), autoincrement=True, nullable=False),
-        sa.Column("symbol", sa.String(length=16), nullable=False),
-        sa.Column("timestamp", sa.DateTime(timezone=True), nullable=False),
-        sa.Column("timeframe", sa.String(length=8), nullable=False),
-        sa.Column("open", sa.Float(), nullable=False),
-        sa.Column("high", sa.Float(), nullable=False),
-        sa.Column("low", sa.Float(), nullable=False),
-        sa.Column("close", sa.Float(), nullable=False),
-        sa.Column("volume", sa.Float(), nullable=False),
-        sa.Column(
-            "created_at",
-            sa.DateTime(timezone=True),
-            server_default=sa.text("now()"),
-            nullable=False,
-        ),
-        sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("symbol", "timestamp", "timeframe", name="uq_stock_price"),
-    )
-    op.create_index("idx_stock_timestamp", "stock_prices", ["timestamp"], unique=False)
-    op.create_index("ix_stock_prices_symbol", "stock_prices", ["symbol"], unique=False)
-
     # options_flow
     op.create_table(
         "options_flow",
@@ -88,6 +64,3 @@ def downgrade() -> None:
     op.drop_index("ix_options_flow_option_type", table_name="options_flow")
     op.drop_index("idx_timestamp", table_name="options_flow")
     op.drop_table("options_flow")
-    op.drop_index("ix_stock_prices_symbol", table_name="stock_prices")
-    op.drop_index("idx_stock_timestamp", table_name="stock_prices")
-    op.drop_table("stock_prices")

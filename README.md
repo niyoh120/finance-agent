@@ -1,6 +1,6 @@
 # Finance MCP & Microservices
 
-基于 Docker Compose 的微服务架构，包含 Discord 期权流抓取、股票数据轮询、MCP 服务以及管理后台。
+基于 Docker Compose 的微服务架构，包含 Discord 期权流抓取、宏观金融数据抓取、Stock API 与 MCP 服务。
 
 ## 架构概览 (Microservices Architecture)
 
@@ -10,11 +10,9 @@
 | :--- | :--- | :--- | :--- | :--- |
 | **db** | - | PostgreSQL | 核心数据库 (PostgreSQL 15) | 5432 |
 | **stock-api** | `services/stock-api` | TypeScript | TradingView API 包装器 (Fastify) | 3000 |
-| **stock-scraper** | `services/stock-scraper` | Python | 股票数据轮询 | - |
 | **macro-scraper** | `services/macro-scraper` | Python | 宏观金融数据抓取 | - |
 | **options-scraper** | `services/options-scraper` | Python | Discord 期权流抓取 | - |
 | **mcp-server** | `services/mcp-server` | Python | Model Context Protocol 服务器 | Stdio |
-| **admin** | `services/admin` | Python | 数据管理后台 (SQLAdmin) | 8000 |
 
 ## 快速开始 (Quick Start)
 
@@ -79,7 +77,7 @@ docker compose --profile migrate run --rm migrate
 
 ### Stock API
 - 无状态 HTTP 服务，包装 `@mathieuc/tradingview` 库。
-- 仅负责获取 TradingView 数据，**不负责存储**（由 `stock-scraper` 写入 PostgreSQL）。
+- 仅负责获取 TradingView 数据，不负责存储。
 - OpenAPI 文档：`GET /openapi.json`。
 
 #### 接口列表
@@ -153,10 +151,6 @@ docker compose --profile migrate run --rm migrate
   - `FA_STOCK_API_TV_SESSION`：对应 TradingView Cookie `sessionid`
   - `FA_STOCK_API_TV_SIGNATURE`：对应 TradingView Cookie `sessionid_sign`
 
-### Stock Scraper
-- **负责存储**：定期调用 Stock API 并将数据写入 PostgreSQL。
-- **可配置**：监控列表在 `services/stock-scraper/config.yaml` 中定义。
-
 ### Macro Scraper
 - 从 The Dial API (`indexbha.com`) 拉取宏观指标与历史序列并写入数据库。
 - 通过 `FA_MACRO_SCRAPER_*` 控制轮询与回溯天数。
@@ -164,12 +158,6 @@ docker compose --profile migrate run --rm migrate
 ### Options Scraper
 - 监听 Discord 频道，解析 Unusual Whales 格式的期权大单流。
 - 去重并写入数据库。
-
-### Admin UI
-访问: `http://localhost:8000/admin`
-- 查看和管理期权大单数据 (`OptionsFlow`)
-- 查看股票历史数据 (`StockPrice`)
-- 查看新闻数据 (`NewsArticle`)
 
 ### MCP Server
 - 提供新闻、期权、股票与宏观数据查询工具。
@@ -211,7 +199,6 @@ docker compose up --build
 ```bash
 # .env
 FA_DATABASE_URL=postgresql+asyncpg://postgres:postgres@localhost:5432/finance
-FA_STOCK_SCRAPER_API_URL=http://localhost:3000
 FA_MCP_SERVER_STOCK_API_URL=http://localhost:3000
 ```
 
@@ -241,32 +228,17 @@ mise run stock-api
 # npm run dev
 ```
 
-**终端 2: Stock Scraper (股票轮询)**
-```bash
-# 推荐：使用 mise（会从根目录 .env 注入环境变量）
-mise run stock-scraper
-
-# 如需指定配置文件路径
-# FA_STOCK_SCRAPER_CONFIG_PATH=services/stock-scraper/config.yaml mise run stock-scraper
-```
-
-**终端 3: Macro Scraper (宏观抓取)**
+**终端 2: Macro Scraper (宏观抓取)**
 ```bash
 mise run macro-scraper
 ```
 
-**终端 4: Options Scraper (Discord 抓取)**
+**终端 3: Options Scraper (Discord 抓取)**
 ```bash
 mise run options-scraper
 ```
 
-**终端 5: Admin UI**
-```bash
-mise run admin
-# 访问 http://localhost:8000/admin
-```
-
-**终端 6: MCP Server**
+**终端 4: MCP Server**
 ```bash
 mise run mcp-server
 ```
@@ -274,12 +246,11 @@ mise run mcp-server
 ### 目录结构
 ```
 ├── services/           # 微服务源码
-│   ├── admin/          # 管理后台
 │   ├── macro-scraper/  # 宏观抓取
 │   ├── mcp-server/     # MCP 服务
 │   ├── options-scraper/ # Discord 抓取
 │   ├── stock-api/      # TS API
-│   └── stock-scraper/  # 股票抓取
+│   └── news-scraper/   # 新闻抓取
 ├── shared/             # 共享 Python 模块 (Models, DB)
 ├── scripts/            # 运维/迁移脚本
 ├── alembic/            # 数据库迁移文件

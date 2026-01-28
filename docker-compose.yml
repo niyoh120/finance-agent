@@ -43,18 +43,3 @@ services:
             - FA_DATABASE_URL=${FA_DATABASE_URL}
         profiles:
             - migrate
-
-    # admin:
-    #     build:
-    #         context: ./
-    #         dockerfile: ./services/admin/Dockerfile
-    #     environment:
-    #         - FA_DATABASE_URL=${FA_DATABASE_URL}
-    #     ports:
-    #         - "8000:8000"
-    #     restart: unless-stopped
-
-    #     develop:
-    #         watch:
-    #             - action: rebuild
-    #               path: ./services/admin/Dockerfile

@@ -19,7 +19,6 @@ from shared.models.macro import (
 )
 from shared.models.news import NewsArticle
 from shared.models.options import OptionsFlow
-from shared.models.stocks import StockPrice
 from sqlalchemy import func, select
 
 from .schemas import (
@@ -56,31 +55,6 @@ def get_stock_api_url() -> str:
     return os.getenv("FA_MCP_SERVER_STOCK_API_URL", "http://stock-api:3000")
 
 
-def safe_int(value: Any) -> int | None:
-    if isinstance(value, bool):
-        return None
-    if isinstance(value, int):
-        return value
-    if isinstance(value, float) and value.is_integer():
-        return int(value)
-    if isinstance(value, str):
-        stripped = value.strip()
-        if not stripped:
-            return None
-        try:
-            return int(stripped)
-        except ValueError:
-            return None
-    return None
-
-
-def parse_iso_datetime(value: str) -> datetime:
-    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed
-
-
 def parse_iso_date(value: str) -> date:
     try:
         return date.fromisoformat(value)
@@ -104,74 +78,6 @@ def resolve_date_range(
     if start > end:
         raise ToolError("start_date 不能晚于 end_date")
     return start, end
-
-
-# @mcp.tool()
-async def query_stock_prices(
-    symbol: str,
-    timeframe: str = "1",
-    days: int | None = 7,
-    start: str | None = None,
-    end: str | None = None,
-    limit: int = 500,
-    order: str = "asc",
-) -> str:
-    if limit <= 0:
-        return json.dumps({"error": "limit must be > 0"}, indent=2)
-
-    normalized_symbol = symbol.strip().upper()
-    normalized_timeframe = timeframe.strip() or "1"
-
-    if start and days is not None:
-        return json.dumps({"error": "use either start/end or days, not both"}, indent=2)
-
-    if start:
-        since = parse_iso_datetime(start)
-        until = parse_iso_datetime(end) if end else datetime.now(tz=timezone.utc)
-    else:
-        since_days = days if days is not None else 7
-        since = datetime.now(tz=timezone.utc) - timedelta(days=since_days)
-        until = datetime.now(tz=timezone.utc)
-
-    stmt = (
-        select(StockPrice)
-        .where(StockPrice.symbol == normalized_symbol)
-        .where(StockPrice.timeframe == normalized_timeframe)
-        .where(StockPrice.timestamp >= since)
-        .where(StockPrice.timestamp <= until)
-    )
-
-    stmt = stmt.order_by(
-        StockPrice.timestamp.desc()
-        if order.lower() == "desc"
-        else StockPrice.timestamp.asc()
-    ).limit(limit)
-
-    async with session_scope() as session:
-        result = await session.execute(stmt)
-        rows = result.scalars().all()
-
-    payload = {
-        "symbol": normalized_symbol,
-        "timeframe": normalized_timeframe,
-        "start": since.isoformat(),
-        "end": until.isoformat(),
-        "order": order,
-        "count": len(rows),
-        "rows": [
-            {
-                "timestamp": row.timestamp.isoformat(),
-                "open": row.open,
-                "high": row.high,
-                "low": row.low,
-                "close": row.close,
-                "volume": row.volume,
-            }
-            for row in rows
-        ],
-    }
-
-    return json.dumps(payload, indent=2)
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
