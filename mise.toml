@@ -52,6 +52,9 @@ run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=options-scrap
 [tasks.docker-build-mcp-server]
 run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=mcp-server --build-arg MODULE_ENTRY=mcp_server.http -t {{vars.image_repo}}finance-mcp-server:latest -t {{vars.image_repo}}finance-mcp-server:{{exec(command='git rev-parse --short HEAD')}} ."
 
+[tasks.docker-build-trade-agent]
+run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=trade-agent --build-arg MODULE_ENTRY=trade_agent.app -t {{vars.image_repo}}finance-trade-agent:latest -t {{vars.image_repo}}finance-trade-agent:{{exec(command='git rev-parse --short HEAD')}} ."
+
 [tasks.docker-build-stock-api]
 run = "docker build -f services/stock-api/Dockerfile -t {{vars.image_repo}}finance-stock-api:latest -t {{vars.image_repo}}finance-stock-api:{{exec(command='git rev-parse --short HEAD')}} ."
 
@@ -63,6 +66,7 @@ run = [
     "docker-build-news-scraper",
     "docker-build-options-scraper",
     "docker-build-mcp-server",
+    "docker-build-trade-agent",
     "docker-build-stock-api",
   ] },
 ]
@@ -97,6 +101,12 @@ run = [
   "docker push {{vars.image_repo}}finance-mcp-server:{{exec(command='git rev-parse --short HEAD')}}",
 ]
 
+[tasks.docker-push-trade-agent]
+run = [
+  "docker push {{vars.image_repo}}finance-trade-agent:latest",
+  "docker push {{vars.image_repo}}finance-trade-agent:{{exec(command='git rev-parse --short HEAD')}}",
+]
+
 [tasks.docker-push-stock-api]
 run = [
   "docker push {{vars.image_repo}}finance-stock-api:latest",
@@ -111,6 +121,7 @@ run = [
     "docker-push-news-scraper",
     "docker-push-options-scraper",
     "docker-push-mcp-server",
+    "docker-push-trade-agent",
     "docker-push-stock-api",
   ] },
 ]
@@ -143,6 +154,12 @@ run = [
 run = [
   { tasks = ["docker-build-mcp-server"] },
   { tasks = ["docker-push-mcp-server"] },
+]
+
+[tasks.docker-build-push-trade-agent]
+run = [
+  { tasks = ["docker-build-trade-agent"] },
+  { tasks = ["docker-push-trade-agent"] },
 ]
 
 [tasks.docker-build-push-stock-api]
