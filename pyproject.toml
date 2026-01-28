@@ -4,11 +4,9 @@ version = "0.0.0"
 description = "Workspace root for Finance MCP microservices"
 requires-python = ">=3.11"
 dependencies = [
-  "aiosqlite>=0.22.1",
   "alembic>=1.13.0",
   "asyncpg>=0.29.0",
   "finance-shared",
-  "python-dateutil>=2.9.0.post0",
   "sqlalchemy[asyncio]>=2.0.0",
 ]
 
