@@ -84,13 +84,6 @@ def load_config(path: str | None = None) -> AppConfig:
     expanded = _expand_obj(raw)
     config = AppConfig.model_validate(expanded)
 
-    if not config.stock_api.url:
-        config.stock_api.url = (
-            os.getenv("FA_TRADE_AGENT_STOCK_API_URL")
-            or os.getenv("FA_MCP_SERVER_STOCK_API_URL")
-            or "http://stock-api:3000"
-        )
-
     return config
 
 
