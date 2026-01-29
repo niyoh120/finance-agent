@@ -33,6 +33,10 @@ def build_chat_team(config: AppConfig) -> Team:
             "保持回答客观、结构化。",
         ],
         markdown=True,
+        stream=True,
+        reasoning=True,
+        add_history_to_context=True,
+        num_history_runs=15,
     )
 
     return team

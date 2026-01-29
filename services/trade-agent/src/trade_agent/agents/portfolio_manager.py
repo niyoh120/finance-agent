@@ -24,4 +24,5 @@ def build_portfolio_manager(config: AppConfig) -> Agent:
         output_schema=DecisionDraft,
         markdown=True,
         add_datetime_to_context=True,
+        reasoning=True,
     )

@@ -37,6 +37,7 @@ class RiskManager:
             ),
             output_schema=RiskLimits,
             markdown=True,
+            reasoning=True,
         )
 
         response = agent.run(

@@ -30,4 +30,5 @@ def build_wyckoff_analyst(config: AppConfig) -> Agent:
         output_schema=WyckoffSignal,
         markdown=True,
         add_datetime_to_context=True,
+        reasoning=True,
     )

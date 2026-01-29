@@ -29,11 +29,12 @@ def build_technical_analyst(config: AppConfig) -> Agent:
             f"优先使用 fetch_stock_history 获取 {config.analysis.history_range} 根"
             f"{config.analysis.timeframe} K线，按时间升序计算指标。\n"
             "使用 technical_indicator_tools 计算 RSI/MACD/布林带，"
-            "再用 YFinance 的技术指标做交叉验证。\n"
+            "再跟用工具获取的技术指标做交叉验证。\n"
             "如果两个来源结论一致，提升信心；若冲突，说明差异原因。\n"
             "输出 TechnicalSignal，必须包含清晰的趋势判断和理由。"
         ),
         output_schema=TechnicalSignal,
         markdown=True,
         add_datetime_to_context=True,
+        reasoning=True,
     )
