@@ -51,6 +51,7 @@ Thumbs.db
 
 # Project specific
 data/
+services/trade-agent/config.yaml
 
 # Node.js
 node_modules/
@@ -62,5 +63,3 @@ opencode.json
 services/wyckoff-agent/.pytest_cache/
 services/wyckoff-agent/.artifacts/
 services/wyckoff-agent/chainlit.md
-config.yaml
-!services/trade-agent/config.yaml
