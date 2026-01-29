@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from agno.db.sqlite import SqliteDb
 from agno.team.team import Team
 
@@ -34,9 +32,9 @@ def build_chat_team(config: AppConfig) -> Team:
         ],
         markdown=True,
         stream=True,
-        reasoning=True,
         add_history_to_context=True,
         num_history_runs=15,
+        **config.get_params_for_agent("portfolio"),
     )
 
     return team

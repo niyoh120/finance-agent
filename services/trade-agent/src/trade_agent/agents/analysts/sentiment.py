@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from agno.agent import Agent
 from agno.tools.mcp import MCPTools
 from agno.tools.yfinance import YFinanceTools
@@ -10,6 +8,8 @@ from ...models import SentimentSignal
 
 def build_sentiment_analyst(config: AppConfig) -> Agent:
     model = config.get_model_for_agent("sentiment")
+    params = config.get_params_for_agent("fundamental")
+
     mcp_tools = MCPTools(
         url=config.mcp_server.url,
         include_tools=["query_news_articles"],
@@ -24,7 +24,6 @@ def build_sentiment_analyst(config: AppConfig) -> Agent:
             "输出 SentimentSignal，给出情绪分数(-100~100)与风险提示。"
         ),
         output_schema=SentimentSignal,
-        markdown=True,
         add_datetime_to_context=True,
-        reasoning=True,
+        **params,
     )

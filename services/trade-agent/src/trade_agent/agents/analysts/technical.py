@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from agno.agent import Agent
 from agno.tools.mcp import MCPTools
 from agno.tools.yfinance import YFinanceTools
@@ -11,6 +9,8 @@ from ...tools import TechnicalIndicatorTools
 
 def build_technical_analyst(config: AppConfig) -> Agent:
     model = config.get_model_for_agent("technical")
+    params = config.get_params_for_agent("fundamental")
+
     mcp_tools = MCPTools(
         url=config.mcp_server.url,
         include_tools=["fetch_stock_history"],
@@ -34,7 +34,6 @@ def build_technical_analyst(config: AppConfig) -> Agent:
             "输出 TechnicalSignal，必须包含清晰的趋势判断和理由。"
         ),
         output_schema=TechnicalSignal,
-        markdown=True,
         add_datetime_to_context=True,
-        reasoning=True,
+        **params,
     )

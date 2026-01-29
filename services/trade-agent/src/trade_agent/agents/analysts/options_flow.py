@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from agno.agent import Agent
 from agno.tools.mcp import MCPTools
 
@@ -9,6 +7,8 @@ from ...models import OptionsFlowSignal
 
 def build_options_flow_analyst(config: AppConfig) -> Agent:
     model = config.get_model_for_agent("options")
+    params = config.get_params_for_agent("fundamental")
+
     mcp_tools = MCPTools(
         url=config.mcp_server.url,
         include_tools=["query_options_flow", "get_flow_summary"],
@@ -25,7 +25,6 @@ def build_options_flow_analyst(config: AppConfig) -> Agent:
             "输出 OptionsFlowSignal，包含 call_put_ratio、net_premium、关键大单摘要。"
         ),
         output_schema=OptionsFlowSignal,
-        markdown=True,
         add_datetime_to_context=True,
-        reasoning=True,
+        **params,
     )

@@ -1,4 +1,4 @@
-from __future__ import annotations
+from typing import cast
 
 from agno.agent import Agent
 
@@ -11,6 +11,7 @@ class RiskManager:
     def __init__(self, config: AppConfig) -> None:
         self._config = config
         self._model = config.get_model_for_agent("risk")
+        self._agent_params = config.get_params_for_agent("risk")
 
     def calculate_hard_limits(self, prices: list[float]) -> RiskLimits:
         params = self._config.risk_parameters
@@ -36,14 +37,13 @@ class RiskManager:
                 f"市场背景: {market_context}"
             ),
             output_schema=RiskLimits,
-            markdown=True,
-            reasoning=True,
+            **self._agent_params,
         )
 
         response = agent.run(
             "根据市场背景调整风险参数", output_schema=RiskLimits, stream=False
         )
-        adjusted: RiskLimits = response.content
+        adjusted = cast(RiskLimits, response.content)
         return self._enforce_hard_limits(adjusted, hard_limits)
 
     @staticmethod

@@ -1,5 +1,3 @@
-from __future__ import annotations
-
 from agno.agent import Agent
 
 from ..config import AppConfig
@@ -8,6 +6,7 @@ from ..models import DecisionDraft
 
 def build_portfolio_manager(config: AppConfig) -> Agent:
     model = config.get_model_for_agent("portfolio")
+    params = config.get_params_for_agent("fundamental")
     weights = config.analysis.signal_weights
 
     instructions = (
@@ -22,7 +21,6 @@ def build_portfolio_manager(config: AppConfig) -> Agent:
         model=model,
         instructions=instructions,
         output_schema=DecisionDraft,
-        markdown=True,
         add_datetime_to_context=True,
-        reasoning=True,
+        **params,
     )

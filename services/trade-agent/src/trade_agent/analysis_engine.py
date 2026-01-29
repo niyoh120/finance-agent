@@ -1,8 +1,4 @@
-from __future__ import annotations
-
-import inspect
 import logging
-import os
 from datetime import datetime, timezone
 
 from agno.db.sqlite import SqliteDb
@@ -146,43 +142,45 @@ def build_analysis_workflow(config: AppConfig) -> Workflow:
         )
         return StepOutput(content=decision)
 
-    analysis_parallel = _build_parallel(
-        Step(
-            name="technical",
-            description="技术面分析",
-            agent=technical,
-        ),
-        Step(
-            name="options",
-            description="期权流分析",
-            agent=options,
-        ),
-        Step(
-            name="sentiment",
-            description="新闻情绪分析",
-            agent=sentiment,
-        ),
-        Step(
-            name="fundamental",
-            description="基本面分析",
-            agent=fundamental,
-        ),
-        Step(
-            name="wyckoff",
-            description="威科夫分析",
-            agent=wyckoff,
-        ),
-        Step(
-            name="risk_limits",
-            description="风险约束计算",
-            executor=risk_step,
-        ),
+    analysis_task = Parallel(
+        [
+            Step(
+                name="technical",
+                description="技术面分析",
+                agent=technical,
+            ),
+            Step(
+                name="options",
+                description="期权流分析",
+                agent=options,
+            ),
+            Step(
+                name="sentiment",
+                description="新闻情绪分析",
+                agent=sentiment,
+            ),
+            Step(
+                name="fundamental",
+                description="基本面分析",
+                agent=fundamental,
+            ),
+            Step(
+                name="wyckoff",
+                description="威科夫分析",
+                agent=wyckoff,
+            ),
+        ],
         name="analysis_parallel",
         description="并行分析阶段",
     )
 
     steps = [
-        *analysis_parallel,
+        analysis_task,
+        Step(
+            name="risk_limits",
+            description="风险约束计算",
+            executor=risk_step,
+        ),
         Step(
             name="decision",
             description="组合决策",
@@ -295,7 +293,4 @@ def _create_default_signal(schema):
 
 
 def _build_parallel(*steps: Step, name: str, description: str) -> list[Parallel]:
-    parallel_list = []
-    for i in range(0, len(steps), 2):
-        parallel_list.append(Parallel(steps[i], steps[i + 1]))
-    return parallel_list
+    return Parallel(steps, name=name, description=description)
