@@ -66,26 +66,54 @@ def build_analysis_workflow(config: AppConfig) -> Workflow:
 
     def decision_step(step_input: StepInput) -> StepOutput:
         symbol = (step_input.input or "").strip().upper()
-        technical_signal = _coerce_step(
-            step_input.get_step_content("technical"), TechnicalSignal
+        failed_analysts: list[str] = []
+
+        technical_signal, failed = _coerce_step_with_status(
+            step_input.get_step_content("technical"), TechnicalSignal, "技术分析师"
         )
-        options_signal = _coerce_step(
-            step_input.get_step_content("options"), OptionsFlowSignal
+        if failed:
+            failed_analysts.append("技术分析师")
+
+        options_signal, failed = _coerce_step_with_status(
+            step_input.get_step_content("options"), OptionsFlowSignal, "期权流分析师"
         )
-        sentiment_signal = _coerce_step(
-            step_input.get_step_content("sentiment"), SentimentSignal
+        if failed:
+            failed_analysts.append("期权流分析师")
+
+        sentiment_signal, failed = _coerce_step_with_status(
+            step_input.get_step_content("sentiment"), SentimentSignal, "情绪分析师"
         )
-        fundamental_signal = _coerce_step(
-            step_input.get_step_content("fundamental"), FundamentalSignal
+        if failed:
+            failed_analysts.append("情绪分析师")
+
+        fundamental_signal, failed = _coerce_step_with_status(
+            step_input.get_step_content("fundamental"),
+            FundamentalSignal,
+            "基本面分析师",
         )
-        wyckoff_signal = _coerce_step(
-            step_input.get_step_content("wyckoff"), WyckoffSignal
+        if failed:
+            failed_analysts.append("基本面分析师")
+
+        wyckoff_signal, failed = _coerce_step_with_status(
+            step_input.get_step_content("wyckoff"), WyckoffSignal, "威科夫分析师"
         )
+        if failed:
+            failed_analysts.append("威科夫分析师")
+
         risk_limits = _coerce_step(
             step_input.get_step_content("risk_limits"), RiskLimits
         )
 
+        # 构建 prompt，如有失败的分析师则提示
+        failure_notice = ""
+        if failed_analysts:
+            failure_notice = (
+                f"⚠️ 注意：以下分析师执行失败，其信号不可用：{', '.join(failed_analysts)}。\n"
+                "请基于可用信号做出保守决策，并在 reasoning 中说明哪些信号缺失。\n\n"
+            )
+
         prompt = (
+            f"{failure_notice}"
             "请基于以下信号与风险约束做出决策:\n"
             f"技术面: {technical_signal}\n"
             f"期权流: {options_signal}\n"
@@ -181,19 +209,89 @@ class AnalysisEngine:
 
 
 def _coerce_step(content, schema):
+    result, _ = _coerce_step_with_status(content, schema)
+    return result
+
+
+def _coerce_step_with_status(content, schema, analyst_name: str | None = None):
+    """
+    转换 step 输出为指定 schema。
+
+    Returns:
+        tuple: (signal, failed) - signal 为解析后的对象，failed 为是否使用了默认值
+    """
+    if content is None:
+        name = analyst_name or schema.__name__
+        logger.warning(
+            "分析师返回空结果，使用默认信号",
+            extra={"schema": schema.__name__, "analyst": name},
+        )
+        return _create_default_signal(schema), True
     if isinstance(content, schema):
-        return content
+        return content, False
     if isinstance(content, str):
         try:
-            return schema.model_validate_json(content)
+            return schema.model_validate_json(content), False
         except Exception:
             logger.warning(
                 "Failed to parse JSON content", extra={"schema": schema.__name__}
             )
     if isinstance(content, dict):
-        return schema.model_validate(content)
+        return schema.model_validate(content), False
     logger.warning("Unexpected step output type", extra={"type": type(content)})
-    return schema.model_validate(content)
+    return schema.model_validate(content), False
+
+
+_SIGNAL_DEFAULTS: dict = {
+    "TechnicalSignal": {
+        "signal": "neutral",
+        "confidence": 0,
+        "reasoning": "分析失败，无法获取技术面信号",
+    },
+    "OptionsFlowSignal": {
+        "signal": "neutral",
+        "confidence": 0,
+        "reasoning": "分析失败，无法获取期权流信号",
+    },
+    "SentimentSignal": {
+        "signal": "neutral",
+        "confidence": 0,
+        "sentiment_score": 0,
+        "reasoning": "分析失败，无法获取情绪信号",
+    },
+    "FundamentalSignal": {
+        "signal": "neutral",
+        "confidence": 0,
+        "valuation": "未知",
+        "financial_health": "未知",
+        "reasoning": "分析失败，无法获取基本面信号",
+    },
+    "WyckoffSignal": {
+        "signal": "neutral",
+        "confidence": 0,
+        "reasoning": "分析失败，无法获取威科夫信号",
+    },
+    "RiskLimits": {
+        "max_position_size": 0.0,
+        "max_loss_per_trade": 0.0,
+        "max_portfolio_volatility": 0.0,
+        "notes": "风险计算失败，使用保守默认值",
+    },
+    "DecisionDraft": {
+        "action": "HOLD",
+        "target_position_size": 0.0,
+        "confidence": 0,
+        "reasoning": "决策生成失败，默认持有",
+    },
+}
+
+
+def _create_default_signal(schema):
+    """当分析师返回 None 时，创建默认的空信号对象"""
+    schema_name = schema.__name__
+    if schema_name in _SIGNAL_DEFAULTS:
+        return schema.model_validate(_SIGNAL_DEFAULTS[schema_name])
+    raise ValueError(f"No default defined for schema: {schema_name}")
 
 
 def _build_parallel(*steps: Step, name: str, description: str) -> list[Parallel]:
