@@ -1,6 +1,6 @@
-import logging
 from typing import Any
 
+import structlog
 from agno.os import AgentOS
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,7 +20,7 @@ from .config import load_config
 from .models import TradingDecision
 
 configure_logging(service="trade-agent")
-logger = logging.getLogger(__name__)
+logger = structlog.get_logger(__name__)
 
 
 def build_agents(config):
@@ -40,6 +40,7 @@ def build_agents(config):
 
 
 config = load_config()
+logger.info("Load config succ.", config=config)
 analysis_engine = AnalysisEngine(config)
 analysis_workflow = build_analysis_workflow(config)
 chat_team = build_chat_team(config)
@@ -84,13 +85,13 @@ def chat(request: ChatRequest) -> ChatResponse:
 
 app = agent_os.get_app()
 
-# app.add_middleware(
-#     CORSMiddleware,
-#     allow_origins=["*"],
-#     allow_credentials=True,
-#     allow_methods=["*"],
-#     allow_headers=["*"],
-# )
+app.add_middleware(
+    CORSMiddleware,
+    allow_origin_regex=r"http(s?)://.*",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 if __name__ == "__main__":

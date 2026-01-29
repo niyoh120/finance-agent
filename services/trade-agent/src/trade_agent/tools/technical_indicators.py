@@ -1,12 +1,9 @@
-from __future__ import annotations
-
+import logging
 from typing import Any
 
 import pandas as pd
 import pandas_ta as ta
 from agno.tools.toolkit import Toolkit
-
-import logging
 
 logger = logging.getLogger(__name__)
 
