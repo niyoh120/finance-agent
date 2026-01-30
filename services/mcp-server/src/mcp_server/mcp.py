@@ -35,6 +35,7 @@ from .schemas import (
     MacroTotalIndexHistoryResult,
     NewsArticleItem,
     NewsArticlesResult,
+    NewsType,
     OptionsFlowItem,
     OptionsSide,
     OptionType,
@@ -95,8 +96,10 @@ async def query_news_articles(
         Field(description="股票代码列表，如 ['AAPL', 'TSLA']。留空则不过滤"),
     ] = None,
     type: Annotated[
-        str | None,
-        Field(description="新闻类型过滤。留空则返回所有类型"),
+        NewsType | None,
+        Field(
+            description="新闻类型过滤: 'macro_news' (宏观新闻), 'kol_tweet' (KOL推文), 'stock_news' (个股新闻)。留空则返回所有类型"
+        ),
     ] = None,
     limit: Annotated[
         int,

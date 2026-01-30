@@ -36,6 +36,7 @@ class McpBaseModel(BaseModel):
 
 OptionsSide = Literal["Bid", "Ask"]
 OptionType = Literal["P", "C"]
+NewsType = Literal["macro_news", "kol_tweet", "stock_news"]
 
 # NOTE: TradingView timeframe values accepted by @mathieuc/tradingview are strings.
 # The list here is intentionally conservative and covers common use cases.
