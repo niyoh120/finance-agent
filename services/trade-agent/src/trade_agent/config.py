@@ -35,7 +35,7 @@ class MCPConfig(BaseSettings):
 
 
 class StockApiConfig(BaseSettings):
-    url: StrHttpUrl | None = None
+    url: StrHttpUrl
 
 
 class StorageConfig(BaseSettings):

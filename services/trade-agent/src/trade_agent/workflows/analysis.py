@@ -6,8 +6,9 @@ from agno.workflow.parallel import Parallel
 from agno.workflow.step import Step
 from agno.workflow.types import StepInput, StepOutput
 from agno.workflow.workflow import Workflow
+from beartype.vale import IsInstance
 
-from .agents import (
+from ..agents import (
     RiskManager,
     build_fundamental_analyst,
     build_options_flow_analyst,
@@ -16,8 +17,8 @@ from .agents import (
     build_technical_analyst,
     build_wyckoff_analyst,
 )
-from .config import AppConfig
-from .models import (
+from ..config import AppConfig
+from ..models import (
     DecisionDraft,
     FundamentalSignal,
     OptionsFlowSignal,
@@ -27,7 +28,7 @@ from .models import (
     TradingDecision,
     WyckoffSignal,
 )
-from .tools import fetch_stock_history
+from ..tools import fetch_stock_history
 
 logger = logging.getLogger(__name__)
 
@@ -46,7 +47,9 @@ def build_analysis_workflow(config: AppConfig) -> Workflow:
     portfolio_manager = build_portfolio_manager(config)
 
     def risk_step(step_input: StepInput) -> StepOutput:
-        symbol = (step_input.input or "").strip().upper()
+        if not isinstance(step_input.input, str):
+            raise RuntimeError("Input must be str.")
+        symbol = step_input.input.strip().upper()
         candles = fetch_stock_history(
             base_url=config.stock_api.url,
             symbol=symbol,
@@ -61,7 +64,9 @@ def build_analysis_workflow(config: AppConfig) -> Workflow:
         return StepOutput(content=adjusted_limits)
 
     def decision_step(step_input: StepInput) -> StepOutput:
-        symbol = (step_input.input or "").strip().upper()
+        if not isinstance(step_input.input, str):
+            raise RuntimeError("Input must be str.")
+        symbol = step_input.input.strip().upper()
         failed_analysts: list[str] = []
 
         technical_signal, failed = _coerce_step_with_status(
@@ -142,40 +147,32 @@ def build_analysis_workflow(config: AppConfig) -> Workflow:
         )
         return StepOutput(content=decision)
 
-    analysis_task = Parallel(
-        [
-            Step(
-                name="technical",
-                description="技术面分析",
-                agent=technical,
-            ),
-            Step(
-                name="options",
-                description="期权流分析",
-                agent=options,
-            ),
-            Step(
-                name="sentiment",
-                description="新闻情绪分析",
-                agent=sentiment,
-            ),
-            Step(
-                name="fundamental",
-                description="基本面分析",
-                agent=fundamental,
-            ),
-            Step(
-                name="wyckoff",
-                description="威科夫分析",
-                agent=wyckoff,
-            ),
-        ],
-        name="analysis_parallel",
-        description="并行分析阶段",
-    )
-
     steps = [
-        analysis_task,
+        Step(
+            name="technical",
+            description="技术面分析",
+            agent=technical,
+        ),
+        Step(
+            name="options",
+            description="期权流分析",
+            agent=options,
+        ),
+        Step(
+            name="sentiment",
+            description="新闻情绪分析",
+            agent=sentiment,
+        ),
+        Step(
+            name="fundamental",
+            description="基本面分析",
+            agent=fundamental,
+        ),
+        Step(
+            name="wyckoff",
+            description="威科夫分析",
+            agent=wyckoff,
+        ),
         Step(
             name="risk_limits",
             description="风险约束计算",
@@ -290,7 +287,3 @@ def _create_default_signal(schema):
     if schema_name in _SIGNAL_DEFAULTS:
         return schema.model_validate(_SIGNAL_DEFAULTS[schema_name])
     raise ValueError(f"No default defined for schema: {schema_name}")
-
-
-def _build_parallel(*steps: Step, name: str, description: str) -> list[Parallel]:
-    return Parallel(steps, name=name, description=description)

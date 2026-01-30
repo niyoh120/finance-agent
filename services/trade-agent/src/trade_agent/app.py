@@ -14,10 +14,10 @@ from .agents import (
     build_technical_analyst,
     build_wyckoff_analyst,
 )
-from .analysis_engine import AnalysisEngine, build_analysis_workflow
-from .chat_team import build_chat_team
 from .config import load_config
 from .models import TradingDecision
+from .teams import build_chat_team
+from .workflows import AnalysisEngine, build_analysis_workflow
 
 configure_logging(service="trade-agent")
 logger = structlog.get_logger(__name__)
@@ -86,7 +86,7 @@ def chat(request: ChatRequest) -> ChatResponse:
 app = agent_os.get_app()
 
 app.add_middleware(
-    CORSMiddleware,
+    CORSMiddleware,  # type: ignore
     allow_origin_regex=r"http(s?)://.*",
     allow_credentials=True,
     allow_methods=["*"],

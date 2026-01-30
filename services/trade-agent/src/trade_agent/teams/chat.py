@@ -1,14 +1,14 @@
 from agno.db.sqlite import SqliteDb
 from agno.team.team import Team
 
-from .agents import (
+from ..agents import (
     build_fundamental_analyst,
     build_options_flow_analyst,
     build_sentiment_analyst,
     build_technical_analyst,
     build_wyckoff_analyst,
 )
-from .config import AppConfig
+from ..config import AppConfig
 
 
 def build_chat_team(config: AppConfig) -> Team:
