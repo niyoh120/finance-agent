@@ -1,4 +1,5 @@
 from agno.agent import Agent
+from agno.tools.websearch import WebSearchTools
 from agno.tools.yfinance import YFinanceTools
 
 from ...config import AppConfig
@@ -22,6 +23,7 @@ def build_fundamental_analyst(config: AppConfig) -> Agent:
                     "get_analyst_recommendations",
                 ]
             ),
+            WebSearchTools(),
         ],
         instructions=(
             "你是基本面分析师，你擅长使用工具获取数据评估公司内在价值。\n"

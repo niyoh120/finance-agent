@@ -1,5 +1,6 @@
 from agno.agent import Agent
 from agno.tools.mcp import MCPTools
+from agno.tools.websearch import WebSearchTools
 from agno.tools.yfinance import YFinanceTools
 
 from ...config import AppConfig
@@ -15,13 +16,14 @@ def build_sentiment_analyst(config: AppConfig) -> Agent:
         include_tools=["query_news_articles"],
     )
 
-    tools = [mcp_tools]
-    tools.append(YFinanceTools(include_tools=["get_company_news"]))
-
     return Agent(
         name="Sentiment Analyst",
         model=model,
-        tools=tools,
+        tools=[
+            mcp_tools,
+            YFinanceTools(include_tools=["get_company_news"]),
+            WebSearchTools(),
+        ],
         instructions=(
             "你是新闻情绪分析师。你的任务是使用工具获取股票及市场的相关新闻，评估正负面比例、重大事件与市场关注度。\n"
             "输出 SentimentSignal，给出情绪分数(-100~100)与风险提示。"
