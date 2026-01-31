@@ -1,6 +1,6 @@
 # Finance MCP & Microservices
 
-基于 Docker Compose 的微服务架构，包含 Discord 期权流抓取、宏观金融数据抓取、Stock API 与 MCP 服务。
+基于 Docker Compose 的微服务架构，包含 BubbleSeek 数据抓取、宏观金融数据抓取、Stock API 与 MCP 服务。
 
 ## 架构概览 (Microservices Architecture)
 
@@ -11,7 +11,7 @@
 | **db** | - | PostgreSQL | 核心数据库 (PostgreSQL 15) | 5432 |
 | **stock-api** | `services/stock-api` | TypeScript | TradingView API 包装器 (Fastify) | 3000 |
 | **macro-scraper** | `services/macro-scraper` | Python | 宏观金融数据抓取 | - |
-| **options-scraper** | `services/options-scraper` | Python | Discord 期权流抓取 | - |
+| **bubbleseek-scraper** | `services/bubbleseek-scraper` | Python | 新闻与期权流抓取 (bubbleseek.ai) | - |
 | **mcp-server** | `services/mcp-server` | Python | Model Context Protocol 服务器 | Stdio |
 
 ## 快速开始 (Quick Start)
@@ -26,7 +26,6 @@
 ```bash
 cp .env.example .env
 ```
-编辑 `.env` 填入 Discord Token 和 Channel ID（主要用于 `options-scraper`）。
 
 > 项目使用 `mise` 从根目录 `.env` 注入环境变量（见 `mise.toml`），应用代码本身不再读取 `.env`。
 
@@ -38,27 +37,6 @@ cp .env.example .env
 3. 找到 `https://www.tradingview.com` 下的 Cookies：
    - `sessionid` -> 对应环境变量 `FA_STOCK_API_TV_SESSION`
    - `sessionid_sign` -> 对应环境变量 `FA_STOCK_API_TV_SIGNATURE`
-
-### 获取 FA_OPTIONS_SCRAPER_CHANNEL_ID
-
-1. 在 Discord 设置中开启「开发者模式」(用户设置 → 高级 → 开发者模式)
-2. 右键点击目标频道 → 「复制频道 ID」
-
-### 获取 FA_OPTIONS_SCRAPER_DISCORD_TOKEN
-
-> ⚠️ **风险提示**: 使用用户 token 违反 Discord ToS，有封号风险。建议使用小号。
-
-1. 打开 Discord 网页版 (discord.com/app) 或桌面客户端
-2. 按 `F12` 打开开发者工具
-3. 切换到 **Network** (网络) 标签
-4. 在 Discord 中随便点击一个频道触发请求
-5. 找到任意请求，点击查看 **Headers** (请求头)
-6. 找到 `Authorization` 字段，其值就是你的 token
-
-或者在 Console 中执行：
-```javascript
-(webpackChunkdiscord_app.push([[''],{},e=>{m=[];for(let c in e.c)m.push(e.c[c])}]),m).find(m=>m?.exports?.default?.getToken!==void 0).exports.default.getToken()
-```
 
 ### 3. 启动服务
 ```bash
@@ -140,7 +118,7 @@ docker compose --profile migrate run --rm migrate
     - `curl "http://localhost:3000/ta?symbol=NASDAQ:AAPL"`
 
 - `GET /indicators/private`
-  - 用途：列出当前账号的私有指标（TradingView “saved” 指标）
+  - 用途：列出当前账号的私有指标（TradingView "saved" 指标）
   - 依赖：必须配置 `FA_STOCK_API_TV_SESSION`（建议同时配置 `FA_STOCK_API_TV_SIGNATURE`）
   - 示例：
     - `curl "http://localhost:3000/indicators/private"`
@@ -155,9 +133,11 @@ docker compose --profile migrate run --rm migrate
 - 从 The Dial API (`indexbha.com`) 拉取宏观指标与历史序列并写入数据库。
 - 通过 `FA_MACRO_SCRAPER_*` 控制轮询与回溯天数。
 
-### Options Scraper
-- 监听 Discord 频道，解析 Unusual Whales 格式的期权大单流。
-- 去重并写入数据库。
+### BubbleSeek Scraper
+- 从 bubbleseek.ai API 获取新闻和期权流数据。
+- 新闻类型：KOL 推文、财经新闻等。
+- 期权流：解析 Unusual Whales 格式的期权大单。
+- 通过 `FA_BUBBLESEEK_SCRAPER_INTERVAL` 控制轮询间隔。
 
 ### MCP Server
 - 提供新闻、期权、股票与宏观数据查询工具。
@@ -233,9 +213,9 @@ mise run stock-api
 mise run macro-scraper
 ```
 
-**终端 3: Options Scraper (Discord 抓取)**
+**终端 3: BubbleSeek Scraper (新闻与期权抓取)**
 ```bash
-mise run options-scraper
+mise run bubbleseek-scraper
 ```
 
 **终端 4: MCP Server**
@@ -245,15 +225,15 @@ mise run mcp-server
 
 ### 目录结构
 ```
-├── services/           # 微服务源码
-│   ├── macro-scraper/  # 宏观抓取
-│   ├── mcp-server/     # MCP 服务
-│   ├── options-scraper/ # Discord 抓取
-│   ├── stock-api/      # TS API
-│   └── news-scraper/   # 新闻抓取
-├── shared/             # 共享 Python 模块 (Models, DB)
-├── scripts/            # 运维/迁移脚本
-├── alembic/            # 数据库迁移文件
-├── docker-compose.yml  # 容器编排
-└── pyproject.toml      # Workspace 配置
+├── services/              # 微服务源码
+│   ├── macro-scraper/     # 宏观抓取
+│   ├── mcp-server/        # MCP 服务
+│   ├── bubbleseek-scraper/ # 新闻与期权抓取
+│   ├── stock-api/         # TS API
+│   └── ...
+├── shared/                # 共享 Python 模块 (Models, DB)
+├── scripts/               # 运维/迁移脚本
+├── alembic/               # 数据库迁移文件
+├── docker-compose.yml     # 容器编排
+└── pyproject.toml         # Workspace 配置
 ```

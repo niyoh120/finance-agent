@@ -1,14 +1,14 @@
 services:
-    news-scraper:
+    bubbleseek-scraper:
         build:
             context: ./
             dockerfile: ./services/Dockerfile
             args:
-                MODULE_NAME: news-scraper
-                MODULE_ENTRY: news_scraper.main
+                MODULE_NAME: bubbleseek-scraper
+                MODULE_ENTRY: bubbleseek_scraper.main
         environment:
             - FA_DATABASE_URL=${FA_DATABASE_URL}
-            - FA_NEWS_SCRAPER_INTERVAL=60
+            - FA_BUBBLESEEK_SCRAPER_INTERVAL=60
         restart: unless-stopped
 
         develop:

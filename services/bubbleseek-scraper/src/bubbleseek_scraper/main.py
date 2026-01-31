@@ -8,7 +8,7 @@ from shared.logging import configure_logging
 
 from .scraper import BubbleSeekScraper
 
-configure_logging(service="news-scraper")
+configure_logging(service="bubbleseek-scraper")
 logger = logging.getLogger(__name__)
 
 
@@ -20,7 +20,7 @@ async def run_scraper():
         try:
             if first_run:
                 async with session_scope() as session:
-                    latest_time = await scraper.get_latest_published_time(session)
+                    latest_time = await scraper.get_latest_event_time(session)
 
                     if latest_time is None:
                         logger.info(
@@ -33,13 +33,13 @@ async def run_scraper():
                 first_run = False
 
             logger.info("Starting crawl cycle...")
-            events = await scraper.fetch_latest_news()
+            events = await scraper.fetch_latest_events()
 
             if events:
                 async with session_scope() as session:
                     await scraper.save_events(session, events)
 
-            sleep_time = int(os.getenv("FA_NEWS_SCRAPER_INTERVAL", "60"))
+            sleep_time = int(os.getenv("FA_BUBBLESEEK_SCRAPER_INTERVAL", "60"))
             logger.info(f"Sleeping for {sleep_time} seconds...")
             await asyncio.sleep(sleep_time)
 
@@ -49,7 +49,7 @@ async def run_scraper():
 
 
 async def main():
-    logger.info("Starting News Scraper Service")
+    logger.info("Starting BubbleSeek Scraper Service")
 
     # Handle shutdown signals
     loop = asyncio.get_running_loop()

@@ -8,12 +8,11 @@ resolution-markers = [
 
 [manifest]
 members = [
+    "bubbleseek-scraper",
     "finance-shared",
     "finance-workspace",
     "macro-scraper",
     "mcp-server",
-    "news-scraper",
-    "options-scraper",
     "trade-agent",
     "wyckoff-agent",
 ]
@@ -487,6 +486,21 @@ wheels = [
 ]
 
 [[package]]
+name = "bubbleseek-scraper"
+version = "0.1.0"
+source = { editable = "services/bubbleseek-scraper" }
+dependencies = [
+    { name = "finance-shared" },
+    { name = "httpx" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "finance-shared", editable = "shared" },
+    { name = "httpx", specifier = ">=0.27.0" },
+]
+
+[[package]]
 name = "cachetools"
 version = "6.2.4"
 source = { registry = "https://pypi.org/simple" }
@@ -861,28 +875,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/49/85/12f0a49a7c4ffb70572b6c2ef13c90c88fd190debda93b23f026b25f9634/deprecated-1.3.1.tar.gz", hash = "sha256:b1b50e0ff0c1fddaa5708a2c6b0a6588bb09b892825ab2b214ac9ea9d92a5223", size = 2932523, upload-time = "2025-10-30T08:19:02.757Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/84/d0/205d54408c08b13550c733c4b85429e7ead111c7f0014309637425520a9a/deprecated-1.3.1-py2.py3-none-any.whl", hash = "sha256:597bfef186b6f60181535a29fbe44865ce137a5079f295b479886c82729d5f3f", size = 11298, upload-time = "2025-10-30T08:19:00.758Z" },
-]
-
-[[package]]
-name = "discord-protos"
-version = "0.0.2"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "protobuf" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3a/7c/4b9eaf1f85caa5ff93caa948ee47a2fc5be2d2bbd4b60d3f989da84c8140/discord-protos-0.0.2.tar.gz", hash = "sha256:23953a05f32beedb40b708ec4b457530a6196a49c8d75d337ae9282a2a41c997", size = 13394, upload-time = "2023-03-16T01:32:14.287Z" }
-
-[[package]]
-name = "discord-py-self"
-version = "2.0.1"
-source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "aiohttp" },
-    { name = "discord-protos" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/3c/39/69a5a233e8dd58fc1d1ca0204e30c3e0123d992b2b81be55897d0bdaa029/discord_py_self-2.0.1.tar.gz", hash = "sha256:9c65549534772d63b1b33409c3bb4c28737a9615727fc05b8a9f161c4e3bad7d", size = 1032106, upload-time = "2025-02-23T04:50:49.016Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/81/66/d45e568a1e5ca30ff80694847b1e68ba36af9fe68078eb6a4f3fd8bf1563/discord.py_self-2.0.1-py3-none-any.whl", hash = "sha256:203ed9c62054142e558ea76f679097be0a2d53d91b9793d9f85b18af3f67b322", size = 1142796, upload-time = "2025-02-23T04:50:46.733Z" },
 ]
 
 [[package]]
@@ -2521,21 +2513,6 @@ wheels = [
 ]
 
 [[package]]
-name = "news-scraper"
-version = "0.1.0"
-source = { editable = "services/news-scraper" }
-dependencies = [
-    { name = "finance-shared" },
-    { name = "httpx" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "finance-shared", editable = "shared" },
-    { name = "httpx", specifier = ">=0.27.0" },
-]
-
-[[package]]
 name = "nexus-rpc"
 version = "1.2.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3341,21 +3318,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/50/fc/c47bb04a1d8a941a4061307e1eddfa331ed4d0ab13d8a9781e6db256940a/opentelemetry_util_http-0.60b1.tar.gz", hash = "sha256:0d97152ca8c8a41ced7172d29d3622a219317f74ae6bb3027cfbdcf22c3cc0d6", size = 11053, upload-time = "2025-12-11T13:37:25.115Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/16/5c/d3f1733665f7cd582ef0842fb1d2ed0bc1fba10875160593342d22bba375/opentelemetry_util_http-0.60b1-py3-none-any.whl", hash = "sha256:66381ba28550c91bee14dcba8979ace443444af1ed609226634596b4b0faf199", size = 8947, upload-time = "2025-12-11T13:36:37.151Z" },
-]
-
-[[package]]
-name = "options-scraper"
-version = "0.1.0"
-source = { editable = "services/options-scraper" }
-dependencies = [
-    { name = "discord-py-self" },
-    { name = "finance-shared" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "discord-py-self" },
-    { name = "finance-shared", editable = "shared" },
 ]
 
 [[package]]

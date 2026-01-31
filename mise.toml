@@ -7,17 +7,13 @@ _.file = ".env"
 [tasks.install]
 run = "uv sync --all-packages"
 
-[tasks.news-scraper]
+[tasks.bubbleseek-scraper]
 depends = ["install"]
-run = "uv run python -m news_scraper.main"
+run = "uv run python -m bubbleseek_scraper.main"
 
 [tasks.macro-scraper]
 depends = ["install"]
 run = "uv run python -m macro_scraper.main"
-
-[tasks.options-scraper]
-depends = ["install"]
-run = "uv run python -m options_scraper.main"
 
 [tasks.mcp-server]
 depends = ["install"]
@@ -43,11 +39,8 @@ run = "docker build -f migrate/Dockerfile -t {{vars.image_repo}}finance-migrate:
 [tasks.docker-build-macro-scraper]
 run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=macro-scraper --build-arg MODULE_ENTRY=macro_scraper.main -t {{vars.image_repo}}finance-macro-scraper:latest -t {{vars.image_repo}}finance-macro-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
 
-[tasks.docker-build-news-scraper]
-run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=news-scraper --build-arg MODULE_ENTRY=news_scraper.main -t {{vars.image_repo}}finance-news-scraper:latest -t {{vars.image_repo}}finance-news-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
-
-[tasks.docker-build-options-scraper]
-run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=options-scraper --build-arg MODULE_ENTRY=options_scraper.main -t {{vars.image_repo}}finance-options-scraper:latest -t {{vars.image_repo}}finance-options-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
+[tasks.docker-build-bubbleseek-scraper]
+run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=bubbleseek-scraper --build-arg MODULE_ENTRY=bubbleseek_scraper.main -t {{vars.image_repo}}finance-bubbleseek-scraper:latest -t {{vars.image_repo}}finance-bubbleseek-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
 
 [tasks.docker-build-mcp-server]
 run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=mcp-server --build-arg MODULE_ENTRY=mcp_server.http -t {{vars.image_repo}}finance-mcp-server:latest -t {{vars.image_repo}}finance-mcp-server:{{exec(command='git rev-parse --short HEAD')}} ."
@@ -63,8 +56,7 @@ run = [
   { tasks = [
     "docker-build-migrate",
     "docker-build-macro-scraper",
-    "docker-build-news-scraper",
-    "docker-build-options-scraper",
+    "docker-build-bubbleseek-scraper",
     "docker-build-mcp-server",
     "docker-build-trade-agent",
     "docker-build-stock-api",
@@ -83,16 +75,10 @@ run = [
   "docker push {{vars.image_repo}}finance-macro-scraper:{{exec(command='git rev-parse --short HEAD')}}",
 ]
 
-[tasks.docker-push-news-scraper]
+[tasks.docker-push-bubbleseek-scraper]
 run = [
-  "docker push {{vars.image_repo}}finance-news-scraper:latest",
-  "docker push {{vars.image_repo}}finance-news-scraper:{{exec(command='git rev-parse --short HEAD')}}",
-]
-
-[tasks.docker-push-options-scraper]
-run = [
-  "docker push {{vars.image_repo}}finance-options-scraper:latest",
-  "docker push {{vars.image_repo}}finance-options-scraper:{{exec(command='git rev-parse --short HEAD')}}",
+  "docker push {{vars.image_repo}}finance-bubbleseek-scraper:latest",
+  "docker push {{vars.image_repo}}finance-bubbleseek-scraper:{{exec(command='git rev-parse --short HEAD')}}",
 ]
 
 [tasks.docker-push-mcp-server]
@@ -118,8 +104,7 @@ run = [
   { tasks = [
     "docker-push-migrate",
     "docker-push-macro-scraper",
-    "docker-push-news-scraper",
-    "docker-push-options-scraper",
+    "docker-push-bubbleseek-scraper",
     "docker-push-mcp-server",
     "docker-push-trade-agent",
     "docker-push-stock-api",
@@ -138,16 +123,10 @@ run = [
   { tasks = ["docker-push-macro-scraper"] },
 ]
 
-[tasks.docker-build-push-news-scraper]
+[tasks.docker-build-push-bubbleseek-scraper]
 run = [
-  { tasks = ["docker-build-news-scraper"] },
-  { tasks = ["docker-push-news-scraper"] },
-]
-
-[tasks.docker-build-push-options-scraper]
-run = [
-  { tasks = ["docker-build-options-scraper"] },
-  { tasks = ["docker-push-options-scraper"] },
+  { tasks = ["docker-build-bubbleseek-scraper"] },
+  { tasks = ["docker-push-bubbleseek-scraper"] },
 ]
 
 [tasks.docker-build-push-mcp-server]
