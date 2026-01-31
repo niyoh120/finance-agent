@@ -172,6 +172,34 @@ function buildOpenApiDoc(): OpenApiDoc {
           }
         }
       },
+      '/indicators': {
+        get: {
+          summary: 'List all available indicator IDs and their descriptions',
+          responses: {
+            200: {
+              description: 'Available indicators',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      standard: {
+                        type: 'array',
+                        items: { $ref: '#/components/schemas/IndicatorInfo' }
+                      },
+                      builtin: {
+                        type: 'array',
+                        items: { $ref: '#/components/schemas/IndicatorInfo' }
+                      }
+                    },
+                    required: ['standard', 'builtin']
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       '/indicators/private': {
         get: {
           summary: 'List private indicators for current account',
@@ -315,6 +343,28 @@ function buildOpenApiDoc(): OpenApiDoc {
             type: { type: 'string' }
           },
           required: ['id', 'version', 'name', 'access', 'type']
+        },
+        IndicatorInfo: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            id: { type: 'string', description: 'Indicator ID to use in /indicator endpoint' },
+            name: { type: 'string', description: 'Human readable name' },
+            description: { type: 'string', description: 'What this indicator does' },
+            options: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string' },
+                  type: { type: 'string' },
+                  default: {}
+                }
+              },
+              description: 'Available options/inputs'
+            }
+          },
+          required: ['id', 'name', 'description']
         }
       },
       responses: {
@@ -457,6 +507,52 @@ fastify.get('/indicators/private', async (request, reply) => {
     request.log.error(err);
     return reply.code(500).send({ error: errorMessage(err, 'Failed to fetch private indicators') });
   }
+});
+
+// Static indicator catalog
+const INDICATOR_CATALOG = {
+  standard: [
+    { id: 'STD;SMA', name: 'Simple Moving Average', description: '简单移动平均线', options: [{ name: 'length', type: 'integer', default: 14 }] },
+    { id: 'STD;EMA', name: 'Exponential Moving Average', description: '指数移动平均线', options: [{ name: 'length', type: 'integer', default: 14 }] },
+    { id: 'STD;WMA', name: 'Weighted Moving Average', description: '加权移动平均线', options: [{ name: 'length', type: 'integer', default: 14 }] },
+    { id: 'STD;VWMA', name: 'Volume Weighted Moving Average', description: '成交量加权移动平均线', options: [{ name: 'length', type: 'integer', default: 14 }] },
+    { id: 'STD;RSI', name: 'Relative Strength Index', description: '相对强弱指标', options: [{ name: 'length', type: 'integer', default: 14 }] },
+    { id: 'STD;MACD', name: 'MACD', description: '指数平滑异同移动平均线', options: [{ name: 'fast_length', type: 'integer', default: 12 }, { name: 'slow_length', type: 'integer', default: 26 }, { name: 'signal_length', type: 'integer', default: 9 }] },
+    { id: 'STD;Stochastic', name: 'Stochastic', description: 'KDJ 随机指标', options: [{ name: 'K', type: 'integer', default: 14 }, { name: 'D', type: 'integer', default: 3 }] },
+    { id: 'STD;Stoch_RSI', name: 'Stochastic RSI', description: '随机相对强弱指标', options: [{ name: 'lengthRSI', type: 'integer', default: 14 }, { name: 'lengthStoch', type: 'integer', default: 14 }] },
+    { id: 'STD;Bollinger_Bands', name: 'Bollinger Bands', description: '布林带', options: [{ name: 'length', type: 'integer', default: 20 }, { name: 'mult', type: 'float', default: 2.0 }] },
+    { id: 'STD;ATR', name: 'Average True Range', description: '真实波幅均值', options: [{ name: 'length', type: 'integer', default: 14 }] },
+    { id: 'STD;ADX', name: 'Average Directional Index', description: '平均趋向指标', options: [{ name: 'length', type: 'integer', default: 14 }] },
+    { id: 'STD;CCI', name: 'Commodity Channel Index', description: '商品通道指标', options: [{ name: 'length', type: 'integer', default: 20 }] },
+    { id: 'STD;MOM', name: 'Momentum', description: '动量指标', options: [{ name: 'length', type: 'integer', default: 10 }] },
+    { id: 'STD;ROC', name: 'Rate of Change', description: '变动率指标', options: [{ name: 'length', type: 'integer', default: 9 }] },
+    { id: 'STD;OBV', name: 'On Balance Volume', description: '能量潮指标', options: [] },
+    { id: 'STD;MFI', name: 'Money Flow Index', description: '资金流量指标', options: [{ name: 'length', type: 'integer', default: 14 }] },
+    { id: 'STD;VWAP', name: 'VWAP', description: '成交量加权平均价格', options: [] },
+    { id: 'STD;Ichimoku', name: 'Ichimoku Cloud', description: '一目均衡表 (云图)', options: [{ name: 'conversionPeriods', type: 'integer', default: 9 }, { name: 'basePeriods', type: 'integer', default: 26 }] },
+    { id: 'STD;Pivot_Points_Standard', name: 'Pivot Points', description: '枢轴点', options: [{ name: 'type', type: 'string', default: 'Traditional' }] },
+    { id: 'STD;PSAR', name: 'Parabolic SAR', description: '抛物线转向指标', options: [{ name: 'start', type: 'float', default: 0.02 }, { name: 'inc', type: 'float', default: 0.02 }, { name: 'max', type: 'float', default: 0.2 }] },
+    { id: 'STD;Williams_R', name: 'Williams %R', description: '威廉指标', options: [{ name: 'length', type: 'integer', default: 14 }] },
+    { id: 'STD;Aroon', name: 'Aroon', description: '阿隆指标', options: [{ name: 'length', type: 'integer', default: 14 }] },
+    { id: 'STD;DMI', name: 'Directional Movement Index', description: '趋向指标', options: [{ name: 'length', type: 'integer', default: 14 }] },
+    { id: 'STD;TRIX', name: 'TRIX', description: '三重指数平滑移动平均', options: [{ name: 'length', type: 'integer', default: 18 }] },
+    { id: 'STD;CMF', name: 'Chaikin Money Flow', description: '蔡金资金流量', options: [{ name: 'length', type: 'integer', default: 20 }] },
+    { id: 'STD;Chaikin_Osc', name: 'Chaikin Oscillator', description: '蔡金震荡指标', options: [] },
+    { id: 'STD;Keltner_Channels', name: 'Keltner Channels', description: '肯特纳通道', options: [{ name: 'length', type: 'integer', default: 20 }, { name: 'mult', type: 'float', default: 2.0 }] },
+    { id: 'STD;Donchian_Channels', name: 'Donchian Channels', description: '唐奇安通道', options: [{ name: 'length', type: 'integer', default: 20 }] },
+    { id: 'STD;HV', name: 'Historical Volatility', description: '历史波动率', options: [{ name: 'length', type: 'integer', default: 10 }] },
+    { id: 'STD;MACD_Histogram', name: 'MACD Histogram', description: 'MACD 柱状图', options: [] }
+  ],
+  builtin: [
+    { id: 'Volume@tv-basicstudies-241', name: 'Volume', description: '成交量', options: [] },
+    { id: 'VbPFixed@tv-volumebyprice-53!', name: 'Volume Profile Fixed Range', description: '固定范围成交量分布', options: [{ name: 'rows', type: 'integer', default: 24 }] },
+    { id: 'VbPSessions@tv-volumebyprice-53', name: 'Volume Profile Sessions', description: '分时成交量分布', options: [] },
+    { id: 'VbPVisible@tv-volumebyprice-53', name: 'Volume Profile Visible Range', description: '可视范围成交量分布', options: [] }
+  ]
+};
+
+fastify.get('/indicators', async () => {
+  return INDICATOR_CATALOG;
 });
 
 fastify.get('/openapi.json', async (_request, reply) => {
