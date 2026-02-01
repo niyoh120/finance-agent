@@ -20,6 +20,5 @@ members = [
   "services/macro-scraper",
   "services/bubbleseek-scraper",
   "services/mcp-server",
-  "services/wyckoff-agent",
   "services/trade-agent",
 ]

@@ -13,6 +13,7 @@
 - 基本面分析（YFinanceTools）
 - 威科夫分析（MCP K 线）
 - 风险管理（确定性硬约束 + LLM 微调）
+- 威科夫结构绘图（MCP K 线 + 通用 Matplotlib 渲染工具生成 WEBP base64，便于内联展示）
 
 ## 目录结构
 
@@ -51,6 +52,13 @@ OPENAI_API_KEY=...
 GOOGLE_API_KEY=...
 ```
 
+Chart MCP 示例：
+
+```
+chart_mcp:
+  url: "http://localhost:1122/mcp"
+```
+
 ## 运行
 
 启动 FastAPI（本地）：
@@ -62,13 +70,15 @@ uv run python -m trade_agent.app
 接口：
 
 - `POST /analysis/run` 固定流程分析
+- `POST /analysis/wyckoff` 威科夫结构流程（返回分析结果与图表 URL）
 - `POST /chat` 对话式分析
 - `GET /agent-os` AgentOS UI
 
-AgentOS 中包含 `Trade Analysis Workflow`，可直接通过 UI 或 API 调用工作流运行。
+AgentOS 中包含 `Trade Analysis Workflow` 与 `Wyckoff Analysis Workflow`，可直接通过 UI 或 API 调用工作流运行。
 
 ## 说明
 
 - 风险管理先计算硬性约束，再由 LLM 在硬约束内微调。
 - 技术指标优先使用内部 K 线，YFinance 指标用于验证。
 - 期权流与新闻只走内部数据源，YFinance 作为补充。
+- Matplotlib 渲染工具通过 Pillow 输出 webp，可直接嵌入 Markdown。

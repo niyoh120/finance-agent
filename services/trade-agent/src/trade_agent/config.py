@@ -1,6 +1,6 @@
 import os
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from agno.models.anthropic import Claude
 from agno.models.google import Gemini
@@ -24,6 +24,11 @@ class ModelConfig(BaseSettings):
     base_url: StrHttpUrl | None = None
     api_key_env: str | None = None
 
+    # openai
+    reasoning_effort: Literal["low", "medium", "high", "xhigh"]|None = None
+
+    # gemini
+    thinking_level: Literal["low", "high"]|None = None
 
 class AgentConfig(BaseSettings):
     model: ModelConfig
@@ -32,6 +37,7 @@ class AgentConfig(BaseSettings):
 
 class MCPConfig(BaseSettings):
     url: StrHttpUrl
+    api_key: str | None = None
 
 
 class StockApiConfig(BaseSettings):
@@ -105,7 +111,9 @@ def build_model(model_config: ModelConfig):
     }:
         base_url = os.getenv("OPENAI_BASE_URL")
         return OpenAIChat(
-            id=model_config.model_id, base_url=model_config.base_url or base_url
+            id=model_config.model_id,
+            base_url=model_config.base_url or base_url,
+            reasoning_effort=model_config.reasoning_effort,
         )
 
     if provider in {
@@ -117,6 +125,7 @@ def build_model(model_config: ModelConfig):
             id=model_config.model_id,
             base_url=model_config.base_url or base_url,
             api_key=api_key,
+            reasoning_effort=model_config.reasoning_effort,
         )
 
     if provider in {"openai-responses"}:
@@ -136,7 +145,7 @@ def build_model(model_config: ModelConfig):
         )
 
     if provider in {"gemini", "google"}:
-        return Gemini(id=model_config.model_id)
+        return Gemini(id=model_config.model_id, thinking_level=model_config.thinking_level)
 
     if provider in {"anthropic", "claude"}:
         return Claude(id=model_config.model_id)

@@ -12,12 +12,16 @@ from .agents import (
     build_options_flow_analyst,
     build_sentiment_analyst,
     build_technical_analyst,
+    build_wyckoff_agent,
     build_wyckoff_analyst,
 )
 from .config import load_config
 from .models import TradingDecision
 from .teams import build_chat_team
-from .workflows import AnalysisEngine, build_analysis_workflow
+from .workflows import (
+    AnalysisEngine,
+    build_analysis_workflow,
+)
 
 configure_logging(service="trade-agent")
 logger = structlog.get_logger(__name__)
@@ -29,6 +33,7 @@ def build_agents(config):
     sentiment_analyst = build_sentiment_analyst(config)
     technical_analyst = build_technical_analyst(config)
     wyckoff_analyst = build_wyckoff_analyst(config)
+    wyckoff_agent = build_wyckoff_agent(config)
 
     return [
         fundamental_analyst,
@@ -36,6 +41,7 @@ def build_agents(config):
         sentiment_analyst,
         technical_analyst,
         wyckoff_analyst,
+        wyckoff_agent,
     ]
 
 
@@ -52,11 +58,16 @@ agent_os = AgentOS(
     teams=[chat_team],
     workflows=[analysis_workflow],
     agents=build_agents(config),
+    tracing=True,
 )
 
 
 class AnalysisRequest(BaseModel):
     ticker: str = Field(..., min_length=1)
+
+
+class WyckoffRequest(BaseModel):
+    message: str = Field(..., min_length=1)
 
 
 class ChatRequest(BaseModel):
