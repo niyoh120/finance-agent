@@ -95,7 +95,7 @@ class Candle(McpBaseModel):
 class StockHistoryResult(McpBaseModel):
     """股票历史数据查询结果."""
 
-    symbol: str = Field(description="股票代码")
+    symbol: str = Field(description="TradingView market id，格式为 EXCHANGE:SYMBOL")
     timeframe: str = Field(description="时间周期")
     range: int = Field(description="请求的数据点数量")
     to: int | None = Field(description="结束时间戳 (Unix timestamp, 秒)", default=None)

@@ -142,13 +142,17 @@ docker compose --profile migrate run --rm migrate
 ### MCP Server
 - 提供新闻、期权、股票与宏观数据查询工具。
 - 宏观工具覆盖：报告快照、模块/因子快照、模块历史、总指数历史。
+- 股票历史数据工具 `fetch_stock_history`：
+  - `symbol` 必须为 `EXCHANGE:SYMBOL`（TradingView market id），用于避免同名 ticker 查错。
+  - 支持的 `EXCHANGE` 白名单：`NASDAQ, NYSE, AMEX, SSE, SZSE, HKEX, BINANCE, COINBASE, KRAKEN, OKX, BYBIT, BITSTAMP, CRYPTOCOM`
+  - 示例：`NASDAQ:AAPL`、`SSE:000001`、`HKEX:700`、`BINANCE:BTCUSDT`
 Claude Desktop 配置示例:
 ```json
 {
   "mcpServers": {
     "finance": {
       "command": "docker",
-      "args": ["exec", "-i", "finance-agent-mcp-server-1", "python", "src/main.py"]
+      "args": ["exec", "-i", "finance-agent-mcp-server-1", "python", "-m", "mcp_server.studio"]
     }
   }
 }

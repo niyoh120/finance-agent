@@ -625,8 +625,13 @@ async def fetch_stock_history(
     symbol: Annotated[
         str,
         Field(
-            description="股票代码，如 'AAPL', 'TSLA' (无需交易所前缀)",
+            description=(
+                "TradingView market id，必须为 'EXCHANGE:SYMBOL'。"
+                "支持的 EXCHANGE 前缀白名单：NASDAQ, NYSE, AMEX, SSE, SZSE, HKEX, BINANCE, COINBASE, KRAKEN, OKX, BYBIT, BITSTAMP, CRYPTOCOM。"
+                "示例：NASDAQ:AAPL、NYSE:BRK.B、SSE:000001、SZSE:000001、HKEX:700、BINANCE:BTCUSDT、COINBASE:BTCUSD"
+            ),
             min_length=1,
+            pattern=r"^(NASDAQ|NYSE|AMEX|SSE|SZSE|HKEX|BINANCE|COINBASE|KRAKEN|OKX|BYBIT|BITSTAMP|CRYPTOCOM):[^\s:]+$",
         ),
     ],
     timeframe: Annotated[
@@ -656,7 +661,10 @@ async def fetch_stock_history(
     """从 stock-api 获取股票历史 K 线数据 (OHLCV).
 
     该工具通过 HTTP 调用内部 `stock-api` 服务，返回 K 线数据。
-    返回结果按时间升序排列 (最早的在前)。
+    返回结果按时间降序排列 (最新的在前)。
+
+    注意：为避免同名 ticker 查错，本工具强制要求 `symbol` 使用 TradingView market id
+    形式 `EXCHANGE:SYMBOL`，且 `EXCHANGE` 必须在白名单内。
     """
 
     params: dict[str, str] = {
