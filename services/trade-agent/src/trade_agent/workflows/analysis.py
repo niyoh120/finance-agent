@@ -1,10 +1,11 @@
+import asyncio
 import logging
 from datetime import datetime, timezone
+from typing import AsyncIterator, Union
 
 from agno.db.sqlite import SqliteDb
-from agno.workflow.step import Step
-from agno.workflow.types import StepInput, StepOutput
-from agno.workflow.workflow import Workflow
+from agno.workflow import Parallel, Step, StepInput, StepOutput, Workflow
+from fsspec.implementations.http import ex
 
 from ..agents import (
     RiskManager,
@@ -29,6 +30,73 @@ from ..models import (
 from ..tools import fetch_stock_history
 
 logger = logging.getLogger(__name__)
+
+
+def build_paranalysis_step(config) -> Parallel:
+    technical = build_technical_analyst(config)
+    options = build_options_flow_analyst(config)
+    sentiment = build_sentiment_analyst(config)
+    fundamental = build_fundamental_analyst(config)
+    wyckoff = build_wyckoff_analyst(config)
+
+    agents = [
+        {
+            "name": "technical",
+            "desc": "技术分析",
+            "agent": technical,
+        },
+        {
+            "name": "options",
+            "desc": "期权分析",
+            "agent": options,
+        },
+        {
+            "name": "sentiment",
+            "desc": "情绪分析",
+            "agent": sentiment,
+        },
+        {
+            "name": "fundamental",
+            "desc": "基本面分析",
+            "agent": fundamental,
+        },
+        {
+            "name": "wyckoff",
+            "desc": "Wyckoff分析",
+            "agent": wyckoff,
+        },
+    ]
+
+    sem = asyncio.Semaphore(2)
+
+    steps = []
+
+    for agent_desc in agents:
+        agent = agent_desc["agent"]
+
+        async def executor(
+            step_input: StepInput,
+        ) -> AsyncIterator[Union["WorkflowRunOutputEvent", StepOutput]]:
+            if not isinstance(step_input.input, str):
+                raise RuntimeError("Input must be str.")
+            symbol = step_input.input
+            async with sem:
+                response_iterator = agent.arun(
+                    input=symbol, stream=True, stream_events=True
+                )
+                async for event in response_iterator:
+                    yield event
+            response = agent.get_last_run_output()
+            yield StepOutput(content=response)
+
+        steps.append(
+            Step(
+                name=agent_desc["name"],
+                description=agent_desc["desc"],
+                executor=executor,
+            )
+        )
+    return Parallel(*steps, name="parallel_analysis", description="并行分析阶段")
 
 
 def build_analysis_workflow(config: AppConfig) -> Workflow:
