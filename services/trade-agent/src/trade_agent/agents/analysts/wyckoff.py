@@ -22,7 +22,10 @@ def build_wyckoff_analyst(config: AppConfig, db=None) -> Agent:
     return Agent(
         name="Wyckoff Analyst",
         model=model,
-        tools=[WebSearchTools(), FinanceTools(include_tools=["fetch_stock_history"])],
+        tools=[
+            WebSearchTools(),
+            FinanceTools(include_tools=["fetch_stock_history", "search_market"]),
+        ],
         instructions=instructions,
         output_schema=WyckoffSignal,
         add_datetime_to_context=True,

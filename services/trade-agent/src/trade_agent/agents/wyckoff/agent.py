@@ -21,8 +21,8 @@ def build_agent(config: AppConfig) -> Agent:
 
     工具使用规则（重要）：
     - 使用 fetch_stock_history 时，symbol 必须为 TradingView market id：EXCHANGE:SYMBOL。
-    - 支持的 EXCHANGE 白名单：NASDAQ, NYSE, AMEX, SSE, SZSE, HKEX, BINANCE, COINBASE, KRAKEN, OKX, BYBIT, BITSTAMP, CRYPTOCOM。
-    - 如果用户只提供裸 ticker/数字代码，不要猜交易所前缀：必须先向用户确认市场。
+    - 如果不确定交易所前缀，不要猜：优先调用 search_market 获取正确的 market id（使用返回结果中的 id）。
+    - 如果 search_market 返回为空或不可用，再向用户确认市场。
 
     执行步骤：
     第一步：威科夫市场结构分析
@@ -64,7 +64,7 @@ def build_agent(config: AppConfig) -> Agent:
         db=db,
         tools=[
             FinanceTools(
-                include_tools=["fetch_stock_history"],
+                include_tools=["fetch_stock_history", "search_market"],
             ),
             TechnicalIndicatorTools(),
             MatplotlibRenderTools(),

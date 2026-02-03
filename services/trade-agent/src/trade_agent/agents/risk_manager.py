@@ -40,7 +40,7 @@ def build_risk_manager(config: AppConfig, db=None) -> Agent:
                 ]
             ),
             WebSearchTools(),
-            FinanceTools(include_tools=["fetch_stock_history"]),
+            FinanceTools(include_tools=["fetch_stock_history", "search_market"]),
             calculate_hard_limits,
         ],
         instructions=instructions,

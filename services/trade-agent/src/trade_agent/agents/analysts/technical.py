@@ -13,7 +13,7 @@ def build_technical_analyst(config: AppConfig, db=None) -> Agent:
         name="Technical Analyst",
         model=model,
         tools=[
-            FinanceTools(include_tools=["fetch_stock_history"]),
+            FinanceTools(include_tools=["fetch_stock_history", "search_market"]),
             TechnicalIndicatorTools(),
         ],
         instructions=(
