@@ -1,13 +1,15 @@
 import asyncio
 import logging
 from datetime import datetime, timezone
-from typing import AsyncIterator, Union, cast
+from typing import Any, AsyncIterator, Union, cast
 
 from agno.agent import Agent
 from agno.db.in_memory import InMemoryDb
 from agno.db.sqlite import SqliteDb
 from agno.run.workflow import WorkflowRunOutputEvent
 from agno.workflow import Parallel, Step, StepInput, StepOutput, Workflow
+from beartype.typing import Callable
+from pydantic import BaseModel
 
 from ..agents import (
     build_fundamental_analyst,
@@ -21,58 +23,80 @@ from ..agents import (
 from ..config import AppConfig
 from ..models import (
     DecisionDraft,
+    FundamentalSignal,
+    OptionsFlowSignal,
+    RiskLimits,
+    SentimentSignal,
+    TechnicalSignal,
     TradingDecision,
+    WyckoffSignal,
 )
 
 logger = logging.getLogger(__name__)
 
 
-def build_parallel_analysis_step(config) -> Parallel:
-    agents = [
-        {
-            "name": "technical",
-            "desc": "技术分析",
-            "agent_builder": build_technical_analyst,
-        },
-        {
-            "name": "options",
-            "desc": "期权分析",
-            "agent_builder": build_options_flow_analyst,
-        },
-        {
-            "name": "sentiment",
-            "desc": "情绪分析",
-            "agent_builder": build_sentiment_analyst,
-        },
-        {
-            "name": "fundamental",
-            "desc": "基本面分析",
-            "agent_builder": build_fundamental_analyst,
-        },
-        {
-            "name": "wyckoff",
-            "desc": "Wyckoff分析",
-            "agent_builder": build_wyckoff_analyst,
-        },
-        {
-            "name": "risk_limits",
-            "desc": "风险控制",
-            "agent_builder": build_risk_manager,
-        },
+class AnalysisStepConfig(BaseModel):
+    name: str
+    desc: str
+    agent_builder: Callable[..., Agent]
+    output_schema: Any
+
+
+def build_parallel_analysis_step(config: AppConfig) -> Parallel:
+    step_configs = [
+        AnalysisStepConfig(
+            name="technical",
+            desc="技术分析",
+            agent_builder=build_technical_analyst,
+            output_schema=TechnicalSignal,
+        ),
+        AnalysisStepConfig(
+            name="options",
+            desc="期权分析",
+            agent_builder=build_options_flow_analyst,
+            output_schema=OptionsFlowSignal,
+        ),
+        AnalysisStepConfig(
+            name="sentiment",
+            desc="情绪分析",
+            agent_builder=build_sentiment_analyst,
+            output_schema=SentimentSignal,
+        ),
+        AnalysisStepConfig(
+            name="fundamental",
+            desc="基本面分析",
+            agent_builder=build_fundamental_analyst,
+            output_schema=FundamentalSignal,
+        ),
+        AnalysisStepConfig(
+            name="wyckoff",
+            desc="Wyckoff分析",
+            agent_builder=build_wyckoff_analyst,
+            output_schema=WyckoffSignal,
+        ),
+        AnalysisStepConfig(
+            name="risk_limits",
+            desc="风险控制",
+            agent_builder=build_risk_manager,
+            output_schema=RiskLimits,
+        ),
     ]
 
-    sem = asyncio.Semaphore(1)
+    sem = asyncio.Semaphore(config.analysis.parallel_num)
 
     steps = []
 
-    def make_executor(agent_builder):
+    def make_executor(step_config: AnalysisStepConfig):
         async def executor(
             step_input: StepInput,
         ) -> AsyncIterator[Union[WorkflowRunOutputEvent, StepOutput]]:
             async with sem:
-                agent = cast(Agent, agent_builder(config, db=InMemoryDb()))
+                agent = step_config.agent_builder(config, db=InMemoryDb())
                 response_iter = agent.arun(
-                    input=str(step_input.input), stream=True, stream_events=True
+                    input=str(step_input.input),
+                    stream=True,
+                    stream_events=True,
+                    output_schema=step_config.output_schema,
                 )
                 async for event in response_iter:
                     yield event
@@ -82,15 +106,12 @@ def build_parallel_analysis_step(config) -> Parallel:
 
         return executor
 
-    for agent_desc in agents:
-        name = cast(str, agent_desc["name"])
-        desc = cast(str, agent_desc["desc"])
-
+    for step_config in step_configs:
         steps.append(
             Step(
-                name=name,
-                description=desc,
-                executor=make_executor(agent_desc["agent_builder"]),
+                name=step_config.name,
+                description=step_config.desc,
+                executor=make_executor(step_config),
             )
         )
 
@@ -132,7 +153,9 @@ def build_analysis_workflow(config: AppConfig) -> Workflow:
             f"威科夫分析: {wyckoff_signal}\n"
             f"风险控制 {risk_limits}"
         )
-        response = await portfolio_manager.arun(prompt, stream=False)
+        response = await portfolio_manager.arun(
+            input=prompt, stream=False, output_schema=DecisionDraft
+        )
         draft = cast(DecisionDraft, response.content)
 
         decision = TradingDecision(

@@ -3,7 +3,6 @@ from agno.tools.websearch import WebSearchTools
 from agno.tools.yfinance import YFinanceTools
 
 from ...config import AppConfig
-from ...models import FundamentalSignal
 
 
 def build_fundamental_analyst(config: AppConfig, db=None) -> Agent:
@@ -29,11 +28,10 @@ def build_fundamental_analyst(config: AppConfig, db=None) -> Agent:
             "你是基本面分析师，你擅长使用工具获取数据评估公司内在价值。\n"
             "关注估值(P/E,P/B,PEG)、盈利能力(ROE,利润率)、财务健康(负债率)和成长性, 结合分析师一致预期给出结论。\n"
             "注意当前时间，不要获取过时的数据。\n"
-            "输出 FundamentalSignal，包含估值水平、财务健康结论与关键指标。\n"
-            "尽量使用中文。\n"
+            "使用中文回答。\n"
         ),
-        output_schema=FundamentalSignal,
         add_datetime_to_context=True,
+        markdown=True,
         stream=True,
         stream_events=True,
         db=db,

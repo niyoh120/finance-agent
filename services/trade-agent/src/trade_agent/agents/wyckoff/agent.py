@@ -76,6 +76,5 @@ def build_agent(config: AppConfig) -> Agent:
         markdown=True,
         add_history_to_context=True,
         num_history_runs=15,
-        reasoning=True,
         **params,
     )

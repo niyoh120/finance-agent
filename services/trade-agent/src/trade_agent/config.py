@@ -58,6 +58,7 @@ class RiskConfig(BaseSettings):
 
 
 class AnalysisConfig(BaseSettings):
+    parallel_num: int = 1
     signal_weights: dict[str, float] = Field(default_factory=dict)
 
 

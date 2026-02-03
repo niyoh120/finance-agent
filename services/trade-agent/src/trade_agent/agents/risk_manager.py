@@ -23,7 +23,6 @@ def build_risk_manager(config: AppConfig, db=None) -> Agent:
     instructions = (
         "你是投资风险管理顾问，通过工具获取投资标的基本信息和历史价格，调用计算工具得到硬性约束，并在硬性约束内根据标的特点提出风控建议。 \n"
         "注意当前时间，不要获取过时的数据。\n"
-        "输出RiskLimits。\n"
         "尽量使用中文。\n"
     )
 
@@ -44,8 +43,8 @@ def build_risk_manager(config: AppConfig, db=None) -> Agent:
             calculate_hard_limits,
         ],
         instructions=instructions,
-        output_schema=RiskLimits,
         add_datetime_to_context=True,
+        markdown=True,
         stream=True,
         stream_events=True,
         db=db,
