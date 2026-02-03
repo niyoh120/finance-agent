@@ -1,8 +1,40 @@
 import TradingView from '@mathieuc/tradingview';
-import type { BuiltInIndicator, Client, PineIndicator } from '@mathieuc/tradingview';
+import type { BuiltInIndicator, Client, MarketType, PineIndicator, SearchMarketResult } from '@mathieuc/tradingview';
 import { Candle, IndicatorResult, QuoteData, TechnicalAnalysis } from './types.js';
 
 type TradingViewModule = typeof TradingView;
+
+export type MarketSearchItem = {
+  id: string;
+  exchange: string;
+  full_exchange: string;
+  symbol: string;
+  description: string;
+  type: string;
+};
+
+export async function searchMarkets(params: {
+  query: string;
+  type?: MarketType;
+  offset?: number;
+}): Promise<MarketSearchItem[]> {
+  const query = params.query.trim();
+  if (!query) return [];
+
+  const offset = params.offset ?? 0;
+  const filter = params.type ?? '';
+
+  const results = (await TradingView.searchMarketV3(query, filter, offset)) as SearchMarketResult[];
+
+  return results.map((r) => ({
+    id: r.id,
+    exchange: r.exchange,
+    full_exchange: r.fullExchange,
+    symbol: r.symbol,
+    description: r.description,
+    type: r.type
+  }));
+}
 
 function createClient(): Client {
   const token = process.env.FA_STOCK_API_TV_SESSION;

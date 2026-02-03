@@ -1,4 +1,16 @@
 declare module '@mathieuc/tradingview' {
+  export type MarketType = 'stock' | 'futures' | 'forex' | 'cfd' | 'crypto' | 'index' | 'economic';
+
+  export interface SearchMarketResult {
+    id: string;
+    exchange: string;
+    fullExchange: string;
+    symbol: string;
+    description: string;
+    type: string;
+    getTA?: () => Promise<unknown>;
+  }
+
   export interface ClientOptions {
     token?: string;
     signature?: string;
@@ -104,6 +116,12 @@ declare module '@mathieuc/tradingview' {
 
   export function searchIndicator(search?: string): Promise<unknown[]>;
 
+  export function searchMarketV3(
+    search: string,
+    filter?: MarketType | '',
+    offset?: number
+  ): Promise<SearchMarketResult[]>;
+
   export function getTA(id: string): Promise<unknown>;
 
   const TradingView: {
@@ -112,6 +130,7 @@ declare module '@mathieuc/tradingview' {
     getIndicator: typeof getIndicator;
     getPrivateIndicators: typeof getPrivateIndicators;
     searchIndicator: typeof searchIndicator;
+    searchMarketV3: typeof searchMarketV3;
     getTA: typeof getTA;
   };
 
