@@ -1,4 +1,5 @@
 [tools]
+node = "lts"
 python = "3.12"
 
 [env]
