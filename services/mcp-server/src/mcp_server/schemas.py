@@ -102,6 +102,32 @@ class StockHistoryResult(McpBaseModel):
     candles: list[Candle] = Field(description="K 线数据列表")
 
 
+class TradingViewMarketItem(McpBaseModel):
+    """TradingView 市场搜索结果条目."""
+
+    id: str = Field(description="TradingView market id，例如 NASDAQ:AAPL")
+    exchange: str | None = Field(description="交易所/市场代码", default=None)
+    full_exchange: str | None = Field(description="交易所全称", default=None)
+    symbol: str | None = Field(description="代码/合约（不含交易所前缀）", default=None)
+    description: str | None = Field(description="标的描述", default=None)
+    type: str | None = Field(
+        description="标的类型，如 stock/crypto/index", default=None
+    )
+
+
+class TradingViewMarketSearchResult(McpBaseModel):
+    """TradingView 市场搜索结果."""
+
+    query: str = Field(description="搜索关键词")
+    type: str | None = Field(
+        description="类型过滤（stock/crypto/...），留空表示不过滤", default=None
+    )
+    limit: int = Field(description="返回数量上限")
+    offset: int = Field(description="分页偏移")
+    count: int = Field(description="实际返回数量")
+    results: list[TradingViewMarketItem] = Field(description="候选市场列表")
+
+
 class OptionsFlowItem(McpBaseModel):
     """单条期权大单记录."""
 

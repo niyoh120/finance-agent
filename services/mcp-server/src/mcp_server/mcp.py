@@ -2,7 +2,7 @@ import json
 import logging
 import os
 from datetime import date, datetime, timedelta, timezone
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 import httpx
 from fastmcp import FastMCP
@@ -43,6 +43,7 @@ from .schemas import (
     StockHistoryResult,
     Timeframe,
     TopSymbol,
+    TradingViewMarketSearchResult,
     TypeStats,
 )
 
@@ -93,7 +94,13 @@ async def query_news_articles(
     ] = 7,
     symbols: Annotated[
         list[str] | None,
-        Field(description="股票代码列表，如 ['AAPL', 'TSLA']。留空则不过滤"),
+        Field(
+            description=(
+                "股票代码列表（不带交易所前缀），如 ['AAPL', 'TSLA']。用于过滤新闻。"
+                "注意：如果要拉历史 K 线，需要使用 `fetch_stock_history` 的 EXCHANGE:SYMBOL 格式；"
+                "不确定交易所前缀时请先调用 `search_market`。"
+            )
+        ),
     ] = None,
     type: Annotated[
         NewsType | None,
@@ -615,9 +622,101 @@ async def fetch_stock_api_json(path: str, params: dict[str, str]) -> dict[str, A
     timeout = httpx.Timeout(30.0)
 
     async with httpx.AsyncClient(timeout=timeout) as client:
-        resp = await client.get(url, params=params)
-        resp.raise_for_status()
-        return resp.json()
+        try:
+            resp = await client.get(url, params=params)
+        except Exception as exc:
+            raise ToolError(f"请求 stock-api 失败: {str(exc)}") from exc
+
+        try:
+            payload = resp.json()
+        except Exception:
+            payload = None
+
+        if resp.is_error:
+            detail: str | None = None
+            if isinstance(payload, dict):
+                value = payload.get("error")
+                if isinstance(value, str) and value.strip():
+                    detail = value.strip()
+
+            if detail:
+                raise ToolError(
+                    f"stock-api 请求失败 (HTTP {resp.status_code}): {detail}"
+                )
+
+            body = resp.text.strip()
+            if len(body) > 1000:
+                body = body[:1000] + "..."
+            raise ToolError(
+                f"stock-api 请求失败 (HTTP {resp.status_code}): {body or resp.reason_phrase}"
+            )
+
+        if not isinstance(payload, dict):
+            raise ToolError("stock-api 返回格式不符合预期: 不是 JSON object")
+
+        return payload
+
+
+@mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True})
+async def search_market(
+    query: Annotated[
+        str,
+        Field(
+            description=(
+                "搜索关键词。"
+                "支持 ticker、公司名或 'EXCHANGE:' 前缀提示。"
+                "示例：'WMT'、'walmart'、'NASDAQ:'、'BINANCE:'."
+            ),
+            min_length=1,
+        ),
+    ],
+    type: Annotated[
+        Literal["stock", "futures", "forex", "cfd", "crypto", "index", "economic"]
+        | None,
+        Field(
+            description=(
+                "市场类型过滤。留空则不过滤。"
+                "可选：stock/futures/forex/cfd/crypto/index/economic"
+            )
+        ),
+    ] = "stock",
+    limit: Annotated[
+        int,
+        Field(
+            description="返回候选数量上限",
+            ge=1,
+            le=50,
+        ),
+    ] = 10,
+    offset: Annotated[
+        int,
+        Field(
+            description="分页偏移 (start)",
+            ge=0,
+            le=10000,
+        ),
+    ] = 0,
+) -> TradingViewMarketSearchResult:
+    """根据关键词返回候选 market id 列表。
+
+    推荐工作流：
+    1) 调用本工具用 ticker/公司名搜索，得到候选的 `id`（形如 `NASDAQ:AAPL`）
+    2) 将 `id` 传给 `fetch_stock_history.symbol` 获取历史 K 线
+    """
+
+    params: dict[str, str] = {
+        "q": query,
+        "limit": str(limit),
+        "offset": str(offset),
+    }
+    if type is not None:
+        params["type"] = type
+
+    try:
+        payload = await fetch_stock_api_json("/v0/searchMarket", params)
+        return TradingViewMarketSearchResult.model_validate(payload, extra="ignore")
+    except ValidationError as exc:
+        raise ToolError(f"stock-api 返回格式不符合预期: {exc}")
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True})
@@ -626,12 +725,12 @@ async def fetch_stock_history(
         str,
         Field(
             description=(
-                "TradingView market id，必须为 'EXCHANGE:SYMBOL'。"
-                "支持的 EXCHANGE 前缀白名单：NASDAQ, NYSE, AMEX, SSE, SZSE, HKEX, BINANCE, COINBASE, KRAKEN, OKX, BYBIT, BITSTAMP, CRYPTOCOM。"
-                "示例：NASDAQ:AAPL、NYSE:BRK.B、SSE:000001、SZSE:000001、HKEX:700、BINANCE:BTCUSDT、COINBASE:BTCUSD"
+                "TradingView market id，格式为 'EXCHANGE:SYMBOL'。"
+                "如果你不确定交易所前缀（尤其是标的迁移/新标的），请先调用 `search_market` 搜索得到正确的 market id。"
+                "示例：NASDAQ:AAPL、NYSE:BRK.B、SSE:000001、SZSE:000001、HKEX:700、BINANCE:BTCUSDT"
             ),
             min_length=1,
-            pattern=r"^(NASDAQ|NYSE|AMEX|SSE|SZSE|HKEX|BINANCE|COINBASE|KRAKEN|OKX|BYBIT|BITSTAMP|CRYPTOCOM):[^\s:]+$",
+            pattern=r"^[^\s:]+:[^\s:]+$",
         ),
     ],
     timeframe: Annotated[
@@ -664,7 +763,8 @@ async def fetch_stock_history(
     返回结果按时间降序排列 (最新的在前)。
 
     注意：为避免同名 ticker 查错，本工具强制要求 `symbol` 使用 TradingView market id
-    形式 `EXCHANGE:SYMBOL`，且 `EXCHANGE` 必须在白名单内。
+    形式 `EXCHANGE:SYMBOL`。如果不确定交易所前缀，请先调用 `search_market`
+    搜索得到正确的 market id。
     """
 
     params: dict[str, str] = {
@@ -680,10 +780,15 @@ async def fetch_stock_history(
         return StockHistoryResult.model_validate(payload, extra="ignore")
     except ValidationError as exc:
         raise ToolError(f"stock-api 返回格式不符合预期: {exc}")
-    except httpx.HTTPStatusError as exc:
-        raise ToolError(
-            f"获取股票历史数据失败 (HTTP {exc.response.status_code}): {exc}"
-        )
+    except ToolError as exc:
+        msg = str(exc)
+        if "Failed to load chart for" in msg or "HTTP 404" in msg:
+            raise ToolError(
+                msg
+                + "\n\n可能原因：交易所前缀错误或 market id 不存在。"
+                + "建议：先调用 `search_market(query=...)` 查到正确的 TradingView market id，再调用 `fetch_stock_history`。"
+            )
+        raise
     except Exception as exc:
         raise ToolError(f"获取股票历史数据失败: {str(exc)}")
 
@@ -737,7 +842,13 @@ async def list_private_indicators() -> str:
 async def query_options_flow(
     symbol: Annotated[
         str | None,
-        Field(description="股票代码，如 'BSX', 'AAPL'。留空则返回所有标的"),
+        Field(
+            description=(
+                "股票代码（不带交易所前缀），如 'BSX', 'AAPL'。用于过滤期权流。"
+                "注意：如果要拉历史 K 线，需要使用 `fetch_stock_history` 的 EXCHANGE:SYMBOL 格式；"
+                "不确定交易所前缀时请先调用 `search_market`。"
+            )
+        ),
     ] = None,
     side: Annotated[
         OptionsSide | None,

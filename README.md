@@ -87,6 +87,18 @@ docker compose --profile migrate run --rm migrate
   - 示例：
     - `curl "http://localhost:3000/history?symbol=NASDAQ:AAPL&timeframe=D&range=200"`
 
+- `GET /search?q=<Q>&type=<TYPE>&offset=<N>&limit=<N>`
+  - 用途：搜索 TradingView 市场，返回候选 market id（用于解决交易所前缀不确定/标的迁移上市地等问题）
+  - 参数：
+    - `q`（必填）：ticker、公司名或 `EXCHANGE:` 前缀提示，例如 `WMT`、`walmart`、`NASDAQ:`
+    - `type`（可选，默认 `stock`）：`stock/futures/forex/cfd/crypto/index/economic`
+    - `offset`（可选，默认 `0`）：分页偏移
+    - `limit`（可选，默认 `10`，最大 `50`）：返回数量上限
+  - 响应：`{ query, type?, offset, limit, count, results: Market[] }`
+    - `Market`：`{ id, exchange, full_exchange, symbol, description, type }`
+  - 示例：
+    - `curl "http://localhost:3000/v0/searchMarket?q=WMT&type=stock&limit=5"`
+
 - `GET /indicator?symbol=<SYMBOL>&indicatorId=<ID>&timeframe=<TF>&range=<N>&to=<TS>&options=<JSON>`
   - 用途：获取 TradingView 技术指标输出（含高级会员账号可访问的私有/邀请制指标，视账号权限而定）
   - 参数：
@@ -142,9 +154,12 @@ docker compose --profile migrate run --rm migrate
 ### MCP Server
 - 提供新闻、期权、股票与宏观数据查询工具。
 - 宏观工具覆盖：报告快照、模块/因子快照、模块历史、总指数历史。
+- TradingView 市场搜索工具 `search_market`：
+  - 用途：搜索正确的 TradingView market id（解决交易所前缀不确定、标的迁移上市地等问题）
+  - 用法：用 ticker/公司名搜索，拿到返回结果中的 `id`（形如 `NASDAQ:AAPL`）
 - 股票历史数据工具 `fetch_stock_history`：
   - `symbol` 必须为 `EXCHANGE:SYMBOL`（TradingView market id），用于避免同名 ticker 查错。
-  - 支持的 `EXCHANGE` 白名单：`NASDAQ, NYSE, AMEX, SSE, SZSE, HKEX, BINANCE, COINBASE, KRAKEN, OKX, BYBIT, BITSTAMP, CRYPTOCOM`
+  - 如果不确定交易所前缀，请先调用 `search_market` 搜索得到正确的 `id` 再查询历史数据。
   - 示例：`NASDAQ:AAPL`、`SSE:000001`、`HKEX:700`、`BINANCE:BTCUSDT`
 Claude Desktop 配置示例:
 ```json
