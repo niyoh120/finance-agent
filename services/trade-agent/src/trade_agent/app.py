@@ -10,16 +10,15 @@ from shared.logging import configure_logging
 from .agents import (
     build_fundamental_analyst,
     build_options_flow_analyst,
+    build_risk_manager,
     build_sentiment_analyst,
     build_technical_analyst,
     build_wyckoff_agent,
     build_wyckoff_analyst,
 )
 from .config import load_config
-from .models import TradingDecision
 from .teams import build_chat_team
 from .workflows import (
-    AnalysisEngine,
     build_analysis_workflow,
 )
 
@@ -33,6 +32,7 @@ def build_agents(config):
     sentiment_analyst = build_sentiment_analyst(config)
     technical_analyst = build_technical_analyst(config)
     wyckoff_analyst = build_wyckoff_analyst(config)
+    risk_manager = build_risk_manager(config)
     wyckoff_agent = build_wyckoff_agent(config)
 
     return [
@@ -40,6 +40,7 @@ def build_agents(config):
         options_flow_analyst,
         sentiment_analyst,
         technical_analyst,
+        risk_manager,
         wyckoff_analyst,
         wyckoff_agent,
     ]
@@ -47,7 +48,6 @@ def build_agents(config):
 
 config = load_config()
 logger.info("Load config succ.", config=config)
-analysis_engine = AnalysisEngine(config)
 analysis_workflow = build_analysis_workflow(config)
 chat_team = build_chat_team(config)
 
@@ -77,11 +77,6 @@ class ChatRequest(BaseModel):
 
 class ChatResponse(BaseModel):
     content: Any
-
-
-@app.post("/analysis/run", response_model=TradingDecision)
-def run_analysis(request: AnalysisRequest) -> TradingDecision:
-    return analysis_engine.run(request.ticker)
 
 
 @app.post("/chat", response_model=ChatResponse)

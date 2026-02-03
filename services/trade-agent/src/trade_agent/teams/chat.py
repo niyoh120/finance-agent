@@ -16,7 +16,7 @@ def build_chat_team(config: AppConfig) -> Team:
 
     team = Team(
         name="Trade Analyst Team",
-        model=config.get_model_for_agent("portfolio"),
+        model=config.get_model_for_agent("trade_analyst"),
         db=db,
         members=[
             build_technical_analyst(config),
@@ -25,16 +25,16 @@ def build_chat_team(config: AppConfig) -> Team:
             build_fundamental_analyst(config),
             build_wyckoff_analyst(config),
         ],
-        share_member_interactions=True,
         instructions=[
-            "根据用户问题选择最合适的分析师回答。",
-            "保持回答客观、结构化。",
+            "根据用户问题选择相关的分析师进行分析，根据分析结果使用中文回答。",
         ],
+        share_member_interactions=True,
         markdown=True,
         stream=True,
+        stream_events=True,
         add_history_to_context=True,
         num_history_runs=15,
-        **config.get_params_for_agent("portfolio"),
+        **config.get_params_for_agent("trade_analyst"),
     )
 
     return team

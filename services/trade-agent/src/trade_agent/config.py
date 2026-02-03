@@ -25,10 +25,11 @@ class ModelConfig(BaseSettings):
     api_key_env: str | None = None
 
     # openai
-    reasoning_effort: Literal["low", "medium", "high", "xhigh"]|None = None
+    reasoning_effort: Literal["low", "medium", "high", "xhigh"] | None = None
 
     # gemini
-    thinking_level: Literal["low", "high"]|None = None
+    thinking_level: Literal["low", "high"] | None = None
+
 
 class AgentConfig(BaseSettings):
     model: ModelConfig
@@ -56,8 +57,6 @@ class RiskConfig(BaseSettings):
 
 
 class AnalysisConfig(BaseSettings):
-    timeframe: str = "D"
-    history_range: int = 200
     signal_weights: dict[str, float] = Field(default_factory=dict)
 
 
@@ -145,7 +144,9 @@ def build_model(model_config: ModelConfig):
         )
 
     if provider in {"gemini", "google"}:
-        return Gemini(id=model_config.model_id, thinking_level=model_config.thinking_level)
+        return Gemini(
+            id=model_config.model_id, thinking_level=model_config.thinking_level
+        )
 
     if provider in {"anthropic", "claude"}:
         return Claude(id=model_config.model_id)

@@ -14,6 +14,7 @@ def build_portfolio_manager(config: AppConfig) -> Agent:
         f"权重参考: {weights}.\n"
         "必须遵守风险管理给出的硬性约束，不能突破最大持仓和最大亏损。\n"
         "输出 DecisionDraft，包含 action/target_position_size/confidence/reasoning。"
+        "尽量使用中文。\n"
     )
 
     return Agent(
@@ -22,5 +23,7 @@ def build_portfolio_manager(config: AppConfig) -> Agent:
         instructions=instructions,
         output_schema=DecisionDraft,
         add_datetime_to_context=True,
+        stream=True,
+        stream_events=True,
         **params,
     )
