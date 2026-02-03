@@ -28,6 +28,7 @@ class ModelConfig(BaseSettings):
     reasoning_effort: Literal["low", "medium", "high", "xhigh"] | None = None
 
     # gemini
+    vertexai: bool = False
     thinking_level: Literal["low", "high"] | None = None
 
 
@@ -145,7 +146,9 @@ def build_model(model_config: ModelConfig):
 
     if provider in {"gemini", "google"}:
         return Gemini(
-            id=model_config.model_id, thinking_level=model_config.thinking_level
+            id=model_config.model_id,
+            vertexai=model_config.vertexai,
+            thinking_level=model_config.thinking_level,
         )
 
     if provider in {"anthropic", "claude"}:
