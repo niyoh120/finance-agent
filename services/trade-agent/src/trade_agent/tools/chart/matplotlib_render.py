@@ -47,7 +47,7 @@ class MatplotlibRenderTools(Toolkit):
     def __init__(self, **kwargs):
         tools = [self.render_matplotlib_chart]
         instructions = (
-            "Render a chart with Matplotlib and return a webp base64 image.\n"
+            "Render a chart with Matplotlib and return a webp image url.\n"
             "Input: spec dict. Keys: title, x_label, y_label, grid, legend, "
             "x_format, x_scale, y_scale, x_lim, y_lim, style, traces, shapes, "
             "annotations.\n"
