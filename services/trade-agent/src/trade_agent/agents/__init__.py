@@ -1,4 +1,5 @@
 from .analysts.fundamental import build_fundamental_analyst
+from .analysts.macro import build_macro_analyst
 from .analysts.options_flow import build_options_flow_analyst
 from .analysts.sentiment import build_sentiment_analyst
 from .analysts.technical import build_technical_analyst
@@ -9,6 +10,7 @@ from .wyckoff import build_agent as build_wyckoff_agent
 
 __all__ = [
     "build_fundamental_analyst",
+    "build_macro_analyst",
     "build_options_flow_analyst",
     "build_portfolio_manager",
     "build_sentiment_analyst",

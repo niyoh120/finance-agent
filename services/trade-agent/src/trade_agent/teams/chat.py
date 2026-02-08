@@ -3,6 +3,7 @@ from agno.team.team import Team
 
 from ..agents import (
     build_fundamental_analyst,
+    build_macro_analyst,
     build_options_flow_analyst,
     build_sentiment_analyst,
     build_technical_analyst,
@@ -23,6 +24,7 @@ def build_chat_team(config: AppConfig) -> Team:
             build_options_flow_analyst(config),
             build_sentiment_analyst(config),
             build_fundamental_analyst(config),
+            build_macro_analyst(config),
             build_wyckoff_analyst(config),
         ],
         instructions=[

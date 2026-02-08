@@ -9,6 +9,7 @@ from shared.logging import configure_logging
 
 from .agents import (
     build_fundamental_analyst,
+    build_macro_analyst,
     build_options_flow_analyst,
     build_risk_manager,
     build_sentiment_analyst,
@@ -28,6 +29,7 @@ logger = structlog.get_logger(__name__)
 
 def build_agents(config):
     fundamental_analyst = build_fundamental_analyst(config)
+    macro_analyst = build_macro_analyst(config)
     options_flow_analyst = build_options_flow_analyst(config)
     sentiment_analyst = build_sentiment_analyst(config)
     technical_analyst = build_technical_analyst(config)
@@ -37,6 +39,7 @@ def build_agents(config):
 
     return [
         fundamental_analyst,
+        macro_analyst,
         options_flow_analyst,
         sentiment_analyst,
         technical_analyst,

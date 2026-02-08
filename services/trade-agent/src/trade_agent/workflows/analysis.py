@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from ..agents import (
     build_fundamental_analyst,
+    build_macro_analyst,
     build_options_flow_analyst,
     build_portfolio_manager,
     build_risk_manager,
@@ -24,6 +25,7 @@ from ..config import AppConfig
 from ..models import (
     DecisionDraft,
     FundamentalSignal,
+    MacroSignal,
     OptionsFlowSignal,
     RiskLimits,
     SentimentSignal,
@@ -67,6 +69,12 @@ def build_parallel_analysis_step(config: AppConfig) -> Parallel:
             desc="基本面分析",
             agent_builder=build_fundamental_analyst,
             output_schema=FundamentalSignal,
+        ),
+        AnalysisStepConfig(
+            name="macro",
+            desc="宏观分析",
+            agent_builder=build_macro_analyst,
+            output_schema=MacroSignal,
         ),
         AnalysisStepConfig(
             name="wyckoff",
@@ -138,6 +146,9 @@ def build_analysis_workflow(config: AppConfig) -> Workflow:
         fundamental_signal = step_input.get_step_content("fundamental")
         assert fundamental_signal
 
+        macro_signal = step_input.get_step_content("macro")
+        assert macro_signal
+
         wyckoff_signal = step_input.get_step_content("wyckoff")
         assert wyckoff_signal
 
@@ -150,6 +161,7 @@ def build_analysis_workflow(config: AppConfig) -> Workflow:
             f"期权分析: {options_signal}\n"
             f"情绪分析: {sentiment_signal}\n"
             f"基本面分析: {fundamental_signal}\n"
+            f"宏观分析: {macro_signal}\n"
             f"威科夫分析: {wyckoff_signal}\n"
             f"风险控制 {risk_limits}"
         )
@@ -169,6 +181,7 @@ def build_analysis_workflow(config: AppConfig) -> Workflow:
                 "options": options_signal,
                 "sentiment": sentiment_signal,
                 "fundamental": fundamental_signal,
+                "macro": macro_signal,
                 "wyckoff": wyckoff_signal,
             },
             risk_limits=risk_limits,  # type: ignore

@@ -3,6 +3,7 @@ from .portfolio import PortfolioPosition, PortfolioState
 from .risk import RiskLimits
 from .signals import (
     FundamentalSignal,
+    MacroSignal,
     OptionsFlowSignal,
     SentimentSignal,
     SignalDirection,
@@ -12,6 +13,7 @@ from .signals import (
 
 __all__ = [
     "FundamentalSignal",
+    "MacroSignal",
     "OptionsFlowSignal",
     "DecisionDraft",
     "PortfolioPosition",

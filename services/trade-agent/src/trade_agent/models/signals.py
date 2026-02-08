@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -59,4 +59,18 @@ class WyckoffSignal(BaseModel):
     key_events: list[str] = Field(default_factory=list)
     scenarios: list[str] = Field(default_factory=list)
     strategies: list[str] = Field(default_factory=list)
+    reasoning: str
+
+
+class MacroSignal(BaseModel):
+    signal: SignalDirection
+    confidence: int = Field(ge=0, le=100)
+    regime: Literal["risk_on", "risk_off", "mixed"]
+    as_of_date: str | None = None
+    total_index_value: float | None = None
+    total_index_percentile: float | None = Field(default=None, ge=0, le=1)
+    total_index_trend: Literal["improving", "deteriorating", "flat"] | None = None
+    key_modules: list[str] = Field(default_factory=list)
+    key_factors: list[str] = Field(default_factory=list)
+    risk_flags: list[str] = Field(default_factory=list)
     reasoning: str

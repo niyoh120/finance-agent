@@ -11,6 +11,7 @@
 - 期权流分析（MCP options_flow）
 - 新闻情绪分析（MCP news + YFinance news）
 - 基本面分析（YFinanceTools）
+- 宏观分析（MCP The Dial 宏观数据）
 - 威科夫分析（MCP K 线）
 - 风险管理（确定性硬约束 + LLM 微调）
 - 威科夫结构绘图（MCP K 线 + 通用 Matplotlib 渲染工具生成 WEBP base64，便于内联展示）
