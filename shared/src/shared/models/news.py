@@ -30,6 +30,10 @@ class NewsArticle(Base):
 
     importance: Mapped[int] = mapped_column(Integer, default=0)
 
+    source: Mapped[Optional[str]] = mapped_column(
+        String(32), nullable=True, index=True
+    )  # 数据来源: "futunn", "bubbleseek" 等
+
     published_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, index=True
     )
