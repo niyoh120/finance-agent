@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
@@ -18,7 +18,6 @@ HEADERS = {
     "Referer": "https://bubbleseek.ai/",
     "Origin": "https://bubbleseek.ai",
 }
-BACKFILL_START_DATE = datetime(2025, 12, 1, tzinfo=timezone.utc)
 
 
 class BubbleSeekScraper:
@@ -69,12 +68,18 @@ class BubbleSeekScraper:
                 logger.error(f"Error fetching events: {e}")
                 return []
 
-    async def backfill_historical_data(self, session: AsyncSession) -> int:
+    async def backfill_historical_data(
+        self, session: AsyncSession, backfill_days: int = 60
+    ) -> int:
+        """回填历史数据。"""
         total_saved = 0
         offset = 0
         batch_size = 50
+        cutoff_time = datetime.now(timezone.utc).replace(
+            hour=0, minute=0, second=0, microsecond=0
+        ) - timedelta(days=backfill_days)
 
-        logger.info(f"Starting historical backfill from {BACKFILL_START_DATE}")
+        logger.info(f"Starting historical backfill until {cutoff_time}")
 
         while True:
             events = await self.fetch_events_page(limit=batch_size, offset=offset)
@@ -89,10 +94,8 @@ class BubbleSeekScraper:
                 news, options = self._parse_event(event_data)
                 event_ts = self._get_event_timestamp(event_data)
 
-                if event_ts and event_ts < BACKFILL_START_DATE:
-                    logger.info(
-                        f"Reached target date {BACKFILL_START_DATE}, stopping backfill"
-                    )
+                if event_ts and event_ts < cutoff_time:
+                    logger.info(f"Reached cutoff date {cutoff_time}, stopping backfill")
                     return total_saved
 
                 if news and await self._save_news_event(session, news):
@@ -112,7 +115,7 @@ class BubbleSeekScraper:
                 f"Batch offset={offset}: saved {saved_count}/{len(events)}, oldest: {oldest_in_batch}"
             )
 
-            if oldest_in_batch and oldest_in_batch < BACKFILL_START_DATE:
+            if oldest_in_batch and oldest_in_batch < cutoff_time:
                 break
 
             offset += batch_size
@@ -233,6 +236,7 @@ class BubbleSeekScraper:
             return NewsArticle(
                 external_id=str(event_id),
                 type=str(event_type),
+                source="bubbleseek",
                 title=title,
                 content=content,
                 original_content=original_content,
@@ -256,6 +260,7 @@ class BubbleSeekScraper:
                 .values(
                     external_id=article.external_id,
                     type=article.type,
+                    source=article.source,
                     title=article.title,
                     content=article.content,
                     original_content=article.original_content,
