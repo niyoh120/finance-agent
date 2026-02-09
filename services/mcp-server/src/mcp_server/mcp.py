@@ -6,7 +6,9 @@ from typing import Annotated, Any, Literal
 
 import httpx
 from fastmcp import FastMCP
+from fastmcp.client.transports import UvxStdioTransport
 from fastmcp.exceptions import ToolError
+from fastmcp.server import create_proxy
 from pydantic import Field, ValidationError
 from shared.database import session_scope
 from shared.logging import configure_logging
@@ -1076,3 +1078,27 @@ async def get_unusual_activity(
         )
         for row in rows
     ]
+
+
+# =============================================================================
+# A 股基本面数据代理 (akshare-one-mcp)
+# =============================================================================
+
+# 通过 uvx 启动 akshare-one-mcp 子进程，挂载到 cn_stock 命名空间
+_cn_stock_proxy = create_proxy(UvxStdioTransport(tool_name="akshare-one-mcp"))
+mcp.mount(_cn_stock_proxy, namespace="cn_stock")
+
+# 屏蔽行情相关工具，只保留基本面数据 (行情使用 TradingView)
+mcp.disable(
+    keys={
+        "tool:cn_stock_get_hist_data",
+        "tool:cn_stock_get_realtime_data",
+        "tool:cn_stock_get_options_chain",
+        "tool:cn_stock_get_options_realtime",
+        "tool:cn_stock_get_options_hist",
+        "tool:cn_stock_get_futures_hist_data",
+        "tool:cn_stock_get_futures_realtime_data",
+    }
+)
+
+logger.info("已挂载 A 股基本面数据代理: akshare-one-mcp (uvx stdio)")

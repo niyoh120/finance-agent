@@ -31,7 +31,9 @@ This is a **Monorepo** using `uv` workspaces for Python and `npm` for TypeScript
 
 5.  **mcp-server** (Python):
     - Path: `services/mcp-server`
-    - Logic: Exposes DB data via Model Context Protocol (MCP) over Stdio.
+    - Logic: Exposes DB data via Model Context Protocol (MCP) over HTTP.
+    - **Proxy**: Mounts `akshare-one-mcp` via uvx for A-share fundamental data (balance sheet, income statement, cash flow, financial metrics, insider trading, news).
+    - **Note**: A-share market data (K-lines) uses TradingView (stock-api), not akshare-one-mcp.
 
 ## Key Constraints
 
