@@ -19,6 +19,7 @@ members = [
   "services/migrate",
   "services/macro-scraper",
   "services/bubbleseek-scraper",
+  "services/futunn-scraper",
   "services/mcp-server",
   "services/trade-agent",
 ]

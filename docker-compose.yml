@@ -16,6 +16,24 @@ services:
                 - action: rebuild
                   path: ./services/Dockerfile
 
+    futunn-scraper:
+        build:
+            context: ./
+            dockerfile: ./services/Dockerfile
+            args:
+                MODULE_NAME: futunn-scraper
+                MODULE_ENTRY: futunn_scraper.main
+        environment:
+            - FA_DATABASE_URL=${FA_DATABASE_URL}
+            - FA_FUTUNN_SCRAPER_INTERVAL=60
+            - FA_FUTUNN_SCRAPER_BACKFILL_DAYS=7
+        restart: unless-stopped
+
+        develop:
+            watch:
+                - action: rebuild
+                  path: ./services/Dockerfile
+
     macro-scraper:
         build:
             context: ./
