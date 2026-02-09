@@ -97,8 +97,6 @@ async def query_news_articles(
         Field(
             description=(
                 "股票代码列表（不带交易所前缀），如 ['AAPL', 'TSLA']。用于过滤新闻。"
-                "注意：如果要拉历史 K 线，需要使用 `fetch_stock_history` 的 EXCHANGE:SYMBOL 格式；"
-                "不确定交易所前缀时请先调用 `search_market`。"
             )
         ),
     ] = None,
@@ -157,6 +155,7 @@ async def query_news_articles(
             NewsArticleItem(
                 external_id=row.external_id,
                 type=row.type,
+                source=row.source,
                 title=row.title or "",
                 url=row.url or "",
                 author=row.author,
@@ -845,8 +844,6 @@ async def query_options_flow(
         Field(
             description=(
                 "股票代码（不带交易所前缀），如 'BSX', 'AAPL'。用于过滤期权流。"
-                "注意：如果要拉历史 K 线，需要使用 `fetch_stock_history` 的 EXCHANGE:SYMBOL 格式；"
-                "不确定交易所前缀时请先调用 `search_market`。"
             )
         ),
     ] = None,
