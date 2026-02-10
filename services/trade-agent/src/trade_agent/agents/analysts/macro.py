@@ -15,6 +15,9 @@ def build_macro_analyst(config: AppConfig, db=None) -> Agent:
         "2) query_macro_total_index_history(days=365) 计算近 4 周趋势与分位；\n"
         "3) query_macro_module_snapshots(days=30, limit=200) 找出最强/最弱模块；\n"
         "4) query_macro_factor_snapshots(days=30, limit=200) 仅用于补充风险因子解释。\n"
+        "补充数据源：\n"
+        "- 可使用 `cn_stock_get_news_data` 获取 A 股重要指数 (如 '000001' 上证指数) 或个股的新闻，辅助判断中国市场情绪。\n"
+        "- `cn_stock_get_time_info` 可获取当前 A 股交易日信息。\n"
         "方向规则（仅用于宏观风险偏好叠加，不改变风险硬约束）：\n"
         "- P = total_index_percentile。\n"
         "- risk_off: P<=0.25 或 (P<=0.35 且近4周趋势恶化) -> signal=bearish。\n"
@@ -38,6 +41,8 @@ def build_macro_analyst(config: AppConfig, db=None) -> Agent:
                     "query_macro_factor_snapshots",
                     "query_macro_module_history",
                     "query_macro_total_index_history",
+                    "cn_stock_get_news_data",
+                    "cn_stock_get_time_info",
                 ]
             )
         ],
