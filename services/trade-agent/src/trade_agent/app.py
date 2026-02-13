@@ -8,12 +8,13 @@ from pydantic import BaseModel, Field
 from shared.logging import configure_logging
 
 from .agents import (
-    build_fundamental_analyst,
+    build_cn_fundamental_analyst,
     build_macro_analyst,
     build_options_flow_analyst,
     build_risk_manager,
     build_sentiment_analyst,
     build_technical_analyst,
+    build_us_fundamental_analyst,
     build_wyckoff_agent,
     build_wyckoff_analyst,
 )
@@ -28,7 +29,8 @@ logger = structlog.get_logger(__name__)
 
 
 def build_agents(config):
-    fundamental_analyst = build_fundamental_analyst(config)
+    cn_fundamental_analyst = build_cn_fundamental_analyst(config)
+    us_fundamental_analyst = build_us_fundamental_analyst(config)
     macro_analyst = build_macro_analyst(config)
     options_flow_analyst = build_options_flow_analyst(config)
     sentiment_analyst = build_sentiment_analyst(config)
@@ -38,7 +40,8 @@ def build_agents(config):
     wyckoff_agent = build_wyckoff_agent(config)
 
     return [
-        fundamental_analyst,
+        cn_fundamental_analyst,
+        us_fundamental_analyst,
         macro_analyst,
         options_flow_analyst,
         sentiment_analyst,
