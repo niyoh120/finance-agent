@@ -518,3 +518,63 @@ class MacroIndicatorsResult(McpBaseModel):
     category: str = Field(description="数据类别")
     count: int = Field(description="返回指标数")
     indicators: list[MacroIndicatorItem] = Field(description="指标列表")
+
+
+# =============================
+# Calendar output models
+# =============================
+
+
+class EconomicCalendarItem(McpBaseModel):
+    """财经日历事件项.
+
+    包含经济指标发布、央行决议等财经事件信息.
+    """
+
+    date: str = Field(description="事件日期 (YYYY-MM-DD)")
+    time: str = Field(description="事件时间 (HH:MM)")
+    country: str = Field(description="国家/地区")
+    event: str = Field(description="事件名称")
+    actual: str | None = Field(description="实际公布值", default=None)
+    forecast: str | None = Field(description="预期值", default=None)
+    previous: str | None = Field(description="前值", default=None)
+    importance: int = Field(description="重要性等级 (1-3, 3为最高)")
+
+
+class EconomicCalendarResult(McpBaseModel):
+    """财经日历查询结果.
+
+    返回指定日期范围内的财经事件列表.
+    """
+
+    start_date: str = Field(description="查询起始日期 (YYYY-MM-DD)")
+    end_date: str = Field(description="查询结束日期 (YYYY-MM-DD)")
+    count: int = Field(description="事件总数")
+    events: list[EconomicCalendarItem] = Field(description="财经事件列表")
+
+
+class EarningsCalendarItem(McpBaseModel):
+    """财报日历事件项.
+
+    包含美股、港股、A股的财报发布信息.
+    """
+
+    symbol: str = Field(description="股票代码")
+    name: str = Field(description="公司名称")
+    exchange: str = Field(description="交易所 (US/HK/SH/SZ)")
+    report_type: str = Field(description="财报类型")
+    release_time: str = Field(description="发布时间说明 (盘前/盘后/--)")
+    market_cap: int | None = Field(description="市值", default=None)
+    report_date: str = Field(description="发布日期 (YYYY-MM-DD)")
+
+
+class EarningsCalendarResult(McpBaseModel):
+    """财报日历查询结果.
+
+    返回指定日期范围内的财报发布列表.
+    """
+
+    start_date: str = Field(description="查询起始日期 (YYYY-MM-DD)")
+    end_date: str = Field(description="查询结束日期 (YYYY-MM-DD)")
+    count: int = Field(description="财报总数")
+    earnings: list[EarningsCalendarItem] = Field(description="财报发布列表")

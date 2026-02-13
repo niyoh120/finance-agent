@@ -31,6 +31,10 @@ from .schemas import (
     AnalystRatingItem,
     DividendHistoryResult,
     DividendItem,
+    EarningsCalendarItem,
+    EarningsCalendarResult,
+    EconomicCalendarItem,
+    EconomicCalendarResult,
     FinancialMetricItem,
     FinancialMetricsResult,
     FinancialStatementItem,
@@ -2050,3 +2054,131 @@ async def get_us_macro_indicators(
     except Exception as exc:
         logger.error(f"获取美国宏观数据失败: {exc}")
         raise ToolError(f"获取美国宏观数据失败: {str(exc)}")
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def get_economic_calendar(
+    days: Annotated[int, Field(description="查询未来多少天的数据", ge=1, le=30)] = 7,
+    start_date: Annotated[
+        str | None, Field(description="起始日期 (YYYY-MM-DD)，与days二选一")
+    ] = None,
+    end_date: Annotated[
+        str | None, Field(description="结束日期 (YYYY-MM-DD)，与days二选一")
+    ] = None,
+) -> EconomicCalendarResult:
+    """查询财经日历，获取经济指标、央行决议等全球财经事件。
+
+    数据源：百度股市通。支持查询当天和未来的财经事件。
+    """
+    try:
+        start, end = resolve_date_range(days, start_date, end_date)
+        date_range = [start + timedelta(days=i) for i in range((end - start).days + 1)]
+
+        tasks = [
+            asyncio.to_thread(ak.news_economic_baidu, date=d.strftime("%Y%m%d"))
+            for d in date_range
+        ]
+        dfs = await asyncio.gather(*tasks, return_exceptions=True)
+
+        events = []
+        for d, df in zip(date_range, dfs):
+            if isinstance(df, Exception):
+                logger.warning(f"获取 {d} 的财经日历数据失败: {df}")
+                continue
+            if df.empty:
+                continue
+
+            for _, row in df.iterrows():
+                events.append(
+                    EconomicCalendarItem(
+                        date=str(row.get("日期", d.strftime("%Y-%m-%d"))),
+                        time=str(row.get("时间", "")),
+                        country=str(row.get("地区", "")),
+                        event=str(row.get("事件", "")),
+                        actual=str(row["公布"]) if pd.notna(row.get("公布")) else None,
+                        forecast=str(row["预期"])
+                        if pd.notna(row.get("预期"))
+                        else None,
+                        previous=str(row["前值"])
+                        if pd.notna(row.get("前值"))
+                        else None,
+                        importance=int(row.get("重要性", 1)),
+                    )
+                )
+
+        return EconomicCalendarResult(
+            start_date=start.isoformat(),
+            end_date=end.isoformat(),
+            count=len(events),
+            events=events,
+        )
+    except Exception as exc:
+        logger.error(f"获取财经日历失败: {exc}")
+        raise ToolError(f"获取财经日历失败: {str(exc)}")
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def get_earnings_calendar(
+    days: Annotated[int, Field(description="查询未来多少天的数据", ge=1, le=30)] = 7,
+    start_date: Annotated[
+        str | None, Field(description="起始日期 (YYYY-MM-DD)，与days二选一")
+    ] = None,
+    end_date: Annotated[
+        str | None, Field(description="结束日期 (YYYY-MM-DD)，与days二选一")
+    ] = None,
+    exchange: Annotated[
+        str | None, Field(description="交易所过滤: US(美股)/HK(港股)/SH(沪股)/SZ(深股)")
+    ] = None,
+) -> EarningsCalendarResult:
+    """查询财报日历，获取美股、港股、A股的财报发布日期。
+
+    数据源：百度股市通。支持查询当天和未来的财报发布计划。
+    """
+    try:
+        start, end = resolve_date_range(days, start_date, end_date)
+        date_range = [start + timedelta(days=i) for i in range((end - start).days + 1)]
+
+        tasks = [
+            asyncio.to_thread(ak.news_report_time_baidu, date=d.strftime("%Y%m%d"))
+            for d in date_range
+        ]
+        dfs = await asyncio.gather(*tasks, return_exceptions=True)
+
+        earnings = []
+        for d, df in zip(date_range, dfs):
+            if isinstance(df, Exception):
+                logger.warning(f"获取 {d} 的财报日历数据失败: {df}")
+                continue
+            if df.empty:
+                continue
+
+            for _, row in df.iterrows():
+                row_exchange = str(row.get("交易所", "")).upper()
+
+                # 交易所过滤
+                if exchange and row_exchange != exchange.upper():
+                    continue
+
+                earnings.append(
+                    EarningsCalendarItem(
+                        symbol=str(row.get("股票代码", "")),
+                        name=str(row.get("股票简称", "")),
+                        exchange=row_exchange,
+                        report_type=str(row.get("财报类型", "")),
+                        release_time=str(row.get("发布时间", "--")),
+                        market_cap=int(row["市值"])
+                        if pd.notna(row.get("市值"))
+                        else None,
+                        report_date=str(row.get("发布日期", d.strftime("%Y-%m-%d"))),
+                    )
+                )
+
+        return EarningsCalendarResult(
+            start_date=start.isoformat(),
+            end_date=end.isoformat(),
+            count=len(earnings),
+            earnings=earnings,
+        )
+    except Exception as exc:
+        logger.error(f"获取财报日历失败: {exc}")
+        raise ToolError(f"获取财报日历失败: {str(exc)}")
