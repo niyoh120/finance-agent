@@ -345,3 +345,176 @@ class MacroTotalIndexHistoryResult(McpBaseModel):
     offset: int = Field(description="结果偏移量")
     count: int = Field(description="实际返回数量")
     history: list[MacroTotalIndexHistoryItem] = Field(description="总指数历史序列")
+
+
+# =============================
+# A-Share basic info output models
+# =============================
+
+
+class StockBasicInfoItem(McpBaseModel):
+    """A股股票基本信息。
+
+    包含股票代码、名称、价格、市值、行业等基本信息，用于基本面分析的初始查询。
+    """
+
+    symbol: str = Field(description="股票代码 (如 '600519')")
+    name: str = Field(description="股票名称 (如 '贵州茅台')")
+    price: float = Field(description="当前价格")
+    market_cap: float | None = Field(description="总市值", default=None)
+    float_market_cap: float | None = Field(description="流通市值", default=None)
+    industry: str | None = Field(description="所属行业", default=None)
+    listing_date: str | None = Field(description="上市日期 (YYYY-MM-DD)", default=None)
+
+
+class StockBasicInfoResult(McpBaseModel):
+    """A股股票基本信息查询结果。"""
+
+    symbol: str = Field(description="查询的股票代码")
+    info: StockBasicInfoItem = Field(description="股票基本信息")
+
+
+class FinancialStatementItem(McpBaseModel):
+    """财务报表单期数据 (整合资产负债/利润/现金流表核心字段)."""
+
+    report_date: str = Field(description="报告期 (YYYY-MM-DD)")
+
+    # 利润表
+    revenue: float | None = Field(description="营业收入", default=None)
+    net_profit: float | None = Field(description="净利润", default=None)
+    net_profit_deduct_non_recurring: float | None = Field(
+        description="扣非净利润", default=None
+    )
+
+    # 资产负债表
+    total_assets: float | None = Field(description="总资产", default=None)
+    total_liabilities: float | None = Field(description="总负债", default=None)
+    total_equity: float | None = Field(description="股东权益", default=None)
+
+    # 现金流量表
+    operating_cash_flow: float | None = Field(
+        description="经营活动现金流净额", default=None
+    )
+    investing_cash_flow: float | None = Field(
+        description="投资活动现金流净额", default=None
+    )
+    financing_cash_flow: float | None = Field(
+        description="筹资活动现金流净额", default=None
+    )
+
+
+class FinancialStatementsResult(McpBaseModel):
+    """财务报表查询结果."""
+
+    symbol: str = Field(description="股票代码")
+    period: str = Field(description="周期类型 (report/yearly)")
+    count: int = Field(description="返回期数")
+    statements: list[FinancialStatementItem] = Field(description="报表数据列表")
+
+
+class FinancialMetricItem(McpBaseModel):
+    """财务指标数据."""
+
+    report_date: str = Field(description="报告期 (YYYY-MM-DD)")
+    eps: float | None = Field(description="每股收益 (EPS)", default=None)
+    bvps: float | None = Field(description="每股净资产 (BPS)", default=None)
+    pe: float | None = Field(description="市盈率 (PE)", default=None)
+    pb: float | None = Field(description="市净率 (PB)", default=None)
+    roe: float | None = Field(description="净资产收益率 (ROE)", default=None)
+    gross_margin: float | None = Field(description="毛利率 (%)", default=None)
+    net_margin: float | None = Field(description="净利率 (%)", default=None)
+    debt_to_asset_ratio: float | None = Field(
+        description="资产负债率 (%)", default=None
+    )
+
+
+class FinancialMetricsResult(McpBaseModel):
+    """财务指标查询结果."""
+
+    symbol: str = Field(description="股票代码")
+    count: int = Field(description="返回期数")
+    metrics: list[FinancialMetricItem] = Field(description="财务指标列表")
+
+
+class ShareholderItem(McpBaseModel):
+    """股东信息."""
+
+    holder_name: str = Field(description="股东名称")
+    hold_num: float | None = Field(description="持股数量", default=None)
+    hold_ratio: float | None = Field(description="持股比例 (%)", default=None)
+    nature: str | None = Field(description="股份性质", default=None)
+
+
+class ShareholderInfoResult(McpBaseModel):
+    """股东信息查询结果."""
+
+    symbol: str = Field(description="股票代码")
+    report_date: str | None = Field(description="最新报告期", default=None)
+    holder_count: int | None = Field(description="股东总户数", default=None)
+    avg_hold_num: float | None = Field(description="户均持股数", default=None)
+    top_holders: list[ShareholderItem] = Field(
+        description="前十大股东列表", default_factory=list
+    )
+
+
+class DividendItem(McpBaseModel):
+    """分红记录."""
+
+    report_date: str = Field(description="报告期")
+    plan: str = Field(description="分红方案 (如 '10派10元')")
+    register_date: str | None = Field(description="股权登记日", default=None)
+    ex_date: str | None = Field(description="除权除息日", default=None)
+    payment_date: str | None = Field(description="派息日", default=None)
+    dividend_ratio: float | None = Field(description="股息率 (%)", default=None)
+
+
+class DividendHistoryResult(McpBaseModel):
+    """分红历史查询结果."""
+
+    symbol: str = Field(description="股票代码")
+    count: int = Field(description="记录数")
+    history: list[DividendItem] = Field(description="历史分红列表")
+
+
+class AnalystRatingItem(McpBaseModel):
+    """分析师评级."""
+
+    date: str = Field(description="评级日期")
+    org_name: str = Field(description="机构名称")
+    analyst: str | None = Field(description="分析师", default=None)
+    rating: str = Field(description="评级 (如 '买入', '增持')")
+    target_price: float | None = Field(description="目标价", default=None)
+
+
+class AnalystConsensusResult(McpBaseModel):
+    """分析师一致预期查询结果."""
+
+    symbol: str = Field(description="股票代码")
+    target_price: float | None = Field(description="一致目标价", default=None)
+    rating_buy: int | None = Field(description="买入评级数", default=None)
+    rating_overweight: int | None = Field(description="增持评级数", default=None)
+    rating_hold: int | None = Field(description="中性评级数", default=None)
+    rating_sell: int | None = Field(description="卖出评级数", default=None)
+    rating_underweight: int | None = Field(description="减持评级数", default=None)
+    latest_ratings: list[AnalystRatingItem] = Field(
+        description="近期评级列表", default_factory=list
+    )
+
+
+class MacroIndicatorItem(McpBaseModel):
+    """宏观指标数据."""
+
+    name: str = Field(description="指标名称 (英文标识)")
+    name_cn: str | None = Field(description="指标名称 (中文)", default=None)
+    value: float | None = Field(description="数值")
+    unit: str | None = Field(description="单位", default=None)
+    date: str = Field(description="发布日期/数据日期")
+    publish_date: str | None = Field(description="发布日期", default=None)
+
+
+class MacroIndicatorsResult(McpBaseModel):
+    """宏观数据查询结果."""
+
+    category: str = Field(description="数据类别")
+    count: int = Field(description="返回指标数")
+    indicators: list[MacroIndicatorItem] = Field(description="指标列表")

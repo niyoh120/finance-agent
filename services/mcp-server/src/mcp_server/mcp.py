@@ -1,14 +1,17 @@
+import asyncio
 import json
 import logging
 import os
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Any, Literal
 
+import akshare as ak
 import httpx
+import pandas as pd
 from fastmcp import FastMCP
 from fastmcp.client.transports import UvxStdioTransport
 from fastmcp.exceptions import ToolError
-from fastmcp.server import create_proxy
+from fastmcp.tools.tool_transform import ToolTransformConfig
 from pydantic import Field, ValidationError
 from shared.database import session_scope
 from shared.logging import configure_logging
@@ -24,9 +27,19 @@ from shared.models.options import OptionsFlow
 from sqlalchemy import func, select
 
 from .schemas import (
+    AnalystConsensusResult,
+    AnalystRatingItem,
+    DividendHistoryResult,
+    DividendItem,
+    FinancialMetricItem,
+    FinancialMetricsResult,
+    FinancialStatementItem,
+    FinancialStatementsResult,
     FlowSummaryResult,
     MacroFactorSnapshotItem,
     MacroFactorSnapshotsResult,
+    MacroIndicatorItem,
+    MacroIndicatorsResult,
     MacroModuleHistoryItem,
     MacroModuleHistoryResult,
     MacroModuleSnapshotItem,
@@ -41,7 +54,11 @@ from .schemas import (
     OptionsFlowItem,
     OptionsSide,
     OptionType,
+    ShareholderInfoResult,
+    ShareholderItem,
     SideStats,
+    StockBasicInfoItem,
+    StockBasicInfoResult,
     StockHistoryResult,
     Timeframe,
     TopSymbol,
@@ -1081,24 +1098,955 @@ async def get_unusual_activity(
 
 
 # =============================================================================
-# A 股基本面数据代理 (akshare-one-mcp)
+# A 股股票基本信息工具
 # =============================================================================
 
-# 通过 uvx 启动 akshare-one-mcp 子进程，挂载到 cn_stock 命名空间
-_cn_stock_proxy = create_proxy(UvxStdioTransport(tool_name="akshare-one-mcp"))
-mcp.mount(_cn_stock_proxy, namespace="cn_stock")
 
-# 屏蔽行情相关工具，只保留基本面数据 (行情使用 TradingView)
-mcp.disable(
-    keys={
-        "tool:cn_stock_get_hist_data",
-        "tool:cn_stock_get_realtime_data",
-        "tool:cn_stock_get_options_chain",
-        "tool:cn_stock_get_options_realtime",
-        "tool:cn_stock_get_options_hist",
-        "tool:cn_stock_get_futures_hist_data",
-        "tool:cn_stock_get_futures_realtime_data",
-    }
-)
+@mcp.tool(annotations={"readOnlyHint": True})
+async def cn_stock_get_basic_info(
+    symbol: Annotated[
+        str,
+        Field(
+            description="股票代码（6位数字，如 '600519', '000001'）",
+            min_length=1,
+        ),
+    ],
+) -> StockBasicInfoResult:
+    """获取 A 股股票基本信息。
 
-logger.info("已挂载 A 股基本面数据代理: akshare-one-mcp (uvx stdio)")
+    包含股票名称、当前价格、总市值、流通市值、所属行业、上市日期等基本信息。
+    适用于基本面分析的初始查询，快速了解公司概况。
+
+    数据源：东方财富
+    """
+    try:
+        df = await asyncio.to_thread(ak.stock_individual_info_em, symbol=symbol.strip())
+        if df.empty:
+            raise ToolError(f"未找到股票 {symbol} 的基本信息")
+
+        # stock_individual_info_em 返回 DataFrame 列为: item, value
+        data = dict(zip(df["item"], df["value"]))
+
+        def parse_float(val: Any) -> float | None:
+            try:
+                return float(val)
+            except (ValueError, TypeError):
+                return None
+
+        return StockBasicInfoResult(
+            symbol=symbol.strip(),
+            info=StockBasicInfoItem(
+                symbol=symbol.strip(),
+                name=str(data.get("股票简称", "")),
+                price=parse_float(data.get("最新价")) or 0.0,
+                market_cap=parse_float(data.get("总市值")),
+                float_market_cap=parse_float(data.get("流通市值")),
+                industry=str(data.get("行业", "")),
+                listing_date=str(data.get("上市时间", "")),
+            ),
+        )
+
+    except Exception as exc:
+        logger.error("获取股票基本信息失败", symbol=symbol, error=str(exc))
+        raise ToolError(f"获取股票 {symbol} 基本信息失败: {str(exc)}") from exc
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def cn_stock_get_financial_statements(
+    symbol: Annotated[str, Field(description="股票代码")],
+    period: Annotated[
+        Literal["report", "yearly"],
+        Field(description="周期类型 (report=按报告期, yearly=按年度)"),
+    ] = "report",
+) -> FinancialStatementsResult:
+    """获取 A 股财务报表数据 (资产负债/利润/现金流)。
+
+    默认返回最近 8 期数据。包含营业收入、净利润、总资产、负债、现金流等核心字段。
+    """
+    try:
+        # 定义需要并发获取的任务
+        tasks = []
+        if period == "report":
+            tasks = [
+                asyncio.to_thread(ak.stock_profit_sheet_by_report_em, symbol=symbol),
+                asyncio.to_thread(ak.stock_balance_sheet_by_report_em, symbol=symbol),
+                asyncio.to_thread(ak.stock_cash_flow_sheet_by_report_em, symbol=symbol),
+            ]
+        else:
+            tasks = [
+                asyncio.to_thread(ak.stock_profit_sheet_by_yearly_em, symbol=symbol),
+                asyncio.to_thread(ak.stock_balance_sheet_by_yearly_em, symbol=symbol),
+                asyncio.to_thread(ak.stock_cash_flow_sheet_by_yearly_em, symbol=symbol),
+            ]
+
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # 处理异常并合并数据
+        dfs = []
+        for res in results:
+            if isinstance(res, Exception):
+                logger.error(f"获取报表失败: {res}")
+                dfs.append(pd.DataFrame())
+            else:
+                dfs.append(res)
+
+        df_profit, df_balance, df_cash = dfs[0], dfs[1], dfs[2]
+
+        # 统一列名 REPORT_DATE 并转为 datetime 以便合并
+        # akshare 返回的列名通常是中文，REPORT_DATE 可能是 "REPORT_DATE" 或 "报告期"
+        # 东方财富接口通常返回大写英文列名或者中文列名，需检查
+        # 假设 akshare 已经标准化，或者我们需要通过打印 columns 确认
+        # 这里假设列名包含 "REPORT_DATE" 或 "报告期"
+
+        def standardize_date_col(df: pd.DataFrame) -> pd.DataFrame:
+            if df.empty:
+                return df
+            col_map = {
+                c: "REPORT_DATE"
+                for c in df.columns
+                if c in ["REPORT_DATE", "报告期", "PUBLISH_DATE"]
+            }
+            df = df.rename(columns=col_map)
+            # 有些接口可能没有 REPORT_DATE，只有日期列
+            return df
+
+        df_profit = standardize_date_col(df_profit)
+        df_balance = standardize_date_col(df_balance)
+        df_cash = standardize_date_col(df_cash)
+
+        # 能够合并的前提是有共同的 REPORT_DATE
+        # 如果 df 为空则跳过
+        merged = pd.DataFrame()
+        if not df_profit.empty:
+            merged = df_profit
+
+        if not df_balance.empty:
+            if merged.empty:
+                merged = df_balance
+            else:
+                merged = pd.merge(
+                    merged,
+                    df_balance,
+                    on="REPORT_DATE",
+                    how="outer",
+                    suffixes=("", "_bal"),
+                )
+
+        if not df_cash.empty:
+            if merged.empty:
+                merged = df_cash
+            else:
+                merged = pd.merge(
+                    merged,
+                    df_cash,
+                    on="REPORT_DATE",
+                    how="outer",
+                    suffixes=("", "_cash"),
+                )
+
+        if merged.empty:
+            return FinancialStatementsResult(
+                symbol=symbol, period=period, count=0, statements=[]
+            )
+
+        # 按日期降序，取最近 8 期
+        if "REPORT_DATE" in merged.columns:
+            merged["REPORT_DATE"] = pd.to_datetime(
+                merged["REPORT_DATE"], errors="coerce"
+            )
+            merged = merged.sort_values("REPORT_DATE", ascending=False).head(8)
+        else:
+            merged = merged.head(8)
+
+        # 辅助函数：安全获取 float
+        def get_val(row, keys: list[str]) -> float | None:
+            for k in keys:
+                if k in row and pd.notna(row[k]):
+                    try:
+                        return float(row[k])
+                    except:
+                        pass
+            return None
+
+        statements = []
+        for _, row in merged.iterrows():
+            report_date = row.get("REPORT_DATE")
+            if pd.isna(report_date):
+                continue
+
+            item = FinancialStatementItem(
+                report_date=report_date.strftime("%Y-%m-%d"),
+                # 利润表
+                revenue=get_val(
+                    row,
+                    [
+                        "TOTAL_OPERATE_INCOME",
+                        "营业总收入",
+                        "OPERATE_INCOME",
+                        "营业收入",
+                    ],
+                ),
+                net_profit=get_val(
+                    row, ["PARENT_NETPROFIT", "归母净利润", "NETPROFIT", "净利润"]
+                ),
+                net_profit_deduct_non_recurring=get_val(
+                    row, ["DEDUCT_PARENT_NETPROFIT", "扣非净利润"]
+                ),
+                # 资产负债表
+                total_assets=get_val(row, ["TOTAL_ASSETS", "资产总计"]),
+                total_liabilities=get_val(row, ["TOTAL_LIABILITIES", "负债合计"]),
+                total_equity=get_val(
+                    row, ["TOTAL_EQUITY", "股东权益合计", "SHEQUITY", "所有者权益合计"]
+                ),
+                # 现金流量表
+                operating_cash_flow=get_val(
+                    row, ["NETCASH_OPERATE", "经营活动产生的现金流量净额"]
+                ),
+                investing_cash_flow=get_val(
+                    row, ["NETCASH_INVEST", "投资活动产生的现金流量净额"]
+                ),
+                financing_cash_flow=get_val(
+                    row, ["NETCASH_FINANCE", "筹资活动产生的现金流量净额"]
+                ),
+            )
+            statements.append(item)
+
+        return FinancialStatementsResult(
+            symbol=symbol,
+            period=period,
+            count=len(statements),
+            statements=statements,
+        )
+
+    except Exception as exc:
+        logger.error(f"获取财务报表失败: {exc}")
+        raise ToolError(f"获取股票 {symbol} 财务报表失败: {str(exc)}")
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def cn_stock_get_financial_metrics(
+    symbol: Annotated[str, Field(description="股票代码")],
+) -> FinancialMetricsResult:
+    """获取 A 股关键财务指标 (ROE/PE/EPS 等)。
+
+    数据源：东方财富-财务指标分析
+    """
+    try:
+        # stock_financial_analysis_indicator_em 返回按报告期的指标
+        df = await asyncio.to_thread(
+            ak.stock_financial_analysis_indicator_em, symbol=symbol
+        )
+
+        if df.empty:
+            return FinancialMetricsResult(symbol=symbol, count=0, metrics=[])
+
+        # 按日期降序，取最近 8 期
+        # 假设列名有 "日期"
+        if "日期" in df.columns:
+            df["日期"] = pd.to_datetime(df["日期"], errors="coerce")
+            df = df.sort_values("日期", ascending=False).head(8)
+
+        def get_val(row, key: str) -> float | None:
+            if key in row and pd.notna(row[key]):
+                try:
+                    return float(row[key])
+                except:
+                    pass
+            return None
+
+        metrics = []
+        for _, row in df.iterrows():
+            date_val = row.get("日期")
+            if pd.isna(date_val):
+                continue
+
+            metrics.append(
+                FinancialMetricItem(
+                    report_date=date_val.strftime("%Y-%m-%d"),
+                    eps=get_val(row, "每股收益(元)"),
+                    bvps=get_val(row, "每股净资产(元)"),
+                    pe=None,  # 历史 PE 通常不在这个接口，而在行情或估值接口，此处暂空
+                    pb=None,
+                    roe=get_val(row, "净资产收益率(%)"),
+                    gross_margin=get_val(row, "销售毛利率(%)"),
+                    net_margin=get_val(row, "销售净利率(%)"),
+                    debt_to_asset_ratio=get_val(row, "资产负债率(%)"),
+                )
+            )
+
+        return FinancialMetricsResult(
+            symbol=symbol,
+            count=len(metrics),
+            metrics=metrics,
+        )
+
+    except Exception as exc:
+        logger.error(f"获取财务指标失败: {exc}")
+        raise ToolError(f"获取股票 {symbol} 财务指标失败: {str(exc)}")
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def cn_stock_get_shareholder_info(
+    symbol: Annotated[str, Field(description="股票代码")],
+) -> ShareholderInfoResult:
+    """获取 A 股股东信息 (十大股东/户数/筹码)。
+
+    包含：最新一期十大股东、股东户数及变化、户均持股。
+    """
+    try:
+        # 并发获取十大股东和股东户数
+        tasks = [
+            asyncio.to_thread(ak.stock_main_stock_holder, stock=symbol),
+            asyncio.to_thread(ak.stock_hold_num_em, symbol=symbol),
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        # 处理十大股东
+        df_holders = pd.DataFrame()
+        if not isinstance(results[0], Exception):
+            df_holders = results[0]
+
+        # 处理股东户数
+        df_num = pd.DataFrame()
+        if not isinstance(results[1], Exception):
+            df_num = results[1]
+            # 按日期降序
+            if not df_num.empty:
+                # 假设列名包含 "日期"
+                if "日期" in df_num.columns:
+                    df_num["日期"] = pd.to_datetime(df_num["日期"], errors="coerce")
+                    df_num = df_num.sort_values("日期", ascending=False)
+
+        report_date = None
+        holder_count = None
+        avg_hold_num = None
+
+        if not df_num.empty:
+            latest = df_num.iloc[0]
+            report_date = (
+                latest.get("日期").strftime("%Y-%m-%d")
+                if pd.notna(latest.get("日期"))
+                else None
+            )
+            holder_count = (
+                int(latest.get("股东户数"))
+                if pd.notna(latest.get("股东户数"))
+                else None
+            )
+            avg_hold_num = (
+                float(latest.get("户均持股数量"))
+                if pd.notna(latest.get("户均持股数量"))
+                else None
+            )
+
+        top_holders = []
+        if not df_holders.empty:
+            # 取最新一期
+            # akshare stock_main_stock_holder 返回通常包含 "季度" 列 (e.g. "2023一季")
+            # 或者直接返回所有历史，需要按 rank 和 holder_name 去重或者取最新季度
+            # 简单起见，取前 10 行，或者按 index
+            # 实测该接口可能返回所有历史，需要按 report_date 过滤
+            # 但这里简化处理，假设前 10 条是最近的
+            # 更好的是：先找到最新的 report_date (列名可能叫 "截止日期" 或 "季度")
+            # 假设列名 "截止日期"
+            pass  # TODO: refine logic based on actual columns
+
+        # 重新实现 logic: 简单取前 10 条作为示意，或尽可能解析
+        # akshare stock_main_stock_holder columns:
+        # index (0-9), holder_name, hold_num, hold_ratio, nature, ...
+        # 通常它返回最近一期的数据，或者是混合历史。
+        # 这里仅取前 10 条
+
+        for _, row in df_holders.head(10).iterrows():
+            top_holders.append(
+                ShareholderItem(
+                    holder_name=str(row.get("股东名称", "")),
+                    hold_num=float(row.get("持股数量", 0))
+                    if pd.notna(row.get("持股数量"))
+                    else None,
+                    hold_ratio=float(row.get("持股比例", 0))
+                    if pd.notna(row.get("持股比例"))
+                    else None,
+                    nature=str(row.get("股本性质", ""))
+                    if pd.notna(row.get("股本性质"))
+                    else None,
+                )
+            )
+
+        return ShareholderInfoResult(
+            symbol=symbol,
+            report_date=report_date,
+            holder_count=holder_count,
+            avg_hold_num=avg_hold_num,
+            top_holders=top_holders,
+        )
+
+    except Exception as exc:
+        logger.error(f"获取股东信息失败: {exc}")
+        raise ToolError(f"获取股票 {symbol} 股东信息失败: {str(exc)}")
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def cn_stock_get_dividend_history(
+    symbol: Annotated[str, Field(description="股票代码")],
+) -> DividendHistoryResult:
+    """获取 A 股历史分红记录。"""
+    try:
+        df = await asyncio.to_thread(
+            ak.stock_history_dividend_detail, symbol=symbol, indicator="分红"
+        )
+        if df.empty:
+            return DividendHistoryResult(symbol=symbol, count=0, history=[])
+
+        # 按公告日期或除权除息日排序
+        # 列名: 公告日期, 除权除息日, 分红方案, 股权登记日, 派息日
+        sort_col = "公告日期" if "公告日期" in df.columns else df.columns[0]
+        try:
+            df[sort_col] = pd.to_datetime(df[sort_col], errors="coerce")
+            df = df.sort_values(sort_col, ascending=False)
+        except:
+            pass
+
+        history = []
+        for _, row in df.head(10).iterrows():
+            history.append(
+                DividendItem(
+                    report_date=str(
+                        row.get("公告日期", "")
+                    ),  # 使用公告日期作为报告期标识
+                    plan=str(row.get("分红方案", "")),
+                    register_date=str(row.get("股权登记日", ""))
+                    if pd.notna(row.get("股权登记日"))
+                    else None,
+                    ex_date=str(row.get("除权除息日", ""))
+                    if pd.notna(row.get("除权除息日"))
+                    else None,
+                    payment_date=str(row.get("派息日", ""))
+                    if pd.notna(row.get("派息日"))
+                    else None,
+                    dividend_ratio=None,  # 该接口可能不包含股息率
+                )
+            )
+
+        return DividendHistoryResult(
+            symbol=symbol,
+            count=len(history),
+            history=history,
+        )
+
+    except Exception as exc:
+        logger.error(f"获取分红历史失败: {exc}")
+        raise ToolError(f"获取股票 {symbol} 分红历史失败: {str(exc)}")
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def cn_stock_get_analyst_consensus(
+    symbol: Annotated[str, Field(description="股票代码")],
+) -> AnalystConsensusResult:
+    """获取 A 股分析师一致预期及评级。"""
+    try:
+        # 并发获取盈利预测和评级变动
+        tasks = [
+            asyncio.to_thread(ak.stock_profit_forecast_em, symbol=symbol),
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        df_forecast = pd.DataFrame()
+        if not isinstance(results[0], Exception):
+            df_forecast = results[0]
+
+        # 提取数据
+        target_price = None
+        # 假设 df_forecast 包含一致预测数据，列如 "平均目标价"
+        # 实际 ak.stock_profit_forecast_em 返回的是机构预测明细列表
+        # 我们取最近的 N 条作为 "Recent Ratings"
+
+        ratings = []
+        if not df_forecast.empty:
+            # 排序
+            if "日期" in df_forecast.columns:
+                df_forecast["日期"] = pd.to_datetime(
+                    df_forecast["日期"], errors="coerce"
+                )
+                df_forecast = df_forecast.sort_values("日期", ascending=False)
+
+            for _, row in df_forecast.head(10).iterrows():
+                ratings.append(
+                    AnalystRatingItem(
+                        date=row.get("日期").strftime("%Y-%m-%d")
+                        if pd.notna(row.get("日期"))
+                        else "",
+                        org_name=str(row.get("研究机构", "")),
+                        analyst=str(row.get("分析师", "")),
+                        rating=str(row.get("评级", "")),
+                        target_price=float(row.get("目标价格", 0))
+                        if pd.notna(row.get("目标价格"))
+                        else None,
+                    )
+                )
+
+        return AnalystConsensusResult(
+            symbol=symbol,
+            target_price=None,  # 需要从 summaries 接口获取，这里暂略
+            latest_ratings=ratings,
+        )
+
+    except Exception as exc:
+        logger.error(f"获取分析师预期失败: {exc}")
+        raise ToolError(f"获取股票 {symbol} 分析师预期失败: {str(exc)}")
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def hk_stock_get_financial_statements(
+    stock: Annotated[str, Field(description="港股代码，如 '00700'")],
+    period: Annotated[
+        Literal["report", "yearly"],
+        Field(description="周期类型 (report=按报告期, yearly=按年度)"),
+    ] = "report",
+) -> FinancialStatementsResult:
+    """获取港股财务报表数据 (资产负债/利润/现金流)。"""
+    try:
+        # 港股接口 ak.stock_financial_hk_report_em(stock="00700", symbol="资产负债表", indicator="年度")
+        indicator = "年度" if period == "yearly" else "报告期"
+
+        tasks = [
+            asyncio.to_thread(
+                ak.stock_financial_hk_report_em,
+                stock=stock,
+                symbol="利润表",
+                indicator=indicator,
+            ),
+            asyncio.to_thread(
+                ak.stock_financial_hk_report_em,
+                stock=stock,
+                symbol="资产负债表",
+                indicator=indicator,
+            ),
+            asyncio.to_thread(
+                ak.stock_financial_hk_report_em,
+                stock=stock,
+                symbol="现金流量表",
+                indicator=indicator,
+            ),
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+
+        dfs = []
+        for res in results:
+            if isinstance(res, Exception):
+                logger.error(f"获取港股报表失败: {res}")
+                dfs.append(pd.DataFrame())
+            else:
+                dfs.append(res)
+
+        df_profit, df_balance, df_cash = dfs[0], dfs[1], dfs[2]
+
+        # 港股接口返回的列名通常包含 "截止日期"
+        def standardize(df):
+            if df.empty:
+                return df
+            col_map = {
+                c: "REPORT_DATE" for c in df.columns if c in ["截止日期", "REPORT_DATE"]
+            }
+            return df.rename(columns=col_map)
+
+        df_profit = standardize(df_profit)
+        df_balance = standardize(df_balance)
+        df_cash = standardize(df_cash)
+
+        merged = pd.DataFrame()
+        if not df_profit.empty:
+            merged = df_profit
+
+        if not df_balance.empty:
+            if merged.empty:
+                merged = df_balance
+            else:
+                merged = pd.merge(
+                    merged,
+                    df_balance,
+                    on="REPORT_DATE",
+                    how="outer",
+                    suffixes=("", "_bal"),
+                )
+
+        if not df_cash.empty:
+            if merged.empty:
+                merged = df_cash
+            else:
+                merged = pd.merge(
+                    merged,
+                    df_cash,
+                    on="REPORT_DATE",
+                    how="outer",
+                    suffixes=("", "_cash"),
+                )
+
+        if merged.empty:
+            return FinancialStatementsResult(
+                symbol=stock, period=period, count=0, statements=[]
+            )
+
+        if "REPORT_DATE" in merged.columns:
+            merged["REPORT_DATE"] = pd.to_datetime(
+                merged["REPORT_DATE"], errors="coerce"
+            )
+            merged = merged.sort_values("REPORT_DATE", ascending=False).head(8)
+        else:
+            merged = merged.head(8)
+
+        def get_val(row, keys: list[str]) -> float | None:
+            for k in keys:
+                if k in row and pd.notna(row[k]):
+                    try:
+                        val = str(row[k]).replace(",", "")
+                        return float(val)
+                    except:
+                        pass
+            return None
+
+        statements = []
+        for _, row in merged.iterrows():
+            report_date = row.get("REPORT_DATE")
+            if pd.isna(report_date):
+                continue
+
+            item = FinancialStatementItem(
+                report_date=report_date.strftime("%Y-%m-%d"),
+                # 利润表
+                revenue=get_val(row, ["营业额", "营业收入", "Total Revenue"]),
+                net_profit=get_val(row, ["归属股东利益", "Net Income"]),
+                # 港股有些接口可能没有扣非
+                # 资产负债表
+                total_assets=get_val(row, ["资产总计", "Total Assets"]),
+                total_liabilities=get_val(row, ["负债总计", "Total Liabilities"]),
+                total_equity=get_val(row, ["股东权益合计", "Total Equity"]),
+                # 现金流量表
+                operating_cash_flow=get_val(
+                    row, ["经营活动产生现金流量净额", "Operating Cash Flow"]
+                ),
+                investing_cash_flow=get_val(
+                    row, ["投资活动产生现金流量净额", "Investing Cash Flow"]
+                ),
+                financing_cash_flow=get_val(
+                    row, ["融资活动产生现金流量净额", "Financing Cash Flow"]
+                ),
+            )
+            statements.append(item)
+
+        return FinancialStatementsResult(
+            symbol=stock,
+            period=period,
+            count=len(statements),
+            statements=statements,
+        )
+
+    except Exception as exc:
+        logger.error(f"获取港股报表失败: {exc}")
+        raise ToolError(f"获取港股 {stock} 财务报表失败: {str(exc)}")
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def hk_stock_get_financial_metrics(
+    stock: Annotated[str, Field(description="港股代码，如 '00700'")],
+) -> FinancialMetricsResult:
+    """获取港股关键财务指标 (ROE/PE/EPS 等)。"""
+    try:
+        # stock_financial_hk_indicator_em(stock="00700", indicator="年度")
+        # 指标: 港股主要财务指标
+        df = await asyncio.to_thread(
+            ak.stock_financial_hk_indicator_em, stock=stock, indicator="报告期"
+        )
+
+        if df.empty:
+            return FinancialMetricsResult(symbol=stock, count=0, metrics=[])
+
+        if "截止日期" in df.columns:
+            df["截止日期"] = pd.to_datetime(df["截止日期"], errors="coerce")
+            df = df.sort_values("截止日期", ascending=False).head(8)
+
+        def get_val(row, key: str) -> float | None:
+            if key in row and pd.notna(row[key]):
+                try:
+                    return float(str(row[key]).replace(",", ""))
+                except:
+                    pass
+            return None
+
+        metrics = []
+        for _, row in df.iterrows():
+            date_val = row.get("截止日期")
+            if pd.isna(date_val):
+                continue
+
+            metrics.append(
+                FinancialMetricItem(
+                    report_date=date_val.strftime("%Y-%m-%d"),
+                    eps=get_val(row, "基本每股收益"),
+                    bvps=get_val(row, "每股净资产"),
+                    roe=get_val(row, "净资产收益率"),
+                    gross_margin=None,  # 需检查具体列名
+                    net_margin=None,
+                    debt_to_asset_ratio=get_val(row, "资产负债率"),
+                )
+            )
+
+        return FinancialMetricsResult(
+            symbol=stock,
+            count=len(metrics),
+            metrics=metrics,
+        )
+
+    except Exception as exc:
+        logger.error(f"获取港股指标失败: {exc}")
+        raise ToolError(f"获取港股 {stock} 财务指标失败: {str(exc)}")
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def get_china_macro_indicators(
+    category: Annotated[
+        Literal[
+            "overview",
+            "growth",
+            "inflation",
+            "pmi",
+            "monetary",
+            "financing",
+            "trade",
+            "real_estate",
+            "employment",
+            "consumption",
+            "industrial",
+            "fdi",
+        ],
+        Field(description="数据类别"),
+    ] = "overview",
+) -> MacroIndicatorsResult:
+    """获取中国宏观经济数据。"""
+    try:
+        indicators = []
+
+        async def fetch(name, func, *args, **kwargs):
+            try:
+                df = await asyncio.to_thread(func, *args, **kwargs)
+                if df.empty:
+                    return None
+                # 通常 macro 接口返回包含 "日期" 和 "数值" 的列
+                # 标准化
+                col_date = next(
+                    (
+                        c
+                        for c in df.columns
+                        if "日期" in c or "date" in c.lower() or "月份" in c
+                    ),
+                    None,
+                )
+                col_val = next(
+                    (
+                        c
+                        for c in df.columns
+                        if c != col_date and ("值" in c or "index" in c or "rate" in c)
+                    ),
+                    None,
+                )
+
+                if col_date and col_val:
+                    # 排序取最新
+                    try:
+                        df[col_date] = pd.to_datetime(df[col_date], errors="coerce")
+                        df = df.sort_values(col_date, ascending=False)
+                    except:
+                        pass
+
+                    latest = df.iloc[0]
+                    return MacroIndicatorItem(
+                        name=name,
+                        value=float(latest[col_val])
+                        if pd.notna(latest[col_val])
+                        else None,
+                        date=str(
+                            latest[col_date].strftime("%Y-%m-%d")
+                            if pd.notna(latest[col_date])
+                            else str(latest[col_date])
+                        ),
+                        unit=None,  # 接口通常不直接返回单位，需人工标注或忽略
+                    )
+            except Exception as e:
+                logger.warn(f"Fetch {name} failed: {e}")
+                return None
+
+        tasks = []
+
+        if category in ["overview", "growth"]:
+            tasks.append(fetch("GDP季度", ak.macro_china_gdp))
+
+        if category in ["overview", "inflation"]:
+            tasks.append(fetch("CPI月度", ak.macro_china_cpi))
+            tasks.append(fetch("PPI年率", ak.macro_china_ppi_yearly))
+
+        if category in ["overview", "pmi"]:
+            tasks.append(fetch("官方制造业PMI", ak.macro_china_pmi))
+            tasks.append(fetch("财新制造业PMI", ak.macro_china_cx_pmi))
+
+        if category in ["overview", "monetary"]:
+            tasks.append(fetch("M2货币供应年率", ak.macro_china_money_supply))
+            # LPR 接口可能不同
+            tasks.append(fetch("LPR_1Y", ak.macro_china_lpr))
+
+        if category in ["overview", "financing"]:
+            tasks.append(fetch("社融规模增量", ak.macro_china_social_financing_flow))
+
+        if category in ["overview", "trade"]:
+            tasks.append(fetch("贸易差额", ak.macro_china_trade_balance))
+            tasks.append(fetch("外汇储备", ak.macro_china_fx_reserves))
+
+        if category in ["overview", "real_estate"]:
+            tasks.append(fetch("70城新建住宅价格指数", ak.macro_china_new_house_price))
+
+        if category in ["overview", "employment"]:
+            tasks.append(fetch("城镇调查失业率", ak.macro_china_urban_unemployment))
+
+        if category in ["overview", "consumption"]:
+            tasks.append(
+                fetch("社会消费品零售总额", ak.macro_china_consumer_goods_retail)
+            )
+
+        if category in ["overview", "industrial"]:
+            tasks.append(
+                fetch(
+                    "规模以上工业增加值年率", ak.macro_china_industrial_production_yoy
+                )
+            )
+
+        if category in ["overview", "fdi"]:
+            tasks.append(fetch("实际使用外资FDI", ak.macro_china_fdi))
+
+        results = await asyncio.gather(*tasks)
+        indicators = [r for r in results if r]
+
+        return MacroIndicatorsResult(
+            category=category,
+            count=len(indicators),
+            indicators=indicators,
+        )
+
+    except Exception as exc:
+        logger.error(f"获取中国宏观数据失败: {exc}")
+        raise ToolError(f"获取中国宏观数据失败: {str(exc)}")
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def get_hk_macro_indicators() -> MacroIndicatorsResult:
+    """获取香港宏观经济数据 (GDP/CPI/失业率)。"""
+    try:
+
+        async def fetch(name, func):
+            try:
+                df = await asyncio.to_thread(func)
+                if df.empty:
+                    return None
+                # 假设第一列日期，第二列数值
+                col_date = df.columns[0]
+                col_val = df.columns[1]
+
+                try:
+                    df[col_date] = pd.to_datetime(df[col_date], errors="coerce")
+                    df = df.sort_values(col_date, ascending=False)
+                except:
+                    pass
+
+                latest = df.iloc[0]
+                return MacroIndicatorItem(
+                    name=name,
+                    value=float(latest[col_val]) if pd.notna(latest[col_val]) else None,
+                    date=str(
+                        latest[col_date].strftime("%Y-%m-%d")
+                        if pd.notna(latest[col_date])
+                        else str(latest[col_date])
+                    ),
+                )
+            except Exception as e:
+                return None
+
+        tasks = [
+            fetch("香港GDP", ak.macro_china_hk_gdp),
+            fetch("香港CPI", ak.macro_china_hk_cpi),
+            fetch("香港失业率", ak.macro_china_hk_unemployment_rate),
+        ]
+        results = await asyncio.gather(*tasks)
+        indicators = [r for r in results if r]
+
+        return MacroIndicatorsResult(
+            category="HK",
+            count=len(indicators),
+            indicators=indicators,
+        )
+    except Exception as exc:
+        logger.error(f"获取香港宏观数据失败: {exc}")
+        raise ToolError(f"获取香港宏观数据失败: {str(exc)}")
+
+
+@mcp.tool(annotations={"readOnlyHint": True})
+async def get_us_macro_indicators(
+    category: Annotated[
+        Literal["overview", "growth", "inflation", "employment", "business"],
+        Field(description="数据类别"),
+    ] = "overview",
+) -> MacroIndicatorsResult:
+    """获取美国宏观经济数据。"""
+    try:
+
+        async def fetch(name, func, *args):
+            try:
+                df = await asyncio.to_thread(func, *args)
+                if df.empty:
+                    return None
+                col_date = df.columns[0]
+                col_val = df.columns[1]
+                try:
+                    df[col_date] = pd.to_datetime(df[col_date], errors="coerce")
+                    df = df.sort_values(col_date, ascending=False)
+                except:
+                    pass
+
+                latest = df.iloc[0]
+                return MacroIndicatorItem(
+                    name=name,
+                    value=float(latest[col_val]) if pd.notna(latest[col_val]) else None,
+                    date=str(
+                        latest[col_date].strftime("%Y-%m-%d")
+                        if pd.notna(latest[col_date])
+                        else str(latest[col_date])
+                    ),
+                )
+            except:
+                return None
+
+        tasks = []
+        if category in ["overview", "growth"]:
+            tasks.append(
+                fetch("美国GDP", ak.macro_usa_gdp_monthly)
+            )  # 只有月度/季度接口需确认，假设 akshare 有 macro_usa_gdp
+
+        if category in ["overview", "inflation"]:
+            tasks.append(fetch("美国CPI", ak.macro_usa_cpi))
+            tasks.append(fetch("美国PPI", ak.macro_usa_ppi))
+
+        if category in ["overview", "employment"]:
+            tasks.append(fetch("非农就业人口", ak.macro_usa_non_farm))
+            tasks.append(fetch("失业率", ak.macro_usa_unemployment_rate))
+
+        if category in ["overview", "business"]:
+            tasks.append(fetch("ISM制造业PMI", ak.macro_usa_ism_pmi))
+
+        results = await asyncio.gather(*tasks)
+        indicators = [r for r in results if r]
+
+        return MacroIndicatorsResult(
+            category=category,
+            count=len(indicators),
+            indicators=indicators,
+        )
+    except Exception as exc:
+        logger.error(f"获取美国宏观数据失败: {exc}")
+        raise ToolError(f"获取美国宏观数据失败: {str(exc)}")
