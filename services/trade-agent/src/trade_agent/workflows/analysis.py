@@ -12,13 +12,14 @@ from beartype.typing import Callable
 from pydantic import BaseModel
 
 from ..agents import (
-    build_fundamental_analyst,
+    build_cn_fundamental_analyst,
     build_macro_analyst,
     build_options_flow_analyst,
     build_portfolio_manager,
     build_risk_manager,
     build_sentiment_analyst,
     build_technical_analyst,
+    build_us_fundamental_analyst,
     build_wyckoff_analyst,
 )
 from ..config import AppConfig
@@ -64,12 +65,8 @@ def build_parallel_analysis_step(config: AppConfig) -> Parallel:
             agent_builder=build_sentiment_analyst,
             output_schema=SentimentSignal,
         ),
-        AnalysisStepConfig(
-            name="fundamental",
-            desc="基本面分析",
-            agent_builder=build_fundamental_analyst,
-            output_schema=FundamentalSignal,
-        ),
+        # Note: fundamental step handled separately with market-based routing
+        # See custom executor below
         AnalysisStepConfig(
             name="macro",
             desc="宏观分析",
@@ -91,6 +88,22 @@ def build_parallel_analysis_step(config: AppConfig) -> Parallel:
     ]
 
     sem = asyncio.Semaphore(config.analysis.parallel_num)
+
+    def is_cn_market(ticker: str) -> bool:
+        """检测是否为A股或港股代码
+
+        A股: 6位纯数字 (如 '600519', '000001')
+        港股: 数字.HK格式 (如 '0700.HK', '3690.HK')
+        """
+        import re
+
+        # A股: 6位数字
+        if re.match(r"^\d{6}$", ticker):
+            return True
+        # 港股: 数字.HK
+        if re.match(r"^\d+\.HK$", ticker, re.IGNORECASE):
+            return True
+        return False
 
     steps = []
 
@@ -114,6 +127,7 @@ def build_parallel_analysis_step(config: AppConfig) -> Parallel:
 
         return executor
 
+    # 添加标准步骤
     for step_config in step_configs:
         steps.append(
             Step(
@@ -122,6 +136,49 @@ def build_parallel_analysis_step(config: AppConfig) -> Parallel:
                 executor=make_executor(step_config),
             )
         )
+
+    # 添加基本面分析步骤（带市场路由）
+    async def fundamental_executor(
+        step_input: StepInput,
+    ) -> AsyncIterator[Union[WorkflowRunOutputEvent, StepOutput]]:
+        async with sem:
+            # 从输入中提取 ticker
+            input_str = str(step_input.input)
+            # 简单提取第一个看起来像代码的部分
+            import re
+
+            ticker_match = re.search(
+                r"\b[A-Z0-9]+(?:\.HK)?\b", input_str, re.IGNORECASE
+            )
+            ticker = ticker_match.group(0) if ticker_match else ""
+
+            # 根据市场选择分析师
+            if is_cn_market(ticker):
+                agent = build_cn_fundamental_analyst(config, db=InMemoryDb())
+                logger.info(f"Using CN fundamental analyst for {ticker}")
+            else:
+                agent = build_us_fundamental_analyst(config, db=InMemoryDb())
+                logger.info(f"Using US fundamental analyst for {ticker}")
+
+            response_iter = agent.arun(
+                input=input_str,
+                stream=True,
+                stream_events=True,
+                output_schema=FundamentalSignal,
+            )
+            async for event in response_iter:
+                yield event
+            response = agent.get_last_run_output()
+            assert response is not None
+            yield StepOutput(content=response.content)
+
+    steps.append(
+        Step(
+            name="fundamental",
+            description="基本面分析",
+            executor=fundamental_executor,
+        )
+    )
 
     return Parallel(*steps, name="parallel_analysis", description="并行分析阶段")
 

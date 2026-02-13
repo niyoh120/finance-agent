@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import io
+import logging
 from datetime import datetime, timezone
 from functools import lru_cache
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any
 
 import matplotlib
 
@@ -20,44 +21,78 @@ from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.patches import Rectangle
 
-_FONT_FALLBACK = (
-    "Noto Sans CJK SC, Noto Sans CJK, Source Han Sans SC, SimHei, "
-    "PingFang SC, Heiti SC, Microsoft YaHei, Arial, sans-serif"
-)
-_FONT_DIRS = (
-    "/usr/share/fonts",
-    "/usr/local/share/fonts",
-    str(Path.home() / ".fonts"),
-    "/System/Library/Fonts",
-    "/Library/Fonts",
-    "C:\\Windows\\Fonts",
-)
-_FONT_FILE_SUFFIXES = {".ttf", ".otf", ".ttc"}
-_FONT_CANDIDATES: tuple[tuple[str, Iterable[str]], ...] = (
-    ("Noto Sans CJK SC", ("notosanscjk", "noto-sans-cjk", "sourcehansans")),
-    ("Source Han Sans SC", ("sourcehansans", "sourcehan")),
-    ("SimHei", ("simhei",)),
-    ("Microsoft YaHei", ("microsoftyahei", "msyh", "yahei")),
-    ("PingFang SC", ("pingfang",)),
-    ("Heiti SC", ("heiti", "stheiti")),
+logger = logging.getLogger(__name__)
+
+# 项目内嵌中文字体路径
+_EMBEDDED_FONT_PATH = (
+    Path(__file__).parent.parent.parent / "assets" / "fonts" / "NotoSansSC-Regular.ttf"
 )
 
 
 class MatplotlibRenderTools(Toolkit):
     def __init__(self, **kwargs):
         tools = [self.render_matplotlib_chart]
-        instructions = (
-            "Render a chart with Matplotlib and return a webp image url.\n"
-            "Input: spec dict. Keys: title, x_label, y_label, grid, legend, "
-            "x_format, x_scale, y_scale, x_lim, y_lim, style, traces, shapes, "
-            "annotations.\n"
-            "traces: list of {type: line|scatter|bar|area, x, y, label, color, "
-            "linestyle, linewidth, marker, alpha}.\n"
-            "shapes: list of {type: rect|vline|hline, x0,x1,y0,y1,x,y,color, "
-            "alpha, linestyle, linewidth}.\n"
-            "annotations: list of {x, y, text, arrow, dx, dy, fontsize, color}.\n"
-            "Returns image_url for markdown embedding."
-        )
+        instructions = """\
+使用 Matplotlib 渲染图表并返回 webp 图片 URL。
+
+## 输入参数
+- spec: dict，图表规格
+
+## spec 字段定义（严格遵循，不要自行发明格式）
+
+```json
+{
+  "title": "图表标题",
+  "x_label": "X轴标签",
+  "y_label": "Y轴标签",
+  "x_type": "datetime",
+  "traces": [
+    {
+      "type": "line",
+      "x": [1700000000, 1700086400],
+      "y": [150.0, 152.0],
+      "label": "收盘价",
+      "color": "black",
+      "linestyle": "-",
+      "linewidth": 1.5
+    }
+  ],
+  "shapes": [
+    {"type": "rect", "x0": 1700000000, "x1": 1700500000, "y0": 148, "y1": 155, "color": "green", "alpha": 0.2},
+    {"type": "vline", "x": 1700000000, "color": "black", "linestyle": "--"},
+    {"type": "hline", "y": 150.0, "color": "red", "linestyle": "--"}
+  ],
+  "annotations": [
+    {"x": 1700000000, "y": 150.0, "text": "标注文字", "arrow": true, "color": "green"}
+  ]
+}
+```
+
+## 重要约束
+1. 曲线列表必须使用 `traces`（不是 visuals）
+2. 轴标签必须使用 `x_label`/`y_label`（不是 xlabel/ylabel）
+3. trace 的 `x` 和 `y` 必须是平铺数组，不要嵌套在 `data` 中
+4. trace.type 支持: line, scatter, bar, area, step（不支持 candlestick/ma）
+5. annotations 使用 `x`/`y` 坐标（不是 date/price）
+6. 竖线用 `{"type": "vline", "x": 时间戳}`（不是 `{"type": "line", "x0": ..., "x1": ...}`）
+7. 时间戳用 Unix 秒级时间戳，设置 `x_type: "datetime"` 自动格式化
+
+## 从 fetch_stock_history 构造 spec 的示例
+```python
+# candles = fetch_stock_history(...).candles
+x_values = [c["time"] for c in candles]  # Unix 时间戳
+y_values = [c["close"] for c in candles]  # 收盘价
+spec = {
+    "title": "AAPL 威科夫分析",
+    "x_label": "日期",
+    "y_label": "价格",
+    "x_type": "datetime",
+    "traces": [
+        {"type": "line", "x": x_values, "y": y_values, "label": "收盘价", "color": "black"}
+    ]
+}
+```
+"""
         super().__init__(
             name="matplotlib_render_tools",
             tools=tools,
@@ -450,25 +485,14 @@ def _coerce_datetime(value: Any) -> datetime | None:
 
 @lru_cache(maxsize=1)
 def _resolve_font_family() -> str:
-    font_paths = font_manager.findSystemFonts(fontpaths=_FONT_DIRS)
-    for font_path in font_paths:
-        path = Path(font_path)
-        if path.suffix.lower() not in _FONT_FILE_SUFFIXES:
-            continue
-        normalized = _normalize_font_token(path.stem)
-        for family, tokens in _FONT_CANDIDATES:
-            for token in tokens:
-                if _normalize_font_token(token) in normalized:
-                    try:
-                        font_manager.fontManager.addfont(font_path)
-                    except Exception:
-                        pass
-                    try:
-                        return font_manager.FontProperties(fname=font_path).get_name()
-                    except Exception:
-                        return family
-    return _FONT_FALLBACK
+    """加载项目内嵌的中文字体"""
+    if not _EMBEDDED_FONT_PATH.exists():
+        logger.warning("内嵌字体文件不存在: %s", _EMBEDDED_FONT_PATH)
+        return "sans-serif"
 
-
-def _normalize_font_token(value: str) -> str:
-    return "".join(ch for ch in value.lower() if ch.isalnum())
+    try:
+        font_manager.fontManager.addfont(str(_EMBEDDED_FONT_PATH))
+        return font_manager.FontProperties(fname=str(_EMBEDDED_FONT_PATH)).get_name()
+    except Exception as e:
+        logger.warning("加载内嵌字体失败: %s", e)
+        return "sans-serif"

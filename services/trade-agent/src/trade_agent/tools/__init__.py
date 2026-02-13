@@ -4,10 +4,12 @@ from .risk_calculator import calculate_risk_limits
 from .technical_indicators import (
     TechnicalIndicatorTools,
 )
+from .web_search import ExaWebSearchTools
 
 __all__ = [
     "TechnicalIndicatorTools",
     "calculate_risk_limits",
     "FinanceTools",
     "MatplotlibRenderTools",
+    "ExaWebSearchTools",
 ]
