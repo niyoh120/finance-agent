@@ -1,10 +1,8 @@
-from typing import Any
-
 import structlog
 from agno.os import AgentOS
+from agno.agent import Agent
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field
 from shared.logging import configure_logging
 
 from .agents import (
@@ -28,7 +26,7 @@ configure_logging(service="trade-agent")
 logger = structlog.get_logger(__name__)
 
 
-def build_agents(config):
+def build_agents(config) -> list[Agent]:
     cn_fundamental_analyst = build_cn_fundamental_analyst(config)
     us_fundamental_analyst = build_us_fundamental_analyst(config)
     macro_analyst = build_macro_analyst(config)
@@ -66,33 +64,6 @@ agent_os = AgentOS(
     agents=build_agents(config),
     tracing=True,
 )
-
-
-class AnalysisRequest(BaseModel):
-    ticker: str = Field(..., min_length=1)
-
-
-class WyckoffRequest(BaseModel):
-    message: str = Field(..., min_length=1)
-
-
-class ChatRequest(BaseModel):
-    message: str = Field(..., min_length=1)
-    session_id: str | None = None
-
-
-class ChatResponse(BaseModel):
-    content: Any
-
-
-@app.post("/chat", response_model=ChatResponse)
-def chat(request: ChatRequest) -> ChatResponse:
-    response = chat_team.run(
-        request.message,
-        session_id=request.session_id,
-        stream=False,
-    )
-    return ChatResponse(content=response.content)
 
 
 app = agent_os.get_app()

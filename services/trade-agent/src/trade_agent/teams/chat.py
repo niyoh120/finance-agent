@@ -13,7 +13,12 @@ from ..agents import (
 from ..config import AppConfig
 
 
-def build_chat_team(config: AppConfig) -> Team:
+def build_chat_team(
+    config: AppConfig,
+    stream: bool = True,
+    stream_events: bool = True,
+    num_history_runs: int = 15,
+) -> Team:
     db = SqliteDb(db_file=config.storage.sqlite_db_path)
 
     team = Team(
@@ -36,10 +41,10 @@ def build_chat_team(config: AppConfig) -> Team:
         ],
         share_member_interactions=True,
         markdown=True,
-        stream=True,
-        stream_events=True,
         add_history_to_context=True,
-        num_history_runs=15,
+        stream=stream,
+        stream_events=stream_events,
+        num_history_runs=num_history_runs,
         **config.get_params_for_agent("trade_analyst"),
     )
 
