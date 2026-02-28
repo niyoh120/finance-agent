@@ -61,3 +61,4 @@ opencode.json
 .chainlit/
 .opencode/plans/
 assets
+.opencode
