@@ -1,6 +1,7 @@
 [tools]
 node = "lts"
-python = "3.12"
+python = "3.12.12"
+uv = "latest"
 
 [env]
 _.file = ".env"
@@ -28,6 +29,11 @@ run = "uv run python -m mcp_server.http"
 depends = ["install"]
 dir = "services/trade-agent"
 run = "uv run python -m trade_agent.app"
+
+[tasks.trade-agent-bot]
+depends = ["install"]
+dir = "services/trade-agent"
+run = "uv run python -m trade_agent.discord_bot"
 
 [tasks.stock-api]
 dir = "services/stock-api"

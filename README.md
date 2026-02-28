@@ -1,6 +1,6 @@
 # Finance MCP & Microservices
 
-基于 Docker Compose 的微服务架构，包含 BubbleSeek 数据抓取、宏观金融数据抓取、Stock API 与 MCP 服务。
+基于 Docker Compose 的微服务架构，包含 BubbleSeek 数据抓取、宏观金融数据抓取、Stock API、Trade Agent 与 MCP 服务。
 
 ## 架构概览 (Microservices Architecture)
 
@@ -12,13 +12,14 @@
 | **stock-api** | `services/stock-api` | TypeScript | TradingView API 包装器 (Fastify) | 3000 |
 | **macro-scraper** | `services/macro-scraper` | Python | 宏观金融数据抓取 | - |
 | **bubbleseek-scraper** | `services/bubbleseek-scraper` | Python | 新闻与期权流抓取 (bubbleseek.ai) | - |
+| **trade-agent** | `services/trade-agent` | Python | 多智能体交易分析与 Discord Bot | 8089 |
 | **mcp-server** | `services/mcp-server` | Python | Model Context Protocol 服务器 | Stdio |
 
 ## 快速开始 (Quick Start)
 
 ### 1. 环境准备
 - Docker & Docker Compose
-- Python 3.11+ (仅本地开发需要)
+- Python 3.12.12 (仅本地开发需要，推荐用 `mise` 管理)
 - Node.js 20+ (仅本地开发需要)
 
 ### 2. 配置
@@ -190,7 +191,7 @@ docker compose up --build
   - 创建数据库: `finance`
   - 确保用户 `postgres` 密码为 `postgres` (或修改 .env)
 - **Node.js**: v20+
-- **Python**: v3.11+（推荐用 `mise` 管理 Python/工具链）
+- **Python**: v3.12.12（推荐用 `mise` 管理 Python/工具链）
 
 #### 2. 环境变量
 修改根目录 `.env` 文件，将主机名从容器名改为 `localhost`：
@@ -240,6 +241,17 @@ mise run bubbleseek-scraper
 **终端 4: MCP Server**
 ```bash
 mise run mcp-server
+```
+
+**终端 5: Trade Agent API**
+```bash
+mise run trade-agent
+```
+
+**终端 6: Trade Agent Discord Bot**
+```bash
+# 需要在 .env 中配置 DISCORD_BOT_TOKEN
+mise run trade-agent-bot
 ```
 
 ### 目录结构

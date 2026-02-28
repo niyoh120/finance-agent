@@ -46,11 +46,9 @@ models:
 ```
 FA_TRADE_AGENT_CONFIG=services/trade-agent/config.yaml
 FA_TRADE_AGENT_LOG_LEVEL=INFO
-FA_MCP_SERVER_URL=http://mcp-server:8087/mcp
-FA_TRADE_AGENT_STOCK_API_URL=http://stock-api:3000
-FA_TRADE_AGENT_PARALLELISM=2
-OPENAI_API_KEY=...
-GOOGLE_API_KEY=...
+AXONHUB_API_KEY=...
+DISCORD_BOT_TOKEN=...
+OPENAI_API_KEY=...  # 当 provider 使用 openai/openai-like 且未配置其他 key env 时
 ```
 
 Chart MCP 示例：
@@ -61,6 +59,25 @@ chart_mcp:
 ```
 
 ## 运行
+
+推荐使用 `mise` 从仓库根目录启动（会自动注入根目录 `.env`）：
+
+```
+mise run trade-agent
+```
+
+启动 Discord Bot：
+
+```
+mise run trade-agent-bot
+```
+
+等价的 `uv` 命令（在 `services/trade-agent` 目录执行）：
+
+```
+uv run python -m trade_agent.app
+uv run python -m trade_agent.discord_bot
+```
 
 启动 FastAPI（本地）：
 
