@@ -62,6 +62,22 @@ class AnalysisConfig(BaseSettings):
     signal_weights: dict[str, float] = Field(default_factory=dict)
 
 
+class DiscordBotConfig(BaseSettings):
+    max_concurrency: int = 3
+    run_timeout_seconds: int = 180
+    num_history_runs: int = 8
+    stream_events: bool = False
+    stream_member_events: bool = False
+    include_reasoning: bool = False
+
+    placeholder_text: str = "正在分析中..."
+    min_edit_interval_ms: int = 700
+    min_edit_chars: int = 24
+    max_stream_chars: int = 1800
+    max_final_chars: int = 1900
+    final_overflow_strategy: Literal["split", "truncate"] = "split"
+
+
 class AppConfig(BaseSettings):
     agents: dict[str, AgentConfig]
     mcp_server: MCPConfig
@@ -69,6 +85,7 @@ class AppConfig(BaseSettings):
     storage: StorageConfig
     risk_parameters: RiskConfig
     analysis: AnalysisConfig
+    discord_bot: DiscordBotConfig = Field(default_factory=DiscordBotConfig)
 
     def _get_agent_config(self, agent_name: str) -> AgentConfig:
         agent_config = self.agents.get(agent_name)

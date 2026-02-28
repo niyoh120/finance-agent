@@ -51,6 +51,23 @@ DISCORD_BOT_TOKEN=...
 OPENAI_API_KEY=...  # 当 provider 使用 openai/openai-like 且未配置其他 key env 时
 ```
 
+Discord Bot 配置示例：
+
+```
+discord_bot:
+  max_concurrency: 3
+  run_timeout_seconds: 180
+  num_history_runs: 8
+  stream_events: false
+  stream_member_events: false
+  placeholder_text: "正在分析中..."
+  min_edit_interval_ms: 700
+  min_edit_chars: 24
+  max_stream_chars: 1800
+  max_final_chars: 1900
+  final_overflow_strategy: "split" # split | truncate
+```
+
 Chart MCP 示例：
 
 ```
@@ -71,6 +88,15 @@ mise run trade-agent
 ```
 mise run trade-agent-bot
 ```
+
+Discord Bot 行为说明：
+
+- 全频道消息触发（不需要 @）。
+- 严格过滤系统噪声：忽略 system/bot/webhook/空内容消息。
+- 回复方式为单条消息流式编辑：先发送占位消息，再持续编辑。
+- 超长输出默认按分段发送（可配置为截断）。
+
+Discord 开发者后台需要开启 `Message Content Intent`，否则无法读取消息正文。
 
 等价的 `uv` 命令（在 `services/trade-agent` 目录执行）：
 

@@ -38,3 +38,24 @@ analysis:
         wyckoff: 0.3
         fundamental: 0.15
         sentiment: 0.05
+
+discord_bot:
+    # 机器人并发与超时
+    max_concurrency: 3
+    run_timeout_seconds: 180
+
+    # Team 会话上下文窗口
+    num_history_runs: 8
+
+    # 流式事件控制（建议保持 false，避免噪音）
+    stream_events: false
+    stream_member_events: false
+    include_reasoning: false
+
+    # Discord 输出行为
+    placeholder_text: "正在分析中..."
+    min_edit_interval_ms: 700
+    min_edit_chars: 24
+    max_stream_chars: 1800
+    max_final_chars: 1900
+    final_overflow_strategy: "split" # split | truncate
