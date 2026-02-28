@@ -37,6 +37,7 @@ def build_chat_team(
         ],
         instructions=[
             "根据用户问题选择相关的分析师进行分析，根据分析结果使用中文回答。",
+            "对于技术面分析：需要重点参考威科夫分析师的结论、技术分析师的结论作为补充；"
             "对于基本面分析：如果涉及A股或港股（6位数字代码或.HK后缀），选择CN Fundamental Analyst；"
             "如果涉及美股（字母代码），选择US Fundamental Analyst。",
         ],
