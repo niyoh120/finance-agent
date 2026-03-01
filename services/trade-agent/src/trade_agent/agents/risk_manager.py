@@ -1,10 +1,9 @@
 from agno.agent import Agent
-from agno.tools.websearch import WebSearchTools
 from agno.tools.yfinance import YFinanceTools
 
 from ..config import AppConfig
 from ..models import RiskLimits
-from ..tools import FinanceTools, calculate_risk_limits
+from ..tools import FinanceTools, calculate_risk_limits, ExaWebSearchTools
 
 
 def build_risk_manager(config: AppConfig, db=None) -> Agent:
@@ -38,7 +37,7 @@ def build_risk_manager(config: AppConfig, db=None) -> Agent:
                     "get_key_financial_ratios",
                 ]
             ),
-            WebSearchTools(),
+            ExaWebSearchTools(),
             FinanceTools(include_tools=["fetch_stock_history", "search_market"]),
             calculate_hard_limits,
         ],

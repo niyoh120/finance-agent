@@ -1,8 +1,7 @@
 from agno.agent import Agent
-from agno.tools.websearch import WebSearchTools
 
 from ...config import AppConfig
-from ...tools import FinanceTools
+from ...tools import FinanceTools, ExaWebSearchTools
 
 
 def build_wyckoff_analyst(config: AppConfig, db=None) -> Agent:
@@ -21,7 +20,7 @@ def build_wyckoff_analyst(config: AppConfig, db=None) -> Agent:
         name="Wyckoff Analyst",
         model=model,
         tools=[
-            WebSearchTools(),
+            ExaWebSearchTools(),
             FinanceTools(include_tools=["fetch_stock_history", "search_market"]),
         ],
         instructions=instructions,

@@ -1,8 +1,7 @@
 from agno.agent import Agent
-from agno.tools.websearch import WebSearchTools
 
 from ...config import AppConfig
-from ...tools import FinanceTools
+from ...tools import FinanceTools, ExaWebSearchTools
 
 
 def build_macro_analyst(config: AppConfig, db=None) -> Agent:
@@ -13,7 +12,6 @@ def build_macro_analyst(config: AppConfig, db=None) -> Agent:
         "你是宏观分析师，负责基于 The Dial 的宏观数据给出对权益风险偏好的叠加结论。\n"
         "\n"
         "一、The Dial 宏观数据（全球风险偏好）：\n"
-        "1) query_macro_reports(limit=1) 获取最新报告日与总指数快照；\n"
         "2) query_macro_total_index_history(days=365) 计算近 4 周趋势与分位；\n"
         "3) query_macro_module_snapshots(days=30, limit=200) 找出最强/最弱模块；\n"
         "4) query_macro_factor_snapshots(days=30, limit=200) 仅用于补充风险因子解释。\n"
@@ -60,9 +58,6 @@ def build_macro_analyst(config: AppConfig, db=None) -> Agent:
         tools=[
             FinanceTools(
                 include_tools=[
-                    "query_macro_reports",
-                    "query_macro_module_snapshots",
-                    "query_macro_factor_snapshots",
                     "query_macro_module_history",
                     "query_macro_total_index_history",
                     "get_china_macro_indicators",
@@ -70,7 +65,7 @@ def build_macro_analyst(config: AppConfig, db=None) -> Agent:
                     "get_us_macro_indicators",
                 ]
             ),
-            WebSearchTools(),
+            ExaWebSearchTools(),
         ],
         instructions=instructions,
         add_datetime_to_context=True,

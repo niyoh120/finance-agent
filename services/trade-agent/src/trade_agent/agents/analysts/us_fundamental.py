@@ -1,8 +1,8 @@
 from agno.agent import Agent
-from agno.tools.websearch import WebSearchTools
 from agno.tools.yfinance import YFinanceTools
 
 from ...config import AppConfig
+from ...tools import ExaWebSearchTools
 
 
 def build_us_fundamental_analyst(config: AppConfig, db=None) -> Agent:
@@ -74,7 +74,7 @@ def build_us_fundamental_analyst(config: AppConfig, db=None) -> Agent:
                     "get_analyst_recommendations",
                 ]
             ),
-            WebSearchTools(),
+            ExaWebSearchTools(),
         ],
         instructions=instructions,
         add_datetime_to_context=True,
