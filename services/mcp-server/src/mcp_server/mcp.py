@@ -80,6 +80,27 @@ def get_stock_api_url() -> str:
     return os.getenv("FA_MCP_SERVER_STOCK_API_URL", "http://stock-api:3000")
 
 
+def parse_bool(value: str | None, default: bool) -> bool:
+    if value is None:
+        return default
+
+    normalized = value.strip().lower()
+    if not normalized:
+        return default
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
+def macro_protected_data_enabled() -> bool:
+    return parse_bool(os.getenv("FA_MACRO_SCRAPER_ENABLE_PROTECTED_ENDPOINTS"), False)
+
+
+MACRO_PROTECTED_TOOLS_ENABLED = macro_protected_data_enabled()
+
+
 def parse_iso_date(value: str) -> date:
     try:
         return date.fromisoformat(value)
@@ -192,7 +213,6 @@ async def query_news_articles(
     )
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
 async def query_macro_reports(
     days: Annotated[
         int,
@@ -280,7 +300,10 @@ async def query_macro_reports(
     )
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+if MACRO_PROTECTED_TOOLS_ENABLED:
+    mcp.tool(annotations={"readOnlyHint": True})(query_macro_reports)
+
+
 async def query_macro_module_snapshots(
     module_id: Annotated[
         str | None,
@@ -370,7 +393,10 @@ async def query_macro_module_snapshots(
     )
 
 
-@mcp.tool(annotations={"readOnlyHint": True})
+if MACRO_PROTECTED_TOOLS_ENABLED:
+    mcp.tool(annotations={"readOnlyHint": True})(query_macro_module_snapshots)
+
+
 async def query_macro_factor_snapshots(
     module_id: Annotated[
         str | None,
@@ -482,6 +508,10 @@ async def query_macro_factor_snapshots(
             for row in rows
         ],
     )
+
+
+if MACRO_PROTECTED_TOOLS_ENABLED:
+    mcp.tool(annotations={"readOnlyHint": True})(query_macro_factor_snapshots)
 
 
 @mcp.tool(annotations={"readOnlyHint": True})

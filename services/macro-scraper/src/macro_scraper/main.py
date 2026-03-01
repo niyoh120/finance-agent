@@ -34,6 +34,20 @@ def parse_int(value: str | None, default: int) -> int:
         return default
 
 
+def parse_bool(value: str | None, default: bool) -> bool:
+    if value is None:
+        return default
+
+    normalized = value.strip().lower()
+    if not normalized:
+        return default
+    if normalized in {"1", "true", "yes", "on"}:
+        return True
+    if normalized in {"0", "false", "no", "off"}:
+        return False
+    return default
+
+
 def get_base_url() -> str:
     value = os.getenv("FA_MACRO_SCRAPER_BASE_URL")
     if value and value.strip():
@@ -47,6 +61,13 @@ def get_poll_interval() -> int:
 
 def get_history_days() -> int:
     return parse_int(os.getenv("FA_MACRO_SCRAPER_HISTORY_DAYS"), 365)
+
+
+def get_enable_protected_endpoints() -> bool:
+    return parse_bool(
+        os.getenv("FA_MACRO_SCRAPER_ENABLE_PROTECTED_ENDPOINTS"),
+        False,
+    )
 
 
 def parse_date(value: Any) -> date | None:
@@ -392,9 +413,19 @@ async def fetch_module_history(
         return []
 
 
-async def run_cycle(scraper: MacroScraper, history_days: int) -> None:
+async def run_cycle(
+    scraper: MacroScraper,
+    history_days: int,
+    enable_protected_endpoints: bool,
+) -> None:
     dashboard = await fetch_dashboard(scraper)
-    report = await fetch_report(scraper)
+    report: dict[str, Any] = {}
+    if enable_protected_endpoints:
+        report = await fetch_report(scraper)
+    else:
+        logger.info(
+            "Skipping protected endpoint export/report (FA_MACRO_SCRAPER_ENABLE_PROTECTED_ENDPOINTS=false)"
+        )
 
     modules = extract_modules(dashboard, report)
     module_map = build_module_map(modules)
@@ -451,7 +482,8 @@ async def run_cycle(scraper: MacroScraper, history_days: int) -> None:
         history_counts = (total_saved, module_saved)
 
     logger.info(
-        "Macro cycle complete report_rows=%s module_snapshots=%s factor_snapshots=%s total_history=%s module_history=%s",
+        "Macro cycle complete protected_endpoints=%s report_rows=%s module_snapshots=%s factor_snapshots=%s total_history=%s module_history=%s",
+        enable_protected_endpoints,
         report_counts[0],
         report_counts[1],
         report_counts[2],
@@ -463,12 +495,14 @@ async def run_cycle(scraper: MacroScraper, history_days: int) -> None:
 async def main() -> None:
     poll_interval = get_poll_interval()
     history_days = get_history_days()
+    enable_protected_endpoints = get_enable_protected_endpoints()
 
     logger.info(
-        "Starting Macro Scraper base_url=%s poll=%ss history_days=%s",
+        "Starting Macro Scraper base_url=%s poll=%ss history_days=%s protected_endpoints=%s",
         get_base_url(),
         poll_interval,
         history_days,
+        enable_protected_endpoints,
     )
 
     timeout = httpx.Timeout(30.0)
@@ -477,7 +511,7 @@ async def main() -> None:
         while True:
             start_time = datetime.now(timezone.utc)
             try:
-                await run_cycle(scraper, history_days)
+                await run_cycle(scraper, history_days, enable_protected_endpoints)
             except Exception as exc:
                 logger.exception("Macro scraper cycle failed: %s", exc)
 

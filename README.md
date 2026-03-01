@@ -145,6 +145,8 @@ docker compose --profile migrate run --rm migrate
 ### Macro Scraper
 - 从 The Dial API (`indexbha.com`) 拉取宏观指标与历史序列并写入数据库。
 - 通过 `FA_MACRO_SCRAPER_*` 控制轮询与回溯天数。
+- 默认 `FA_MACRO_SCRAPER_ENABLE_PROTECTED_ENDPOINTS=false`，会跳过受保护端点 `export/report`。
+- 跳过受保护端点时，`macro_reports`、`macro_module_snapshots`、`macro_factor_snapshots` 不会新增；历史序列表仍会持续更新。
 
 ### BubbleSeek Scraper
 - 从 bubbleseek.ai API 获取新闻和期权流数据。
@@ -155,6 +157,7 @@ docker compose --profile migrate run --rm migrate
 ### MCP Server
 - 提供新闻、期权、股票与宏观数据查询工具。
 - 宏观工具覆盖：报告快照、模块/因子快照、模块历史、总指数历史。
+- 当 `FA_MACRO_SCRAPER_ENABLE_PROTECTED_ENDPOINTS=false` 时，`query_macro_reports`、`query_macro_module_snapshots`、`query_macro_factor_snapshots` 不会注册到 MCP 工具列表。
 - TradingView 市场搜索工具 `search_market`：
   - 用途：搜索正确的 TradingView market id（解决交易所前缀不确定、标的迁移上市地等问题）
   - 用法：用 ticker/公司名搜索，拿到返回结果中的 `id`（形如 `NASDAQ:AAPL`）
