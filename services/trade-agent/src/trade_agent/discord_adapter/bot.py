@@ -47,7 +47,7 @@ class TradeDiscordBot(discord.Client):
         await super().close()
 
     def serve(self) -> None:
-        token = getenv("DISCORD_BOT_TOKEN")
+        token = getenv("FA_DISCORD_BOT_TOKEN")
         if not token:
-            raise ValueError("DISCORD_BOT_TOKEN NOT SET")
+            raise ValueError("FA_DISCORD_BOT_TOKEN NOT SET")
         self.run(token)
