@@ -57,6 +57,9 @@ run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=mcp-server --
 [tasks.docker-build-trade-agent]
 run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=trade-agent --build-arg MODULE_ENTRY=trade_agent.app -t {{vars.image_repo}}finance-trade-agent:latest -t {{vars.image_repo}}finance-trade-agent:{{exec(command='git rev-parse --short HEAD')}} ."
 
+[tasks.docker-build-trade-agent-discord-bot]
+run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=trade-agent --build-arg MODULE_ENTRY=trade_agent.discord_bot -t {{vars.image_repo}}finance-trade-agent-discord-bot:latest -t {{vars.image_repo}}finance-trade-agent-discord-bot:{{exec(command='git rev-parse --short HEAD')}} ."
+
 [tasks.docker-build-stock-api]
 run = "docker build -f services/stock-api/Dockerfile -t {{vars.image_repo}}finance-stock-api:latest -t {{vars.image_repo}}finance-stock-api:{{exec(command='git rev-parse --short HEAD')}} ."
 
@@ -69,6 +72,7 @@ run = [
     "docker-build-futunn-scraper",
     "docker-build-mcp-server",
     "docker-build-trade-agent",
+    "docker-build-trade-agent-discord-bot",
     "docker-build-stock-api",
   ] },
 ]
@@ -109,6 +113,13 @@ run = [
   "docker push {{vars.image_repo}}finance-trade-agent:{{exec(command='git rev-parse --short HEAD')}}",
 ]
 
+
+[tasks.docker-push-trade-agent-discord-bot]
+run = [
+  "docker push {{vars.image_repo}}finance-trade-agent-discord-bot:latest",
+  "docker push {{vars.image_repo}}finance-trade-agent-discord-bot:{{exec(command='git rev-parse --short HEAD')}}",
+]
+
 [tasks.docker-push-stock-api]
 run = [
   "docker push {{vars.image_repo}}finance-stock-api:latest",
@@ -124,6 +135,7 @@ run = [
     "docker-push-futunn-scraper",
     "docker-push-mcp-server",
     "docker-push-trade-agent",
+    "docker-push-trade-agent-discord-bot",
     "docker-push-stock-api",
   ] },
 ]
@@ -162,6 +174,13 @@ run = [
 run = [
   { tasks = ["docker-build-trade-agent"] },
   { tasks = ["docker-push-trade-agent"] },
+]
+
+
+[tasks.docker-build-push-trade-agent-discord-bot]
+run = [
+  { tasks = ["docker-build-trade-agent-discord-bot"] },
+  { tasks = ["docker-push-trade-agent-discord-bot"] },
 ]
 
 [tasks.docker-build-push-stock-api]
