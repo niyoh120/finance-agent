@@ -66,6 +66,9 @@ class DiscordBotConfig(BaseSettings):
     max_concurrency: int = 3
     run_timeout_seconds: int = 180
     num_history_runs: int = 8
+    thread_history_messages: int = 20
+    thread_history_max_chars: int = 3000
+    thread_history_include_bots: bool = False
     stream_events: bool = False
     stream_member_events: bool = False
     include_reasoning: bool = False

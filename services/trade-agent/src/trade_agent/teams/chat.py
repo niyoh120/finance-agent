@@ -19,9 +19,9 @@ def build_chat_team(
     stream_events: bool = True,
     stream_member_events: bool = True,
     num_history_runs: int = 15,
+    db: SqliteDb | None = None,
+    add_history_to_context: bool = True,
 ) -> Team:
-    db = SqliteDb(db_file=config.storage.sqlite_db_path)
-
     team = Team(
         name="Trade Analyst Team",
         model=config.get_model_for_agent("trade_analyst"),
@@ -43,7 +43,7 @@ def build_chat_team(
         ],
         share_member_interactions=True,
         markdown=True,
-        add_history_to_context=True,
+        add_history_to_context=add_history_to_context,
         stream=stream,
         stream_events=stream_events,
         stream_member_events=stream_member_events,

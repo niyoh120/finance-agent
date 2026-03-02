@@ -15,6 +15,9 @@ ALLOWED_MESSAGE_TYPES: set[discord.MessageType] = {
 
 
 def should_process_message(message: discord.Message, bot_user_id: int | None) -> bool:
+    if not isinstance(message.channel, discord.Thread):
+        return False
+
     if bot_user_id is not None and message.author.id == bot_user_id:
         return False
 

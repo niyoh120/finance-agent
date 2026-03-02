@@ -47,6 +47,11 @@ discord_bot:
     # Team 会话上下文窗口
     num_history_runs: 8
 
+    # thread 历史上下文（thread-only 模式）
+    thread_history_messages: 20
+    thread_history_max_chars: 3000
+    thread_history_include_bots: false
+
     # 流式事件控制（建议保持 false，避免噪音）
     stream_events: false
     stream_member_events: false

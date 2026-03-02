@@ -1,6 +1,7 @@
 import structlog
 from agno.os import AgentOS
 from agno.agent import Agent
+from agno.db.sqlite import SqliteDb
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from shared.logging import configure_logging
@@ -53,7 +54,10 @@ def build_agents(config) -> list[Agent]:
 config = load_config()
 logger.info("Load config succ.", config=config)
 analysis_workflow = build_analysis_workflow(config)
-chat_team = build_chat_team(config)
+chat_team = build_chat_team(
+    config,
+    db=SqliteDb(db_file=config.storage.sqlite_db_path),
+)
 
 
 app = FastAPI(title="Trade Agent API")

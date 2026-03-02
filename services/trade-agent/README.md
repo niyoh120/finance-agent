@@ -58,6 +58,9 @@ discord_bot:
   max_concurrency: 3
   run_timeout_seconds: 180
   num_history_runs: 8
+  thread_history_messages: 20
+  thread_history_max_chars: 3000
+  thread_history_include_bots: false
   stream_events: false
   stream_member_events: false
   placeholder_text: "正在分析中..."
@@ -91,12 +94,14 @@ mise run trade-agent-bot
 
 Discord Bot 行为说明：
 
-- 全频道消息触发（不需要 @）。
+- 仅处理 Discord thread 内消息（thread-only）。
 - 严格过滤系统噪声：忽略 system/bot/webhook/空内容消息。
+- 每条消息单独构建 Team，不共享内存态，避免并发上下文串扰。
+- 对话上下文来自当前 thread 的最近历史消息（而非 Team SQLite 历史）。
 - 回复方式为单条消息流式编辑：先发送占位消息，再持续编辑。
 - 超长输出默认按分段发送（可配置为截断）。
 
-Discord 开发者后台需要开启 `Message Content Intent`，否则无法读取消息正文。
+Discord 开发者后台需要开启 `Message Content Intent` 和 `Read Message History`，否则无法读取 thread 历史上下文。
 
 等价的 `uv` 命令（在 `services/trade-agent` 目录执行）：
 
