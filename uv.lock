@@ -2175,7 +2175,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "akshare", specifier = ">=1.18.0" },
+    { name = "akshare", specifier = ">=1.18.23,<1.19" },
     { name = "fastmcp", specifier = ">=2.14.3" },
     { name = "finance-shared", editable = "shared" },
     { name = "httpx", specifier = ">=0.27.0" },

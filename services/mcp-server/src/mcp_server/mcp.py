@@ -2,6 +2,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from datetime import date, datetime, timedelta, timezone
 from typing import Annotated, Any, Literal
 
@@ -27,10 +28,6 @@ from shared.models.options import OptionsFlow
 from sqlalchemy import func, select
 
 from .schemas import (
-    AnalystConsensusResult,
-    AnalystRatingItem,
-    DividendHistoryResult,
-    DividendItem,
     EarningsCalendarItem,
     EarningsCalendarResult,
     EconomicCalendarItem,
@@ -58,8 +55,6 @@ from .schemas import (
     OptionsFlowItem,
     OptionsSide,
     OptionType,
-    ShareholderInfoResult,
-    ShareholderItem,
     SideStats,
     StockBasicInfoItem,
     StockBasicInfoResult,
@@ -124,6 +119,235 @@ def resolve_date_range(
     if start > end:
         raise ToolError("start_date 不能晚于 end_date")
     return start, end
+
+
+def resolve_optional_date_range(
+    days: int | None,
+    start_date: str | None,
+    end_date: str | None,
+) -> tuple[date | None, date | None]:
+    if days is None and start_date is None and end_date is None:
+        return None, None
+
+    today = datetime.now(tz=timezone.utc).date()
+    end = parse_iso_date(end_date) if end_date else today
+
+    if start_date:
+        start = parse_iso_date(start_date)
+    elif days is not None:
+        start = end - timedelta(days=days)
+    else:
+        start = None
+
+    if start and start > end:
+        raise ToolError("start_date 不能晚于 end_date")
+
+    return start, end
+
+
+def normalize_hk_stock_code(stock: str) -> str:
+    code = stock.strip().upper()
+    if code.endswith(".HK"):
+        code = code[:-3]
+    digits = "".join(ch for ch in code if ch.isdigit())
+    if digits:
+        return digits.zfill(5)
+    return code
+
+
+def _find_date_column(
+    df: pd.DataFrame,
+    preferred: tuple[str, ...] = (),
+) -> str | None:
+    for preferred_name in preferred:
+        if preferred_name in df.columns:
+            return preferred_name
+
+    date_keywords = ("日期", "date", "月份", "month", "时间", "发布")
+    for column in df.columns:
+        name = str(column).lower()
+        if any(keyword in name for keyword in date_keywords):
+            return str(column)
+    return str(df.columns[0]) if len(df.columns) else None
+
+
+def _find_value_column(
+    df: pd.DataFrame,
+    date_column: str | None,
+    preferred: tuple[str, ...] = (),
+) -> str | None:
+    priority_keywords = (
+        "今值",
+        "现值",
+        "value",
+        "数值",
+        "指数值",
+        "指数",
+        "失业率",
+        "lpr1y",
+        "lpr5y",
+        "社会融资规模增量",
+    )
+
+    def is_numeric_column(series: pd.Series) -> bool:
+        if pd.api.types.is_numeric_dtype(series):
+            return True
+        converted = pd.to_numeric(series, errors="coerce")
+        return converted.notna().sum() > 0
+
+    candidates = [c for c in df.columns if str(c) != str(date_column)]
+    if not candidates:
+        return None
+
+    for preferred_name in preferred:
+        for column in candidates:
+            if str(column) == preferred_name and is_numeric_column(df[column]):
+                return str(column)
+
+    for preferred_name in preferred:
+        for column in candidates:
+            if preferred_name in str(column) and is_numeric_column(df[column]):
+                return str(column)
+
+    for keyword in priority_keywords:
+        for column in candidates:
+            if keyword in str(column).lower() and is_numeric_column(df[column]):
+                return str(column)
+
+    for column in candidates:
+        if pd.api.types.is_numeric_dtype(df[column]):
+            return str(column)
+
+    best_column: str | None = None
+    best_count = -1
+    for column in candidates:
+        converted = pd.to_numeric(df[column], errors="coerce")
+        count = int(converted.notna().sum())
+        if count > best_count:
+            best_count = count
+            best_column = str(column)
+    return best_column
+
+
+def _parse_macro_date_value(value: Any) -> datetime | None:
+    if value is None or pd.isna(value):
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
+
+    text = str(value).strip()
+    if not text or text.lower() in {"nan", "nat", "none"}:
+        return None
+
+    direct_formats = ("%Y-%m-%d", "%Y/%m/%d", "%Y%m%d")
+    for fmt in direct_formats:
+        try:
+            return datetime.strptime(text, fmt)
+        except ValueError:
+            pass
+
+    month_match = re.match(r"^(\d{4})(\d{2})$", text)
+    if month_match:
+        year, month = int(month_match.group(1)), int(month_match.group(2))
+        if 1 <= month <= 12:
+            return datetime(year, month, 1)
+
+    zh_month_match = re.match(r"^(\d{4})年(\d{1,2})月(?:份)?$", text)
+    if zh_month_match:
+        year, month = int(zh_month_match.group(1)), int(zh_month_match.group(2))
+        if 1 <= month <= 12:
+            return datetime(year, month, 1)
+
+    quarter_range_match = re.match(r"^(\d{4})年第1-([1-4])季度$", text)
+    if quarter_range_match:
+        year = int(quarter_range_match.group(1))
+        month = int(quarter_range_match.group(2)) * 3
+        return datetime(year, month, 1)
+
+    quarter_match = re.match(r"^(\d{4})(?:年)?第([1-4])季度$", text)
+    if quarter_match:
+        year = int(quarter_match.group(1))
+        month = int(quarter_match.group(2)) * 3
+        return datetime(year, month, 1)
+
+    fallback = pd.to_datetime(text, errors="coerce")
+    if pd.notna(fallback):
+        return fallback.to_pydatetime()
+    return None
+
+
+def _parse_macro_dates(series: pd.Series) -> pd.Series:
+    parsed = [_parse_macro_date_value(value) for value in series]
+    return pd.to_datetime(parsed, errors="coerce")
+
+
+def _normalize_macro_latest(
+    df: pd.DataFrame,
+    *,
+    start: date | None,
+    end: date | None,
+    date_candidates: tuple[str, ...] = (),
+    value_candidates: tuple[str, ...] = (),
+    item_filter: tuple[str, str] | None = None,
+) -> tuple[pd.Series, str | None, str | None]:
+    data = df.copy().reset_index(drop=True)
+
+    if item_filter:
+        item_column, item_value = item_filter
+        if item_column in data.columns:
+            data = data[data[item_column].astype(str) == item_value]
+            if data.empty:
+                raise ValueError(f"按 {item_column}={item_value} 过滤后无数据")
+
+    date_column = _find_date_column(data, preferred=date_candidates)
+    if date_column and date_column in data.columns:
+        parsed_dates = _parse_macro_dates(data[date_column])
+    else:
+        parsed_dates = pd.Series([pd.NaT] * len(data), index=data.index)
+
+    data = data.assign(_parsed_date=parsed_dates, _origin_order=data.index)
+
+    if data["_parsed_date"].notna().any() and (start is not None or end is not None):
+        if start is not None:
+            start_ts = pd.Timestamp(start)
+            data = data[data["_parsed_date"] >= start_ts]
+        if end is not None:
+            end_ts = pd.Timestamp(end) + pd.Timedelta(days=1) - pd.Timedelta(seconds=1)
+            data = data[data["_parsed_date"] <= end_ts]
+        if data.empty:
+            raise ValueError("时间范围内无数据")
+
+    value_column = _find_value_column(data, date_column, preferred=value_candidates)
+    if not value_column:
+        raise ValueError("未识别到可用数值列")
+
+    numeric_values = pd.to_numeric(data[value_column], errors="coerce")
+    candidates = data.assign(_numeric_value=numeric_values)
+    candidates = candidates[candidates["_numeric_value"].notna()]
+    if candidates.empty:
+        raise ValueError(f"列 {value_column} 在时间范围内均为空")
+
+    if candidates["_parsed_date"].notna().any():
+        candidates = candidates.sort_values(
+            ["_parsed_date", "_origin_order"],
+            ascending=[False, False],
+            na_position="last",
+        )
+    else:
+        candidates = candidates.sort_values("_origin_order", ascending=False)
+
+    latest = candidates.iloc[0]
+    return latest, date_column, value_column
+
+
+def _format_date_text(value: Any) -> str:
+    if value is None or pd.isna(value):
+        return ""
+    if hasattr(value, "strftime"):
+        return value.strftime("%Y-%m-%d")
+    return str(value)
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -1148,41 +1372,174 @@ async def cn_stock_get_basic_info(
 ) -> StockBasicInfoResult:
     """获取 A 股股票基本信息。
 
-    包含股票名称、当前价格、总市值、流通市值、所属行业、上市日期等基本信息。
+    包含股票名称、当前价格、总市值、所属行业、上市日期等基本信息。
     适用于基本面分析的初始查询，快速了解公司概况。
 
     数据源：东方财富
     """
-    try:
-        df = await asyncio.to_thread(ak.stock_individual_info_em, symbol=symbol.strip())
-        if df.empty:
-            raise ToolError(f"未找到股票 {symbol} 的基本信息")
+    normalized_symbol = symbol.strip()
 
-        # stock_individual_info_em 返回 DataFrame 列为: item, value
-        data = dict(zip(df["item"], df["value"]))
+    def parse_float(val: Any) -> float | None:
+        try:
+            return float(val)
+        except (ValueError, TypeError):
+            return None
 
-        def parse_float(val: Any) -> float | None:
+    def infer_a_share_market_prefix(code: str) -> str:
+        if code.startswith("6"):
+            return "sh"
+        if code.startswith(("0", "2", "3")):
+            return "sz"
+        return "sh"
+
+    async def call_with_retry(func, *args, retries: int = 2, **kwargs):
+        last_exc: Exception | None = None
+        for attempt in range(retries + 1):
             try:
-                return float(val)
-            except (ValueError, TypeError):
-                return None
+                return await asyncio.to_thread(func, *args, **kwargs)
+            except Exception as exc:  # noqa: BLE001
+                last_exc = exc
+                if attempt >= retries:
+                    break
+                await asyncio.sleep(0.6 * (attempt + 1))
+        assert last_exc is not None
+        raise last_exc
+
+    try:
+        # 优先使用东方财富接口（字段最全）
+        try:
+            em_df = await call_with_retry(
+                ak.stock_individual_info_em,
+                symbol=normalized_symbol,
+                retries=2,
+            )
+            if not em_df.empty:
+                data = dict(zip(em_df["item"], em_df["value"]))
+                price = parse_float(data.get("最新价"))
+                if price is not None:
+                    return StockBasicInfoResult(
+                        symbol=normalized_symbol,
+                        info=StockBasicInfoItem(
+                            symbol=normalized_symbol,
+                            name=str(data.get("股票简称", "")),
+                            price=price,
+                            market_cap=parse_float(data.get("总市值")),
+                            industry=str(data.get("行业", "")),
+                            listing_date=str(data.get("上市时间", "")),
+                        ),
+                    )
+        except Exception as em_exc:
+            logger.warning(
+                "stock_individual_info_em failed, fallback to cninfo+sina symbol=%s error=%s",
+                normalized_symbol,
+                em_exc,
+            )
+
+        # 回退方案：cninfo(静态信息) + 新浪行情（优先日线，失败再分钟线）
+        profile_error: Exception | None = None
+        profile_df = None
+        profile_row = None
+        try:
+            profile_df = await call_with_retry(
+                ak.stock_profile_cninfo,
+                symbol=normalized_symbol,
+                retries=1,
+            )
+            if profile_df is not None and not profile_df.empty:
+                profile_row = profile_df.iloc[0]
+        except Exception as profile_exc:
+            profile_error = profile_exc
+            logger.warning(
+                "stock_profile_cninfo failed symbol=%s error=%s",
+                normalized_symbol,
+                profile_exc,
+            )
+
+        prefixed_symbol = (
+            f"{infer_a_share_market_prefix(normalized_symbol)}{normalized_symbol}"
+        )
+
+        price: float | None = None
+        market_cap: float | None = None
+        daily_error: Exception | None = None
+        try:
+            daily_df = await call_with_retry(
+                ak.stock_zh_a_daily,
+                symbol=prefixed_symbol,
+                adjust="",
+                retries=1,
+            )
+            if daily_df is not None and not daily_df.empty:
+                latest = daily_df.iloc[-1]
+                price = parse_float(latest.get("close"))
+                outstanding_share = parse_float(latest.get("outstanding_share"))
+                market_cap = (
+                    price * outstanding_share
+                    if price is not None and outstanding_share is not None
+                    else None
+                )
+        except Exception as daily_exc:
+            daily_error = daily_exc
+            logger.warning(
+                "stock_zh_a_daily failed symbol=%s error=%s",
+                prefixed_symbol,
+                daily_exc,
+            )
+
+        if price is None:
+            try:
+                minute_df = await call_with_retry(
+                    ak.stock_zh_a_minute,
+                    symbol=prefixed_symbol,
+                    period="5",
+                    retries=1,
+                )
+                if minute_df is not None and not minute_df.empty:
+                    latest_minute = minute_df.iloc[-1]
+                    price = parse_float(latest_minute.get("close"))
+            except Exception as minute_exc:
+                logger.warning(
+                    "stock_zh_a_minute failed symbol=%s error=%s",
+                    prefixed_symbol,
+                    minute_exc,
+                )
+
+        if price is None:
+            detail = []
+            if profile_error is not None:
+                detail.append(f"profile={profile_error}")
+            if daily_error is not None:
+                detail.append(f"daily={daily_error}")
+            error_text = "; ".join(detail) if detail else "无可用行情数据"
+            raise ToolError(f"股票 {normalized_symbol} 获取最新价失败: {error_text}")
+
+        display_name = ""
+        industry = None
+        listing_date = None
+        if profile_row is not None:
+            display_name = str(
+                profile_row.get("A股简称") or profile_row.get("公司名称") or ""
+            )
+            industry = str(profile_row.get("所属行业") or "")
+            listing_date = str(profile_row.get("上市日期") or "")
 
         return StockBasicInfoResult(
-            symbol=symbol.strip(),
+            symbol=normalized_symbol,
             info=StockBasicInfoItem(
-                symbol=symbol.strip(),
-                name=str(data.get("股票简称", "")),
-                price=parse_float(data.get("最新价")) or 0.0,
-                market_cap=parse_float(data.get("总市值")),
-                float_market_cap=parse_float(data.get("流通市值")),
-                industry=str(data.get("行业", "")),
-                listing_date=str(data.get("上市时间", "")),
+                symbol=normalized_symbol,
+                name=display_name,
+                price=price,
+                market_cap=market_cap,
+                industry=industry,
+                listing_date=listing_date,
             ),
         )
 
     except Exception as exc:
-        logger.error("获取股票基本信息失败", symbol=symbol, error=str(exc))
-        raise ToolError(f"获取股票 {symbol} 基本信息失败: {str(exc)}") from exc
+        logger.error("获取股票基本信息失败 symbol=%s error=%s", normalized_symbol, exc)
+        raise ToolError(
+            f"获取股票 {normalized_symbol} 基本信息失败: {str(exc)}"
+        ) from exc
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -1197,20 +1554,55 @@ async def cn_stock_get_financial_statements(
 
     默认返回最近 8 期数据。包含营业收入、净利润、总资产、负债、现金流等核心字段。
     """
+    normalized_symbol = symbol.strip()
+
+    def to_em_symbol(code: str) -> str:
+        code_upper = code.upper()
+        if "." in code_upper:
+            return code_upper
+        if len(code_upper) == 6 and code_upper.isdigit():
+            if code_upper.startswith("6"):
+                return f"{code_upper}.SH"
+            if code_upper.startswith(("0", "2", "3")):
+                return f"{code_upper}.SZ"
+            if code_upper.startswith(("4", "8")):
+                return f"{code_upper}.BJ"
+        return code_upper
+
     try:
+        em_symbol = to_em_symbol(normalized_symbol)
+
         # 定义需要并发获取的任务
         tasks = []
         if period == "report":
             tasks = [
-                asyncio.to_thread(ak.stock_profit_sheet_by_report_em, symbol=symbol),
-                asyncio.to_thread(ak.stock_balance_sheet_by_report_em, symbol=symbol),
-                asyncio.to_thread(ak.stock_cash_flow_sheet_by_report_em, symbol=symbol),
+                asyncio.to_thread(
+                    ak.stock_profit_sheet_by_report_em,
+                    symbol=em_symbol,
+                ),
+                asyncio.to_thread(
+                    ak.stock_balance_sheet_by_report_em,
+                    symbol=em_symbol,
+                ),
+                asyncio.to_thread(
+                    ak.stock_cash_flow_sheet_by_report_em,
+                    symbol=em_symbol,
+                ),
             ]
         else:
             tasks = [
-                asyncio.to_thread(ak.stock_profit_sheet_by_yearly_em, symbol=symbol),
-                asyncio.to_thread(ak.stock_balance_sheet_by_yearly_em, symbol=symbol),
-                asyncio.to_thread(ak.stock_cash_flow_sheet_by_yearly_em, symbol=symbol),
+                asyncio.to_thread(
+                    ak.stock_profit_sheet_by_yearly_em,
+                    symbol=em_symbol,
+                ),
+                asyncio.to_thread(
+                    ak.stock_balance_sheet_by_yearly_em,
+                    symbol=em_symbol,
+                ),
+                asyncio.to_thread(
+                    ak.stock_cash_flow_sheet_by_yearly_em,
+                    symbol=em_symbol,
+                ),
             ]
 
         results = await asyncio.gather(*tasks, return_exceptions=True)
@@ -1280,7 +1672,10 @@ async def cn_stock_get_financial_statements(
 
         if merged.empty:
             return FinancialStatementsResult(
-                symbol=symbol, period=period, count=0, statements=[]
+                symbol=normalized_symbol,
+                period=period,
+                count=0,
+                statements=[],
             )
 
         # 按日期降序，取最近 8 期
@@ -1346,15 +1741,17 @@ async def cn_stock_get_financial_statements(
             statements.append(item)
 
         return FinancialStatementsResult(
-            symbol=symbol,
+            symbol=normalized_symbol,
             period=period,
             count=len(statements),
             statements=statements,
         )
 
     except Exception as exc:
-        logger.error(f"获取财务报表失败: {exc}")
-        raise ToolError(f"获取股票 {symbol} 财务报表失败: {str(exc)}")
+        logger.error("获取财务报表失败 symbol=%s error=%s", normalized_symbol, exc)
+        raise ToolError(
+            f"获取股票 {normalized_symbol} 财务报表失败: {str(exc)}"
+        ) from exc
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -1365,269 +1762,186 @@ async def cn_stock_get_financial_metrics(
 
     数据源：东方财富-财务指标分析
     """
-    try:
-        # stock_financial_analysis_indicator_em 返回按报告期的指标
-        df = await asyncio.to_thread(
-            ak.stock_financial_analysis_indicator_em, symbol=symbol
-        )
+    normalized_symbol = symbol.strip()
 
-        if df.empty:
-            return FinancialMetricsResult(symbol=symbol, count=0, metrics=[])
+    def to_em_symbol(code: str) -> str:
+        code_upper = code.upper()
+        if "." in code_upper:
+            return code_upper
+        if len(code_upper) == 6 and code_upper.isdigit():
+            if code_upper.startswith("6"):
+                return f"{code_upper}.SH"
+            if code_upper.startswith(("0", "2", "3")):
+                return f"{code_upper}.SZ"
+            if code_upper.startswith(("4", "8")):
+                return f"{code_upper}.BJ"
+        return code_upper
 
-        # 按日期降序，取最近 8 期
-        # 假设列名有 "日期"
-        if "日期" in df.columns:
-            df["日期"] = pd.to_datetime(df["日期"], errors="coerce")
-            df = df.sort_values("日期", ascending=False).head(8)
-
-        def get_val(row, key: str) -> float | None:
+    def get_val(row: pd.Series, keys: list[str]) -> float | None:
+        for key in keys:
             if key in row and pd.notna(row[key]):
                 try:
                     return float(row[key])
-                except:
-                    pass
-            return None
+                except (ValueError, TypeError):
+                    continue
+        return None
 
-        metrics = []
-        for _, row in df.iterrows():
-            date_val = row.get("日期")
-            if pd.isna(date_val):
-                continue
+    def infer_a_share_market_prefix(code: str) -> str:
+        if code.startswith("6"):
+            return "sh"
+        if code.startswith(("0", "2", "3")):
+            return "sz"
+        return "sh"
 
-            metrics.append(
-                FinancialMetricItem(
-                    report_date=date_val.strftime("%Y-%m-%d"),
-                    eps=get_val(row, "每股收益(元)"),
-                    bvps=get_val(row, "每股净资产(元)"),
-                    pe=None,  # 历史 PE 通常不在这个接口，而在行情或估值接口，此处暂空
-                    pb=None,
-                    roe=get_val(row, "净资产收益率(%)"),
-                    gross_margin=get_val(row, "销售毛利率(%)"),
-                    net_margin=get_val(row, "销售净利率(%)"),
-                    debt_to_asset_ratio=get_val(row, "资产负债率(%)"),
-                )
+    async def fetch_latest_price(code: str) -> float | None:
+        prefixed_symbol = f"{infer_a_share_market_prefix(code)}{code}"
+        try:
+            daily_df = await asyncio.to_thread(
+                ak.stock_zh_a_daily,
+                symbol=prefixed_symbol,
+                adjust="",
             )
+            if not daily_df.empty:
+                close_val = pd.to_numeric(
+                    daily_df.iloc[-1].get("close"), errors="coerce"
+                )
+                if pd.notna(close_val):
+                    return float(close_val)
+        except Exception as daily_exc:
+            logger.warning(
+                "stock_zh_a_daily failed in financial_metrics symbol=%s error=%s",
+                prefixed_symbol,
+                daily_exc,
+            )
+
+        try:
+            minute_df = await asyncio.to_thread(
+                ak.stock_zh_a_minute,
+                symbol=prefixed_symbol,
+                period="5",
+            )
+            if not minute_df.empty:
+                close_val = pd.to_numeric(
+                    minute_df.iloc[-1].get("close"), errors="coerce"
+                )
+                if pd.notna(close_val):
+                    return float(close_val)
+        except Exception as minute_exc:
+            logger.warning(
+                "stock_zh_a_minute failed in financial_metrics symbol=%s error=%s",
+                prefixed_symbol,
+                minute_exc,
+            )
+
+        return None
+
+    try:
+        em_symbol = to_em_symbol(normalized_symbol)
+
+        try:
+            # 东方财富接口要求 symbol 带市场后缀，例如 600519.SH
+            df = await asyncio.to_thread(
+                ak.stock_financial_analysis_indicator_em,
+                symbol=em_symbol,
+            )
+        except Exception as em_exc:
+            logger.warning(
+                "stock_financial_analysis_indicator_em failed symbol=%s error=%s",
+                em_symbol,
+                em_exc,
+            )
+            # 回退新浪接口，避免单一数据源失败导致整体不可用
+            df = await asyncio.to_thread(
+                ak.stock_financial_analysis_indicator,
+                symbol=normalized_symbol,
+            )
+
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            return FinancialMetricsResult(symbol=normalized_symbol, count=0, metrics=[])
+
+        date_col = None
+        for candidate in ("REPORT_DATE", "日期", "report_date"):
+            if candidate in df.columns:
+                date_col = candidate
+                break
+
+        if date_col is not None:
+            df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
+            df = df.sort_values(date_col, ascending=False)
+
+        latest_row: pd.Series | None = None
+        latest_date_text = ""
+        for _, row in df.iterrows():
+            date_text = ""
+            if date_col is not None:
+                date_val = row.get(date_col)
+                if pd.notna(date_val):
+                    date_text = (
+                        date_val.strftime("%Y-%m-%d")
+                        if hasattr(date_val, "strftime")
+                        else str(date_val)
+                    )
+
+            if not date_text:
+                for alt in ("REPORT_DATE_NAME", "报告期", "日期"):
+                    if alt in row and pd.notna(row[alt]):
+                        date_text = str(row[alt])
+                        break
+
+            if date_text:
+                latest_row = row
+                latest_date_text = date_text
+                break
+
+        if latest_row is None:
+            return FinancialMetricsResult(symbol=normalized_symbol, count=0, metrics=[])
+
+        eps_val = get_val(
+            latest_row, ["EPSJB", "BASIC_EPS", "每股收益(元)", "每股收益"]
+        )
+        bvps_val = get_val(latest_row, ["BPS", "每股净资产(元)", "每股净资产"])
+        latest_price = await fetch_latest_price(normalized_symbol)
+
+        pe_val = None
+        if latest_price is not None and eps_val is not None and eps_val > 0:
+            pe_val = latest_price / eps_val
+
+        pb_val = None
+        if latest_price is not None and bvps_val is not None and bvps_val > 0:
+            pb_val = latest_price / bvps_val
+
+        latest_metric = FinancialMetricItem(
+            report_date=latest_date_text,
+            eps=eps_val,
+            bvps=bvps_val,
+            pe=pe_val,
+            pb=pb_val,
+            roe=get_val(latest_row, ["ROEJQ", "净资产收益率(%)", "ROE"]),
+            gross_margin=get_val(
+                latest_row,
+                ["XSMLL", "销售毛利率(%)", "GROSS_PROFIT_RATIO"],
+            ),
+            net_margin=get_val(
+                latest_row,
+                ["XSJLL", "销售净利率(%)", "NET_PROFIT_RATIO"],
+            ),
+            debt_to_asset_ratio=get_val(
+                latest_row,
+                ["ZCFZL", "资产负债率(%)", "DEBT_ASSET_RATIO"],
+            ),
+        )
 
         return FinancialMetricsResult(
-            symbol=symbol,
-            count=len(metrics),
-            metrics=metrics,
+            symbol=normalized_symbol,
+            count=1,
+            metrics=[latest_metric],
         )
 
     except Exception as exc:
-        logger.error(f"获取财务指标失败: {exc}")
-        raise ToolError(f"获取股票 {symbol} 财务指标失败: {str(exc)}")
-
-
-@mcp.tool(annotations={"readOnlyHint": True})
-async def cn_stock_get_shareholder_info(
-    symbol: Annotated[str, Field(description="股票代码")],
-) -> ShareholderInfoResult:
-    """获取 A 股股东信息 (十大股东/户数/筹码)。
-
-    包含：最新一期十大股东、股东户数及变化、户均持股。
-    """
-    try:
-        # 并发获取十大股东和股东户数
-        tasks = [
-            asyncio.to_thread(ak.stock_main_stock_holder, stock=symbol),
-            asyncio.to_thread(ak.stock_hold_num_em, symbol=symbol),
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        # 处理十大股东
-        df_holders = pd.DataFrame()
-        if not isinstance(results[0], Exception):
-            df_holders = results[0]
-
-        # 处理股东户数
-        df_num = pd.DataFrame()
-        if not isinstance(results[1], Exception):
-            df_num = results[1]
-            # 按日期降序
-            if not df_num.empty:
-                # 假设列名包含 "日期"
-                if "日期" in df_num.columns:
-                    df_num["日期"] = pd.to_datetime(df_num["日期"], errors="coerce")
-                    df_num = df_num.sort_values("日期", ascending=False)
-
-        report_date = None
-        holder_count = None
-        avg_hold_num = None
-
-        if not df_num.empty:
-            latest = df_num.iloc[0]
-            report_date = (
-                latest.get("日期").strftime("%Y-%m-%d")
-                if pd.notna(latest.get("日期"))
-                else None
-            )
-            holder_count = (
-                int(latest.get("股东户数"))
-                if pd.notna(latest.get("股东户数"))
-                else None
-            )
-            avg_hold_num = (
-                float(latest.get("户均持股数量"))
-                if pd.notna(latest.get("户均持股数量"))
-                else None
-            )
-
-        top_holders = []
-        if not df_holders.empty:
-            # 取最新一期
-            # akshare stock_main_stock_holder 返回通常包含 "季度" 列 (e.g. "2023一季")
-            # 或者直接返回所有历史，需要按 rank 和 holder_name 去重或者取最新季度
-            # 简单起见，取前 10 行，或者按 index
-            # 实测该接口可能返回所有历史，需要按 report_date 过滤
-            # 但这里简化处理，假设前 10 条是最近的
-            # 更好的是：先找到最新的 report_date (列名可能叫 "截止日期" 或 "季度")
-            # 假设列名 "截止日期"
-            pass  # TODO: refine logic based on actual columns
-
-        # 重新实现 logic: 简单取前 10 条作为示意，或尽可能解析
-        # akshare stock_main_stock_holder columns:
-        # index (0-9), holder_name, hold_num, hold_ratio, nature, ...
-        # 通常它返回最近一期的数据，或者是混合历史。
-        # 这里仅取前 10 条
-
-        for _, row in df_holders.head(10).iterrows():
-            top_holders.append(
-                ShareholderItem(
-                    holder_name=str(row.get("股东名称", "")),
-                    hold_num=float(row.get("持股数量", 0))
-                    if pd.notna(row.get("持股数量"))
-                    else None,
-                    hold_ratio=float(row.get("持股比例", 0))
-                    if pd.notna(row.get("持股比例"))
-                    else None,
-                    nature=str(row.get("股本性质", ""))
-                    if pd.notna(row.get("股本性质"))
-                    else None,
-                )
-            )
-
-        return ShareholderInfoResult(
-            symbol=symbol,
-            report_date=report_date,
-            holder_count=holder_count,
-            avg_hold_num=avg_hold_num,
-            top_holders=top_holders,
-        )
-
-    except Exception as exc:
-        logger.error(f"获取股东信息失败: {exc}")
-        raise ToolError(f"获取股票 {symbol} 股东信息失败: {str(exc)}")
-
-
-@mcp.tool(annotations={"readOnlyHint": True})
-async def cn_stock_get_dividend_history(
-    symbol: Annotated[str, Field(description="股票代码")],
-) -> DividendHistoryResult:
-    """获取 A 股历史分红记录。"""
-    try:
-        df = await asyncio.to_thread(
-            ak.stock_history_dividend_detail, symbol=symbol, indicator="分红"
-        )
-        if df.empty:
-            return DividendHistoryResult(symbol=symbol, count=0, history=[])
-
-        # 按公告日期或除权除息日排序
-        # 列名: 公告日期, 除权除息日, 分红方案, 股权登记日, 派息日
-        sort_col = "公告日期" if "公告日期" in df.columns else df.columns[0]
-        try:
-            df[sort_col] = pd.to_datetime(df[sort_col], errors="coerce")
-            df = df.sort_values(sort_col, ascending=False)
-        except:
-            pass
-
-        history = []
-        for _, row in df.head(10).iterrows():
-            history.append(
-                DividendItem(
-                    report_date=str(
-                        row.get("公告日期", "")
-                    ),  # 使用公告日期作为报告期标识
-                    plan=str(row.get("分红方案", "")),
-                    register_date=str(row.get("股权登记日", ""))
-                    if pd.notna(row.get("股权登记日"))
-                    else None,
-                    ex_date=str(row.get("除权除息日", ""))
-                    if pd.notna(row.get("除权除息日"))
-                    else None,
-                    payment_date=str(row.get("派息日", ""))
-                    if pd.notna(row.get("派息日"))
-                    else None,
-                    dividend_ratio=None,  # 该接口可能不包含股息率
-                )
-            )
-
-        return DividendHistoryResult(
-            symbol=symbol,
-            count=len(history),
-            history=history,
-        )
-
-    except Exception as exc:
-        logger.error(f"获取分红历史失败: {exc}")
-        raise ToolError(f"获取股票 {symbol} 分红历史失败: {str(exc)}")
-
-
-@mcp.tool(annotations={"readOnlyHint": True})
-async def cn_stock_get_analyst_consensus(
-    symbol: Annotated[str, Field(description="股票代码")],
-) -> AnalystConsensusResult:
-    """获取 A 股分析师一致预期及评级。"""
-    try:
-        # 并发获取盈利预测和评级变动
-        tasks = [
-            asyncio.to_thread(ak.stock_profit_forecast_em, symbol=symbol),
-        ]
-        results = await asyncio.gather(*tasks, return_exceptions=True)
-
-        df_forecast = pd.DataFrame()
-        if not isinstance(results[0], Exception):
-            df_forecast = results[0]
-
-        # 提取数据
-        target_price = None
-        # 假设 df_forecast 包含一致预测数据，列如 "平均目标价"
-        # 实际 ak.stock_profit_forecast_em 返回的是机构预测明细列表
-        # 我们取最近的 N 条作为 "Recent Ratings"
-
-        ratings = []
-        if not df_forecast.empty:
-            # 排序
-            if "日期" in df_forecast.columns:
-                df_forecast["日期"] = pd.to_datetime(
-                    df_forecast["日期"], errors="coerce"
-                )
-                df_forecast = df_forecast.sort_values("日期", ascending=False)
-
-            for _, row in df_forecast.head(10).iterrows():
-                ratings.append(
-                    AnalystRatingItem(
-                        date=row.get("日期").strftime("%Y-%m-%d")
-                        if pd.notna(row.get("日期"))
-                        else "",
-                        org_name=str(row.get("研究机构", "")),
-                        analyst=str(row.get("分析师", "")),
-                        rating=str(row.get("评级", "")),
-                        target_price=float(row.get("目标价格", 0))
-                        if pd.notna(row.get("目标价格"))
-                        else None,
-                    )
-                )
-
-        return AnalystConsensusResult(
-            symbol=symbol,
-            target_price=None,  # 需要从 summaries 接口获取，这里暂略
-            latest_ratings=ratings,
-        )
-
-    except Exception as exc:
-        logger.error(f"获取分析师预期失败: {exc}")
-        raise ToolError(f"获取股票 {symbol} 分析师预期失败: {str(exc)}")
+        logger.error("获取财务指标失败 symbol=%s error=%s", normalized_symbol, exc)
+        raise ToolError(
+            f"获取股票 {normalized_symbol} 财务指标失败: {str(exc)}"
+        ) from exc
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -1639,6 +1953,42 @@ async def hk_stock_get_financial_statements(
     ] = "report",
 ) -> FinancialStatementsResult:
     """获取港股财务报表数据 (资产负债/利润/现金流)。"""
+    normalized_stock = normalize_hk_stock_code(stock)
+
+    def to_wide(df: pd.DataFrame) -> pd.DataFrame:
+        if df.empty:
+            return pd.DataFrame()
+        if not {"REPORT_DATE", "STD_ITEM_NAME", "AMOUNT"}.issubset(df.columns):
+            return pd.DataFrame()
+
+        temp = df[["REPORT_DATE", "STD_ITEM_NAME", "AMOUNT"]].copy()
+        temp["REPORT_DATE"] = pd.to_datetime(temp["REPORT_DATE"], errors="coerce")
+        temp = temp[pd.notna(temp["REPORT_DATE"]) & pd.notna(temp["STD_ITEM_NAME"])]
+        if temp.empty:
+            return pd.DataFrame()
+
+        temp["AMOUNT"] = pd.to_numeric(temp["AMOUNT"], errors="coerce")
+        wide = (
+            temp.pivot_table(
+                index="REPORT_DATE",
+                columns="STD_ITEM_NAME",
+                values="AMOUNT",
+                aggfunc="first",
+            )
+            .reset_index()
+            .sort_values("REPORT_DATE", ascending=False)
+        )
+        return wide
+
+    def get_val(row: pd.Series, keys: list[str]) -> float | None:
+        for key in keys:
+            if key in row and pd.notna(row[key]):
+                try:
+                    return float(row[key])
+                except (ValueError, TypeError):
+                    continue
+        return None
+
     try:
         # 港股接口 ak.stock_financial_hk_report_em(stock="00700", symbol="资产负债表", indicator="年度")
         indicator = "年度" if period == "yearly" else "报告期"
@@ -1646,47 +1996,36 @@ async def hk_stock_get_financial_statements(
         tasks = [
             asyncio.to_thread(
                 ak.stock_financial_hk_report_em,
-                stock=stock,
+                stock=normalized_stock,
                 symbol="利润表",
                 indicator=indicator,
             ),
             asyncio.to_thread(
                 ak.stock_financial_hk_report_em,
-                stock=stock,
+                stock=normalized_stock,
                 symbol="资产负债表",
                 indicator=indicator,
             ),
             asyncio.to_thread(
                 ak.stock_financial_hk_report_em,
-                stock=stock,
+                stock=normalized_stock,
                 symbol="现金流量表",
                 indicator=indicator,
             ),
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
-        dfs = []
-        for res in results:
+        dfs: list[pd.DataFrame] = []
+        for name, res in zip(["利润表", "资产负债表", "现金流量表"], results):
             if isinstance(res, Exception):
-                logger.error(f"获取港股报表失败: {res}")
+                logger.error(
+                    "获取港股%s失败 stock=%s error=%s", name, normalized_stock, res
+                )
                 dfs.append(pd.DataFrame())
             else:
-                dfs.append(res)
+                dfs.append(to_wide(res))
 
-        df_profit, df_balance, df_cash = dfs[0], dfs[1], dfs[2]
-
-        # 港股接口返回的列名通常包含 "截止日期"
-        def standardize(df):
-            if df.empty:
-                return df
-            col_map = {
-                c: "REPORT_DATE" for c in df.columns if c in ["截止日期", "REPORT_DATE"]
-            }
-            return df.rename(columns=col_map)
-
-        df_profit = standardize(df_profit)
-        df_balance = standardize(df_balance)
-        df_cash = standardize(df_cash)
+        df_profit, df_balance, df_cash = dfs
 
         merged = pd.DataFrame()
         if not df_profit.empty:
@@ -1718,7 +2057,10 @@ async def hk_stock_get_financial_statements(
 
         if merged.empty:
             return FinancialStatementsResult(
-                symbol=stock, period=period, count=0, statements=[]
+                symbol=normalized_stock,
+                period=period,
+                count=0,
+                statements=[],
             )
 
         if "REPORT_DATE" in merged.columns:
@@ -1729,16 +2071,6 @@ async def hk_stock_get_financial_statements(
         else:
             merged = merged.head(8)
 
-        def get_val(row, keys: list[str]) -> float | None:
-            for k in keys:
-                if k in row and pd.notna(row[k]):
-                    try:
-                        val = str(row[k]).replace(",", "")
-                        return float(val)
-                    except:
-                        pass
-            return None
-
         statements = []
         for _, row in merged.iterrows():
             report_date = row.get("REPORT_DATE")
@@ -1748,36 +2080,63 @@ async def hk_stock_get_financial_statements(
             item = FinancialStatementItem(
                 report_date=report_date.strftime("%Y-%m-%d"),
                 # 利润表
-                revenue=get_val(row, ["营业额", "营业收入", "Total Revenue"]),
-                net_profit=get_val(row, ["归属股东利益", "Net Income"]),
+                revenue=get_val(
+                    row,
+                    ["营业额", "营业收入", "营运收入", "净利息收入", "其他经营收入"],
+                ),
+                net_profit=get_val(
+                    row,
+                    [
+                        "股东应占溢利",
+                        "股东应占利润",
+                        "归属股东利益",
+                        "净利润",
+                        "持续经营业务税后利润",
+                    ],
+                ),
                 # 港股有些接口可能没有扣非
                 # 资产负债表
-                total_assets=get_val(row, ["资产总计", "Total Assets"]),
-                total_liabilities=get_val(row, ["负债总计", "Total Liabilities"]),
-                total_equity=get_val(row, ["股东权益合计", "Total Equity"]),
+                total_assets=get_val(row, ["总资产", "资产总计"]),
+                total_liabilities=get_val(row, ["总负债", "负债总计"]),
+                total_equity=get_val(row, ["总权益", "股东权益", "股东权益合计"]),
                 # 现金流量表
                 operating_cash_flow=get_val(
-                    row, ["经营活动产生现金流量净额", "Operating Cash Flow"]
+                    row,
+                    [
+                        "经营业务现金净额",
+                        "经营活动现金流量净额",
+                        "经营活动产生的现金流量净额",
+                    ],
                 ),
                 investing_cash_flow=get_val(
-                    row, ["投资活动产生现金流量净额", "Investing Cash Flow"]
+                    row,
+                    [
+                        "投资业务现金净额",
+                        "投资活动现金流量净额",
+                        "投资活动产生的现金流量净额",
+                    ],
                 ),
                 financing_cash_flow=get_val(
-                    row, ["融资活动产生现金流量净额", "Financing Cash Flow"]
+                    row,
+                    [
+                        "融资业务现金净额",
+                        "融资活动现金流量净额",
+                        "筹资活动现金流量净额",
+                    ],
                 ),
             )
             statements.append(item)
 
         return FinancialStatementsResult(
-            symbol=stock,
+            symbol=normalized_stock,
             period=period,
             count=len(statements),
             statements=statements,
         )
 
     except Exception as exc:
-        logger.error(f"获取港股报表失败: {exc}")
-        raise ToolError(f"获取港股 {stock} 财务报表失败: {str(exc)}")
+        logger.error("获取港股报表失败 stock=%s error=%s", normalized_stock, exc)
+        raise ToolError(f"获取港股 {normalized_stock} 财务报表失败: {str(exc)}")
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -1785,55 +2144,84 @@ async def hk_stock_get_financial_metrics(
     stock: Annotated[str, Field(description="港股代码，如 '00700'")],
 ) -> FinancialMetricsResult:
     """获取港股关键财务指标 (ROE/PE/EPS 等)。"""
-    try:
-        # stock_financial_hk_indicator_em(stock="00700", indicator="年度")
-        # 指标: 港股主要财务指标
-        df = await asyncio.to_thread(
-            ak.stock_financial_hk_indicator_em, stock=stock, indicator="报告期"
-        )
+    normalized_stock = normalize_hk_stock_code(stock)
 
-        if df.empty:
-            return FinancialMetricsResult(symbol=stock, count=0, metrics=[])
-
-        if "截止日期" in df.columns:
-            df["截止日期"] = pd.to_datetime(df["截止日期"], errors="coerce")
-            df = df.sort_values("截止日期", ascending=False).head(8)
-
-        def get_val(row, key: str) -> float | None:
+    def get_val(row: pd.Series, keys: list[str]) -> float | None:
+        for key in keys:
             if key in row and pd.notna(row[key]):
                 try:
                     return float(str(row[key]).replace(",", ""))
-                except:
-                    pass
-            return None
+                except (ValueError, TypeError):
+                    continue
+        return None
 
-        metrics = []
+    try:
+        # 港股主要财务指标（按报告期）
+        df = await asyncio.to_thread(
+            ak.stock_financial_hk_analysis_indicator_em,
+            symbol=normalized_stock,
+            indicator="报告期",
+        )
+
+        if not isinstance(df, pd.DataFrame) or df.empty:
+            return FinancialMetricsResult(symbol=normalized_stock, count=0, metrics=[])
+
+        if "REPORT_DATE" in df.columns:
+            df["REPORT_DATE"] = pd.to_datetime(df["REPORT_DATE"], errors="coerce")
+            df = df.sort_values("REPORT_DATE", ascending=False)
+
+        latest_row = None
+        latest_date = None
         for _, row in df.iterrows():
-            date_val = row.get("截止日期")
-            if pd.isna(date_val):
-                continue
+            date_val = row.get("REPORT_DATE")
+            if pd.notna(date_val):
+                latest_row = row
+                latest_date = date_val
+                break
 
-            metrics.append(
-                FinancialMetricItem(
-                    report_date=date_val.strftime("%Y-%m-%d"),
-                    eps=get_val(row, "基本每股收益"),
-                    bvps=get_val(row, "每股净资产"),
-                    roe=get_val(row, "净资产收益率"),
-                    gross_margin=None,  # 需检查具体列名
-                    net_margin=None,
-                    debt_to_asset_ratio=get_val(row, "资产负债率"),
-                )
+        if latest_row is None or latest_date is None:
+            return FinancialMetricsResult(symbol=normalized_stock, count=0, metrics=[])
+
+        # 取一份最新核心指标补齐 PE/PB
+        pe_val = None
+        pb_val = None
+        try:
+            core_df = await asyncio.to_thread(
+                ak.stock_hk_financial_indicator_em,
+                symbol=normalized_stock,
+            )
+            if not core_df.empty:
+                core_row = core_df.iloc[0]
+                pe_val = get_val(core_row, ["市盈率", "PE_TTM"])
+                pb_val = get_val(core_row, ["市净率", "PB_TTM"])
+        except Exception as core_exc:
+            logger.warning(
+                "stock_hk_financial_indicator_em failed stock=%s error=%s",
+                normalized_stock,
+                core_exc,
             )
 
+        latest_metric = FinancialMetricItem(
+            report_date=latest_date.strftime("%Y-%m-%d"),
+            eps=get_val(latest_row, ["BASIC_EPS", "基本每股收益"]),
+            bvps=get_val(latest_row, ["BPS", "每股净资产"]),
+            pe=pe_val,
+            pb=pb_val,
+            roe=get_val(latest_row, ["ROE_AVG", "净资产收益率"]),
+            gross_margin=get_val(latest_row, ["GROSS_PROFIT_RATIO", "销售毛利率"]),
+            net_margin=get_val(latest_row, ["NET_PROFIT_RATIO", "销售净利率"]),
+            debt_to_asset_ratio=get_val(latest_row, ["DEBT_ASSET_RATIO", "资产负债率"]),
+        )
+
         return FinancialMetricsResult(
-            symbol=stock,
-            count=len(metrics),
-            metrics=metrics,
+            symbol=normalized_stock,
+            count=1,
+            metrics=[latest_metric],
         )
 
     except Exception as exc:
-        logger.error(f"获取港股指标失败: {exc}")
-        raise ToolError(f"获取港股 {stock} 财务指标失败: {str(exc)}")
+        logger.error("获取港股指标失败 stock=%s error=%s", normalized_stock, exc)
+        raise ToolError(f"获取港股 {normalized_stock} 财务指标失败: {str(exc)}")
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -1853,110 +2241,268 @@ async def get_china_macro_indicators(
             "industrial",
             "fdi",
         ],
-        Field(description="数据类别"),
+        Field(
+            description=(
+                "数据类别: overview(总览), growth(增长), inflation(通胀), pmi(PMI), "
+                "monetary(货币), financing(社融), trade(贸易), real_estate(房地产), "
+                "employment(就业), consumption(消费), industrial(工业), fdi(外资)"
+            )
+        ),
     ] = "overview",
+    days: Annotated[
+        int | None,
+        Field(
+            description="可选：最近N天数据。留空时不做时间过滤，返回各指标最新可用值",
+            ge=1,
+            le=36500,
+        ),
+    ] = None,
+    start_date: Annotated[
+        str | None,
+        Field(description="可选起始日期 (YYYY-MM-DD)。提供后将忽略 days"),
+    ] = None,
+    end_date: Annotated[
+        str | None,
+        Field(description="可选结束日期 (YYYY-MM-DD)。留空则不限制结束日期"),
+    ] = None,
 ) -> MacroIndicatorsResult:
     """获取中国宏观经济数据。"""
     try:
-        indicators = []
+        start, end = resolve_optional_date_range(days, start_date, end_date)
 
-        async def fetch(name, func, *args, **kwargs):
+        async def fetch(
+            _indicator_id: str,
+            indicator_name_cn: str,
+            func,
+            *args,
+            unit: str | None = None,
+            value_candidates: tuple[str, ...] = (),
+            date_candidates: tuple[str, ...] = (),
+            item_filter: tuple[str, str] | None = None,
+            **kwargs,
+        ):
             try:
                 df = await asyncio.to_thread(func, *args, **kwargs)
                 if df.empty:
-                    return None
-                # 通常 macro 接口返回包含 "日期" 和 "数值" 的列
-                # 标准化
-                col_date = next(
-                    (
-                        c
-                        for c in df.columns
-                        if "日期" in c or "date" in c.lower() or "月份" in c
+                    return None, f"{indicator_name_cn}: 数据为空"
+
+                latest, col_date, col_val = _normalize_macro_latest(
+                    df,
+                    start=start,
+                    end=end,
+                    date_candidates=date_candidates,
+                    value_candidates=value_candidates,
+                    item_filter=item_filter,
+                )
+
+                value = pd.to_numeric(latest[col_val], errors="coerce")
+                if pd.isna(value):
+                    return None, f"{indicator_name_cn}: {col_val} 为空"
+
+                parsed_date = latest.get("_parsed_date")
+                date_text = ""
+                if col_date and col_date in latest and pd.notna(latest[col_date]):
+                    date_text = _format_date_text(latest[col_date])
+                elif pd.notna(parsed_date):
+                    date_text = parsed_date.strftime("%Y-%m-%d")
+
+                return (
+                    MacroIndicatorItem(
+                        name=indicator_name_cn,
+                        value=float(value),
+                        unit=unit,
+                        date=date_text,
                     ),
                     None,
                 )
-                col_val = next(
-                    (
-                        c
-                        for c in df.columns
-                        if c != col_date and ("值" in c or "index" in c or "rate" in c)
-                    ),
-                    None,
-                )
-
-                if col_date and col_val:
-                    # 排序取最新
-                    try:
-                        df[col_date] = pd.to_datetime(df[col_date], errors="coerce")
-                        df = df.sort_values(col_date, ascending=False)
-                    except:
-                        pass
-
-                    latest = df.iloc[0]
-                    return MacroIndicatorItem(
-                        name=name,
-                        value=float(latest[col_val])
-                        if pd.notna(latest[col_val])
-                        else None,
-                        date=str(
-                            latest[col_date].strftime("%Y-%m-%d")
-                            if pd.notna(latest[col_date])
-                            else str(latest[col_date])
-                        ),
-                        unit=None,  # 接口通常不直接返回单位，需人工标注或忽略
-                    )
             except Exception as e:
-                logger.warn(f"Fetch {name} failed: {e}")
-                return None
+                return None, f"{indicator_name_cn}: {e}"
 
         tasks = []
 
         if category in ["overview", "growth"]:
-            tasks.append(fetch("GDP季度", ak.macro_china_gdp))
+            tasks.append(
+                fetch(
+                    "cn_gdp_yoy",
+                    "GDP季度",
+                    ak.macro_china_gdp,
+                    unit="%",
+                    value_candidates=("国内生产总值-同比增长",),
+                    date_candidates=("季度",),
+                )
+            )
 
         if category in ["overview", "inflation"]:
-            tasks.append(fetch("CPI月度", ak.macro_china_cpi))
-            tasks.append(fetch("PPI年率", ak.macro_china_ppi_yearly))
+            tasks.append(
+                fetch(
+                    "cn_cpi_yoy",
+                    "CPI月度",
+                    ak.macro_china_cpi,
+                    unit="%",
+                    value_candidates=("全国-同比增长",),
+                    date_candidates=("月份",),
+                )
+            )
+            tasks.append(
+                fetch(
+                    "cn_ppi_yoy",
+                    "PPI年率",
+                    ak.macro_china_ppi_yearly,
+                    unit="%",
+                    value_candidates=("今值",),
+                    date_candidates=("日期",),
+                )
+            )
 
         if category in ["overview", "pmi"]:
-            tasks.append(fetch("官方制造业PMI", ak.macro_china_pmi))
-            tasks.append(fetch("财新制造业PMI", ak.macro_china_cx_pmi))
+            tasks.append(
+                fetch(
+                    "cn_official_manufacturing_pmi",
+                    "官方制造业PMI",
+                    ak.macro_china_pmi,
+                    unit="点",
+                    value_candidates=("制造业-指数",),
+                    date_candidates=("月份",),
+                )
+            )
+            tasks.append(
+                fetch(
+                    "cn_caixin_manufacturing_pmi",
+                    "财新制造业PMI",
+                    ak.macro_china_cx_pmi_yearly,
+                    unit="点",
+                    value_candidates=("今值",),
+                    date_candidates=("日期",),
+                )
+            )
 
         if category in ["overview", "monetary"]:
-            tasks.append(fetch("M2货币供应年率", ak.macro_china_money_supply))
-            # LPR 接口可能不同
-            tasks.append(fetch("LPR_1Y", ak.macro_china_lpr))
+            tasks.append(
+                fetch(
+                    "cn_m2_yoy",
+                    "M2货币供应年率",
+                    ak.macro_china_money_supply,
+                    unit="%",
+                    value_candidates=("货币和准货币(M2)-同比增长",),
+                    date_candidates=("月份",),
+                )
+            )
+            tasks.append(
+                fetch(
+                    "cn_lpr_1y",
+                    "LPR_1Y",
+                    ak.macro_china_lpr,
+                    unit="%",
+                    value_candidates=("LPR1Y",),
+                    date_candidates=("TRADE_DATE",),
+                )
+            )
 
         if category in ["overview", "financing"]:
-            tasks.append(fetch("社融规模增量", ak.macro_china_social_financing_flow))
+            tasks.append(
+                fetch(
+                    "cn_social_financing_increment",
+                    "社融规模增量",
+                    ak.macro_china_shrzgm,
+                    unit="亿元",
+                    value_candidates=("社会融资规模增量",),
+                    date_candidates=("月份",),
+                )
+            )
 
         if category in ["overview", "trade"]:
-            tasks.append(fetch("贸易差额", ak.macro_china_trade_balance))
-            tasks.append(fetch("外汇储备", ak.macro_china_fx_reserves))
+            tasks.append(
+                fetch(
+                    "cn_trade_balance",
+                    "贸易差额",
+                    ak.macro_china_trade_balance,
+                    unit="亿美元",
+                    value_candidates=("今值",),
+                    date_candidates=("日期",),
+                )
+            )
+            tasks.append(
+                fetch(
+                    "cn_fx_reserves",
+                    "外汇储备",
+                    ak.macro_china_fx_reserves_yearly,
+                    unit="亿美元",
+                    value_candidates=("今值",),
+                    date_candidates=("日期",),
+                )
+            )
 
         if category in ["overview", "real_estate"]:
-            tasks.append(fetch("70城新建住宅价格指数", ak.macro_china_new_house_price))
+            tasks.append(
+                fetch(
+                    "cn_new_house_price_yoy",
+                    "70城新建住宅价格指数",
+                    ak.macro_china_new_house_price,
+                    unit="点",
+                    value_candidates=("新建商品住宅价格指数-同比",),
+                    date_candidates=("日期",),
+                )
+            )
 
         if category in ["overview", "employment"]:
-            tasks.append(fetch("城镇调查失业率", ak.macro_china_urban_unemployment))
+            tasks.append(
+                fetch(
+                    "cn_urban_unemployment_rate",
+                    "城镇调查失业率",
+                    ak.macro_china_urban_unemployment,
+                    unit="%",
+                    value_candidates=("value",),
+                    date_candidates=("date",),
+                    item_filter=("item", "全国城镇调查失业率"),
+                )
+            )
 
         if category in ["overview", "consumption"]:
             tasks.append(
-                fetch("社会消费品零售总额", ak.macro_china_consumer_goods_retail)
+                fetch(
+                    "cn_retail_sales_yoy",
+                    "社会消费品零售总额",
+                    ak.macro_china_consumer_goods_retail,
+                    unit="%",
+                    value_candidates=("同比增长",),
+                    date_candidates=("月份",),
+                )
             )
 
         if category in ["overview", "industrial"]:
             tasks.append(
                 fetch(
-                    "规模以上工业增加值年率", ak.macro_china_industrial_production_yoy
+                    "cn_industrial_production_yoy",
+                    "规模以上工业增加值年率",
+                    ak.macro_china_industrial_production_yoy,
+                    unit="%",
+                    value_candidates=("今值",),
+                    date_candidates=("日期",),
                 )
             )
 
         if category in ["overview", "fdi"]:
-            tasks.append(fetch("实际使用外资FDI", ak.macro_china_fdi))
+            tasks.append(
+                fetch(
+                    "cn_fdi_yoy",
+                    "实际使用外资FDI",
+                    ak.macro_china_fdi,
+                    unit="%",
+                    value_candidates=("累计-同比增长", "当月-同比增长"),
+                    date_candidates=("月份",),
+                )
+            )
 
         results = await asyncio.gather(*tasks)
-        indicators = [r for r in results if r]
+        indicators = [item for item, _ in results if item]
+        failures = [err for item, err in results if not item and err]
+
+        if failures:
+            logger.warning("中国宏观指标抓取部分失败: %s", "; ".join(failures[:8]))
+        if not indicators:
+            raise ToolError(
+                "获取中国宏观数据失败: 无可用指标，请检查 AKShare 接口变更或上游数据源。"
+            )
 
         return MacroIndicatorsResult(
             category=category,
@@ -1970,45 +2516,109 @@ async def get_china_macro_indicators(
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
-async def get_hk_macro_indicators() -> MacroIndicatorsResult:
+async def get_hk_macro_indicators(
+    days: Annotated[
+        int | None,
+        Field(
+            description="可选：最近N天数据。留空时不做时间过滤，返回各指标最新可用值",
+            ge=1,
+            le=36500,
+        ),
+    ] = None,
+    start_date: Annotated[
+        str | None,
+        Field(description="可选起始日期 (YYYY-MM-DD)。提供后将忽略 days"),
+    ] = None,
+    end_date: Annotated[
+        str | None,
+        Field(description="可选结束日期 (YYYY-MM-DD)。留空则不限制结束日期"),
+    ] = None,
+) -> MacroIndicatorsResult:
     """获取香港宏观经济数据 (GDP/CPI/失业率)。"""
     try:
+        start, end = resolve_optional_date_range(days, start_date, end_date)
 
-        async def fetch(name, func):
+        async def fetch(
+            _indicator_id: str,
+            indicator_name_cn: str,
+            func,
+            *,
+            unit: str | None = None,
+            value_candidates: tuple[str, ...] = (),
+            date_candidates: tuple[str, ...] = (),
+        ):
             try:
                 df = await asyncio.to_thread(func)
                 if df.empty:
-                    return None
-                # 假设第一列日期，第二列数值
-                col_date = df.columns[0]
-                col_val = df.columns[1]
+                    return None, f"{indicator_name_cn}: 数据为空"
 
-                try:
-                    df[col_date] = pd.to_datetime(df[col_date], errors="coerce")
-                    df = df.sort_values(col_date, ascending=False)
-                except:
-                    pass
+                latest, col_date, col_val = _normalize_macro_latest(
+                    df,
+                    start=start,
+                    end=end,
+                    date_candidates=date_candidates,
+                    value_candidates=value_candidates,
+                )
 
-                latest = df.iloc[0]
-                return MacroIndicatorItem(
-                    name=name,
-                    value=float(latest[col_val]) if pd.notna(latest[col_val]) else None,
-                    date=str(
-                        latest[col_date].strftime("%Y-%m-%d")
-                        if pd.notna(latest[col_date])
-                        else str(latest[col_date])
+                value = pd.to_numeric(latest[col_val], errors="coerce")
+                if pd.isna(value):
+                    return None, f"{indicator_name_cn}: {col_val} 为空"
+
+                parsed_date = latest.get("_parsed_date")
+                date_text = ""
+                if col_date and col_date in latest and pd.notna(latest[col_date]):
+                    date_text = _format_date_text(latest[col_date])
+                elif pd.notna(parsed_date):
+                    date_text = parsed_date.strftime("%Y-%m-%d")
+
+                return (
+                    MacroIndicatorItem(
+                        name=indicator_name_cn,
+                        value=float(value),
+                        unit=unit,
+                        date=date_text,
                     ),
+                    None,
                 )
             except Exception as e:
-                return None
+                return None, f"{indicator_name_cn}: {e}"
 
         tasks = [
-            fetch("香港GDP", ak.macro_china_hk_gdp),
-            fetch("香港CPI", ak.macro_china_hk_cpi),
-            fetch("香港失业率", ak.macro_china_hk_unemployment_rate),
+            fetch(
+                "hk_gdp",
+                "香港GDP",
+                ak.macro_china_hk_gbp,
+                unit="百万港元",
+                value_candidates=("现值",),
+                date_candidates=("时间", "发布日期"),
+            ),
+            fetch(
+                "hk_cpi",
+                "香港CPI",
+                ak.macro_china_hk_cpi,
+                unit="点",
+                value_candidates=("现值",),
+                date_candidates=("时间", "发布日期"),
+            ),
+            fetch(
+                "hk_unemployment_rate",
+                "香港失业率",
+                ak.macro_china_hk_rate_of_unemployment,
+                unit="%",
+                value_candidates=("现值",),
+                date_candidates=("时间", "发布日期"),
+            ),
         ]
         results = await asyncio.gather(*tasks)
-        indicators = [r for r in results if r]
+        indicators = [item for item, _ in results if item]
+        failures = [err for item, err in results if not item and err]
+
+        if failures:
+            logger.warning("香港宏观指标抓取部分失败: %s", "; ".join(failures[:8]))
+        if not indicators:
+            raise ToolError(
+                "获取香港宏观数据失败: 无可用指标，请检查 AKShare 接口变更或上游数据源。"
+            )
 
         return MacroIndicatorsResult(
             category="HK",
@@ -2024,57 +2634,158 @@ async def get_hk_macro_indicators() -> MacroIndicatorsResult:
 async def get_us_macro_indicators(
     category: Annotated[
         Literal["overview", "growth", "inflation", "employment", "business"],
-        Field(description="数据类别"),
+        Field(
+            description=(
+                "数据类别: overview(总览), growth(增长), inflation(通胀), "
+                "employment(就业), business(景气)"
+            )
+        ),
     ] = "overview",
+    days: Annotated[
+        int | None,
+        Field(
+            description="可选：最近N天数据。留空时不做时间过滤，返回各指标最新可用值",
+            ge=1,
+            le=36500,
+        ),
+    ] = None,
+    start_date: Annotated[
+        str | None,
+        Field(description="可选起始日期 (YYYY-MM-DD)。提供后将忽略 days"),
+    ] = None,
+    end_date: Annotated[
+        str | None,
+        Field(description="可选结束日期 (YYYY-MM-DD)。留空则不限制结束日期"),
+    ] = None,
 ) -> MacroIndicatorsResult:
     """获取美国宏观经济数据。"""
     try:
+        start, end = resolve_optional_date_range(days, start_date, end_date)
 
-        async def fetch(name, func, *args):
+        async def fetch(
+            _indicator_id: str,
+            indicator_name_cn: str,
+            func,
+            *args,
+            unit: str | None = None,
+            value_candidates: tuple[str, ...] = (),
+            date_candidates: tuple[str, ...] = (),
+        ):
             try:
                 df = await asyncio.to_thread(func, *args)
                 if df.empty:
-                    return None
-                col_date = df.columns[0]
-                col_val = df.columns[1]
-                try:
-                    df[col_date] = pd.to_datetime(df[col_date], errors="coerce")
-                    df = df.sort_values(col_date, ascending=False)
-                except:
-                    pass
+                    return None, f"{indicator_name_cn}: 数据为空"
 
-                latest = df.iloc[0]
-                return MacroIndicatorItem(
-                    name=name,
-                    value=float(latest[col_val]) if pd.notna(latest[col_val]) else None,
-                    date=str(
-                        latest[col_date].strftime("%Y-%m-%d")
-                        if pd.notna(latest[col_date])
-                        else str(latest[col_date])
-                    ),
+                latest, col_date, col_val = _normalize_macro_latest(
+                    df,
+                    start=start,
+                    end=end,
+                    date_candidates=date_candidates,
+                    value_candidates=value_candidates,
                 )
-            except:
-                return None
+
+                value = pd.to_numeric(latest[col_val], errors="coerce")
+                if pd.isna(value):
+                    return None, f"{indicator_name_cn}: {col_val} 为空"
+
+                parsed_date = latest.get("_parsed_date")
+                date_text = ""
+                if col_date and col_date in latest and pd.notna(latest[col_date]):
+                    date_text = _format_date_text(latest[col_date])
+                elif pd.notna(parsed_date):
+                    date_text = parsed_date.strftime("%Y-%m-%d")
+
+                return (
+                    MacroIndicatorItem(
+                        name=indicator_name_cn,
+                        value=float(value),
+                        unit=unit,
+                        date=date_text,
+                    ),
+                    None,
+                )
+            except Exception as e:
+                return None, f"{indicator_name_cn}: {e}"
 
         tasks = []
         if category in ["overview", "growth"]:
             tasks.append(
-                fetch("美国GDP", ak.macro_usa_gdp_monthly)
+                fetch(
+                    "us_gdp",
+                    "美国GDP",
+                    ak.macro_usa_gdp_monthly,
+                    unit="%",
+                    value_candidates=("今值",),
+                    date_candidates=("日期",),
+                )
             )  # 只有月度/季度接口需确认，假设 akshare 有 macro_usa_gdp
 
         if category in ["overview", "inflation"]:
-            tasks.append(fetch("美国CPI", ak.macro_usa_cpi))
-            tasks.append(fetch("美国PPI", ak.macro_usa_ppi))
+            tasks.append(
+                fetch(
+                    "us_cpi",
+                    "美国CPI",
+                    ak.macro_usa_cpi_yoy,
+                    unit="%",
+                    value_candidates=("今值",),
+                    date_candidates=("日期",),
+                )
+            )
+            tasks.append(
+                fetch(
+                    "us_ppi",
+                    "美国PPI",
+                    ak.macro_usa_ppi,
+                    unit="%",
+                    value_candidates=("今值",),
+                    date_candidates=("日期",),
+                )
+            )
 
         if category in ["overview", "employment"]:
-            tasks.append(fetch("非农就业人口", ak.macro_usa_non_farm))
-            tasks.append(fetch("失业率", ak.macro_usa_unemployment_rate))
+            tasks.append(
+                fetch(
+                    "us_non_farm_payrolls",
+                    "非农就业人口",
+                    ak.macro_usa_non_farm,
+                    unit="千人",
+                    value_candidates=("今值",),
+                    date_candidates=("日期",),
+                )
+            )
+            tasks.append(
+                fetch(
+                    "us_unemployment_rate",
+                    "失业率",
+                    ak.macro_usa_unemployment_rate,
+                    unit="%",
+                    value_candidates=("今值",),
+                    date_candidates=("日期",),
+                )
+            )
 
         if category in ["overview", "business"]:
-            tasks.append(fetch("ISM制造业PMI", ak.macro_usa_ism_pmi))
+            tasks.append(
+                fetch(
+                    "us_ism_manufacturing_pmi",
+                    "ISM制造业PMI",
+                    ak.macro_usa_ism_pmi,
+                    unit="点",
+                    value_candidates=("今值",),
+                    date_candidates=("日期",),
+                )
+            )
 
         results = await asyncio.gather(*tasks)
-        indicators = [r for r in results if r]
+        indicators = [item for item, _ in results if item]
+        failures = [err for item, err in results if not item and err]
+
+        if failures:
+            logger.warning("美国宏观指标抓取部分失败: %s", "; ".join(failures[:8]))
+        if not indicators:
+            raise ToolError(
+                "获取美国宏观数据失败: 无可用指标，请检查 AKShare 接口变更或上游数据源。"
+            )
 
         return MacroIndicatorsResult(
             category=category,

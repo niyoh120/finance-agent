@@ -158,6 +158,10 @@ docker compose --profile migrate run --rm migrate
 - 提供新闻、期权、股票与宏观数据查询工具。
 - 宏观工具覆盖：报告快照、模块/因子快照、模块历史、总指数历史。
 - 当 `FA_MACRO_SCRAPER_ENABLE_PROTECTED_ENDPOINTS=false` 时，`query_macro_reports`、`query_macro_module_snapshots`、`query_macro_factor_snapshots` 不会注册到 MCP 工具列表。
+- 中国/香港宏观工具直接调用 AKShare；已按 `akshare>=1.18.23,<1.19` 适配接口命名，避免函数名漂移导致报错或空结果。
+- `get_china_macro_indicators`、`get_hk_macro_indicators`、`get_us_macro_indicators` 的时间参数为可选：不传时间时返回各指标最新可用值；传 `days/start_date/end_date` 时按时间窗口过滤，并自动回退到窗口内最近非空值。
+- `get_china_macro_indicators(category)` 的 `category` 可选值：`overview/growth/inflation/pmi/monetary/financing/trade/real_estate/employment/consumption/industrial/fdi`。
+- 宏观指标返回字段约定：仅保留 `name`，且直接返回中文指标名（便于阅读）。
 - TradingView 市场搜索工具 `search_market`：
   - 用途：搜索正确的 TradingView market id（解决交易所前缀不确定、标的迁移上市地等问题）
   - 用法：用 ticker/公司名搜索，拿到返回结果中的 `id`（形如 `NASDAQ:AAPL`）

@@ -362,7 +362,6 @@ class StockBasicInfoItem(McpBaseModel):
     name: str = Field(description="股票名称 (如 '贵州茅台')")
     price: float = Field(description="当前价格")
     market_cap: float | None = Field(description="总市值", default=None)
-    float_market_cap: float | None = Field(description="流通市值", default=None)
     industry: str | None = Field(description="所属行业", default=None)
     listing_date: str | None = Field(description="上市日期 (YYYY-MM-DD)", default=None)
 
@@ -504,12 +503,10 @@ class AnalystConsensusResult(McpBaseModel):
 class MacroIndicatorItem(McpBaseModel):
     """宏观指标数据."""
 
-    name: str = Field(description="指标名称 (英文标识)")
-    name_cn: str | None = Field(description="指标名称 (中文)", default=None)
+    name: str = Field(description="指标名称 (中文)")
     value: float | None = Field(description="数值")
     unit: str | None = Field(description="单位", default=None)
     date: str = Field(description="发布日期/数据日期")
-    publish_date: str | None = Field(description="发布日期", default=None)
 
 
 class MacroIndicatorsResult(McpBaseModel):
