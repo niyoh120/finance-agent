@@ -27,7 +27,7 @@ def build_cn_fundamental_analyst(config: AppConfig, db=None) -> Agent:
         "\n"
         "工具使用指南（按优先级）：\n"
         "1) cn_stock_get_basic_info(symbol) - 首选，获取股票基本信息\n"
-        "   - 股票名称、当前价格、总市值、流通市值、所属行业、上市日期\n"
+        "   - 股票名称、当前价格、总市值、所属行业、上市日期\n"
         "   - 用于初步了解公司概况和行业归属\n"
         "\n"
         "2) cn_stock_get_financial_metrics(symbol) - 获取整合后的关键财务指标\n"
@@ -39,22 +39,6 @@ def build_cn_fundamental_analyst(config: AppConfig, db=None) -> Agent:
         "   - period='yearly'：按年度，适合长期分析\n"
         "   - 返回最近8期数据，包含：营业收入、净利润、总资产、负债、现金流等\n"
         "   - 可用于计算增长率、现金流质量分析\n"
-        "\n"
-        "4) cn_stock_get_shareholder_info(symbol) - 股东信息与筹码分布\n"
-        "   - 前十大股东名单及持股比例\n"
-        "   - 股东户数及变化趋势（筹码集中度）\n"
-        "   - 机构持股动态\n"
-        "   - 重点关注：股东户数减少（筹码集中）vs 增加（筹码分散）\n"
-        "\n"
-        "5) cn_stock_get_dividend_history(symbol) - 历史分红记录\n"
-        "   - 分红方案、股权登记日、除权除息日、派息日\n"
-        "   - 评估公司股东回报政策和分红稳定性\n"
-        "\n"
-        "6) cn_stock_get_analyst_consensus(symbol) - 分析师一致预期\n"
-        "   - 机构评级分布（买入/增持/中性/减持）\n"
-        "   - 一致目标价\n"
-        "   - 近期评级变动\n"
-        "   - 可作为市场情绪的参考\n"
         "\n"
         "港股专用工具：\n"
         "- hk_stock_get_financial_statements(stock, period) - 港股财务报表\n"
@@ -85,9 +69,6 @@ def build_cn_fundamental_analyst(config: AppConfig, db=None) -> Agent:
                     "cn_stock_get_basic_info",
                     "cn_stock_get_financial_statements",
                     "cn_stock_get_financial_metrics",
-                    "cn_stock_get_shareholder_info",
-                    "cn_stock_get_dividend_history",
-                    "cn_stock_get_analyst_consensus",
                     "hk_stock_get_financial_statements",
                     "hk_stock_get_financial_metrics",
                 ]
