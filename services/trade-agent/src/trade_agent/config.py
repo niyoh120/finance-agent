@@ -73,12 +73,15 @@ class DiscordBotConfig(BaseSettings):
     stream_member_events: bool = False
     include_reasoning: bool = False
 
-    placeholder_text: str = "正在分析中..."
+    typing_indicator_enabled: bool = True
     min_edit_interval_ms: int = 700
     min_edit_chars: int = 24
     max_stream_chars: int = 1800
     max_final_chars: int = 1900
     final_overflow_strategy: Literal["split", "truncate"] = "split"
+    render_mode: Literal["markdown", "embed", "auto"] = "auto"
+    buttons_enabled: bool = True
+    button_full_text_max_chars: int = 10000
 
 
 class AppConfig(BaseSettings):

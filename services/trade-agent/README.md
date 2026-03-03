@@ -63,12 +63,15 @@ discord_bot:
   thread_history_include_bots: false
   stream_events: false
   stream_member_events: false
-  placeholder_text: "正在分析中..."
+  typing_indicator_enabled: true
   min_edit_interval_ms: 700
   min_edit_chars: 24
   max_stream_chars: 1800
   max_final_chars: 1900
   final_overflow_strategy: "split" # split | truncate
+  render_mode: "auto" # auto | markdown | embed
+  buttons_enabled: true
+  button_full_text_max_chars: 10000
 ```
 
 Chart MCP 示例：
@@ -98,8 +101,9 @@ Discord Bot 行为说明：
 - 严格过滤系统噪声：忽略 system/bot/webhook/空内容消息。
 - 每条消息单独构建 Team，不共享内存态，避免并发上下文串扰。
 - 对话上下文来自当前 thread 的最近历史消息（而非 Team SQLite 历史）。
-- 回复方式为单条消息流式编辑：先发送占位消息，再持续编辑。
+- 回复前使用 Discord 输入状态（typing indicator），首个有效 token 到达后再创建回复并流式编辑。
 - 超长输出默认按分段发送（可配置为截断）。
+- 超长/截断场景可通过按钮查看全文（ephemeral）。
 
 Discord 开发者后台需要开启 `Message Content Intent` 和 `Read Message History`，否则无法读取 thread 历史上下文。
 

@@ -58,9 +58,12 @@ discord_bot:
     include_reasoning: false
 
     # Discord 输出行为
-    placeholder_text: "正在分析中..."
+    typing_indicator_enabled: true
     min_edit_interval_ms: 700
     min_edit_chars: 24
     max_stream_chars: 1800
     max_final_chars: 1900
     final_overflow_strategy: "split" # split | truncate
+    render_mode: "auto" # auto | markdown | embed
+    buttons_enabled: true
+    button_full_text_max_chars: 10000

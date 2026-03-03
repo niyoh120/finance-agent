@@ -47,14 +47,14 @@ class TeamRunRunner:
         thread_lock = self._get_thread_lock(message.channel.id)
         async with thread_lock:
             async with self._semaphore:
-                placeholder = await message.reply(
-                    self._config.placeholder_text, mention_author=False
-                )
                 editor = StreamMessageEditor(
-                    placeholder,
+                    message,
                     min_edit_interval_ms=self._config.min_edit_interval_ms,
                     min_edit_chars=self._config.min_edit_chars,
                     max_stream_chars=self._config.max_stream_chars,
+                    render_mode=self._config.render_mode,
+                    buttons_enabled=self._config.buttons_enabled,
+                    button_full_text_max_chars=self._config.button_full_text_max_chars,
                 )
 
                 run_id: str | None = None
@@ -83,9 +83,9 @@ class TeamRunRunner:
                     )
 
                     last_seen_text = ""
-                    async with asyncio.timeout(
-                        max(5, self._config.run_timeout_seconds)
-                    ):
+
+                    async def consume_stream() -> None:
+                        nonlocal last_seen_text, run_id
                         async for event in stream:
                             event_run_id = getattr(event, "run_id", None)
                             if isinstance(event_run_id, str) and event_run_id:
@@ -98,11 +98,24 @@ class TeamRunRunner:
                             delta, last_seen_text = _as_delta(text, last_seen_text)
                             await editor.append(delta)
 
-                    await editor.flush(force=True)
-                    await editor.finish(
-                        overflow_strategy=self._config.final_overflow_strategy,
-                        max_final_chars=self._config.max_final_chars,
-                    )
+                    async with asyncio.timeout(
+                        max(5, self._config.run_timeout_seconds)
+                    ):
+                        if self._config.typing_indicator_enabled:
+                            async with message.channel.typing():
+                                await consume_stream()
+                                await editor.flush(force=True)
+                                await editor.finish(
+                                    overflow_strategy=self._config.final_overflow_strategy,
+                                    max_final_chars=self._config.max_final_chars,
+                                )
+                        else:
+                            await consume_stream()
+                            await editor.flush(force=True)
+                            await editor.finish(
+                                overflow_strategy=self._config.final_overflow_strategy,
+                                max_final_chars=self._config.max_final_chars,
+                            )
                 except asyncio.TimeoutError:
                     await self._cancel_run_if_needed(team, run_id)
                     logger.warning("discord team run timeout", run_id=run_id)
