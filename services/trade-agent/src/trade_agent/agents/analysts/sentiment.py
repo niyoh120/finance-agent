@@ -14,7 +14,7 @@ def build_sentiment_analyst(config: AppConfig, db=None) -> Agent:
         model=model,
         tools=[
             FinanceTools(include_tools=["query_news_articles"]),
-            YFinanceTools(include_tools=["get_company_news"]),
+            YFinanceTools(enable_company_news=True, include_tools=["get_company_news"]),
             ExaWebSearchTools(),
         ],
         instructions=(

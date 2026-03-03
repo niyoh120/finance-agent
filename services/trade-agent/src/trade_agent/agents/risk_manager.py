@@ -30,6 +30,10 @@ def build_risk_manager(config: AppConfig, db=None) -> Agent:
         model=model,
         tools=[
             YFinanceTools(
+                enable_company_info=True,
+                enable_stock_fundamentals=True,
+                enable_income_statements=True,
+                enable_key_financial_ratios=True,
                 include_tools=[
                     "get_company_info",
                     "get_stock_fundamentals",

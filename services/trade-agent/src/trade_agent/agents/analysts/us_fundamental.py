@@ -66,6 +66,11 @@ def build_us_fundamental_analyst(config: AppConfig, db=None) -> Agent:
         model=model,
         tools=[
             YFinanceTools(
+                enable_company_info=True,
+                enable_stock_fundamentals=True,
+                enable_income_statements=True,
+                enable_key_financial_ratios=True,
+                enable_analyst_recommendations=True,
                 include_tools=[
                     "get_company_info",
                     "get_stock_fundamentals",
