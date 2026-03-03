@@ -1,3 +1,6 @@
+from langfuse import get_client
+import openlit
+
 from shared.logging import configure_logging
 
 from .config import load_config
@@ -8,7 +11,14 @@ configure_logging(service="trade-agent-discord-bot")
 
 config = load_config()
 
+langfuse = get_client()
 
+
+# Verify connection
+assert langfuse.auth_check(), "Langfuse authentication failed. Please check your credentials and host."
+
+openlit.init(tracer=langfuse._otel_tracer, disable_batch=True)
+ 
 def build_discord_team():
     return build_chat_team(
         config=config,
