@@ -964,7 +964,7 @@ async def search_market(
         payload = await fetch_stock_api_json("/v0/searchMarket", params)
         return TradingViewMarketSearchResult.model_validate(payload, extra="ignore")
     except ValidationError as exc:
-        raise ToolError(f"stock-api 返回格式不符合预期: {exc}")
+        raise ToolError(f"stock-api 返回格式不符合预期: {exc}") from exc
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "openWorldHint": True})
@@ -1027,7 +1027,7 @@ async def fetch_stock_history(
         payload = await fetch_stock_api_json("/history", params)
         return StockHistoryResult.model_validate(payload, extra="ignore")
     except ValidationError as exc:
-        raise ToolError(f"stock-api 返回格式不符合预期: {exc}")
+        raise ToolError(f"stock-api 返回格式不符合预期: {exc}") from exc
     except ToolError as exc:
         msg = str(exc)
         if "Failed to load chart for" in msg or "HTTP 404" in msg:
@@ -1035,10 +1035,10 @@ async def fetch_stock_history(
                 msg
                 + "\n\n可能原因：交易所前缀错误或 market id 不存在。"
                 + "建议：先调用 `search_market(query=...)` 查到正确的 TradingView market id，再调用 `fetch_stock_history`。"
-            )
+            ) from exc
         raise
     except Exception as exc:
-        raise ToolError(f"获取股票历史数据失败: {str(exc)}")
+        raise ToolError(f"获取股票历史数据失败: {str(exc)}") from exc
 
 
 # @mcp.tool()
@@ -2052,7 +2052,7 @@ async def hk_stock_get_financial_statements(
 
     except Exception as exc:
         logger.error("获取港股报表失败 stock=%s error=%s", normalized_stock, exc)
-        raise ToolError(f"获取港股 {normalized_stock} 财务报表失败: {str(exc)}")
+        raise ToolError(f"获取港股 {normalized_stock} 财务报表失败: {str(exc)}") from exc
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -2137,7 +2137,7 @@ async def hk_stock_get_financial_metrics(
 
     except Exception as exc:
         logger.error("获取港股指标失败 stock=%s error=%s", normalized_stock, exc)
-        raise ToolError(f"获取港股 {normalized_stock} 财务指标失败: {str(exc)}")
+        raise ToolError(f"获取港股 {normalized_stock} 财务指标失败: {str(exc)}") from exc
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -2426,7 +2426,7 @@ async def get_china_macro_indicators(
 
     except Exception as exc:
         logger.error(f"获取中国宏观数据失败: {exc}")
-        raise ToolError(f"获取中国宏观数据失败: {str(exc)}")
+        raise ToolError(f"获取中国宏观数据失败: {str(exc)}") from exc
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -2539,7 +2539,7 @@ async def get_hk_macro_indicators(
         )
     except Exception as exc:
         logger.error(f"获取香港宏观数据失败: {exc}")
-        raise ToolError(f"获取香港宏观数据失败: {str(exc)}")
+        raise ToolError(f"获取香港宏观数据失败: {str(exc)}") from exc
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -2701,7 +2701,7 @@ async def get_us_macro_indicators(
         )
     except Exception as exc:
         logger.error(f"获取美国宏观数据失败: {exc}")
-        raise ToolError(f"获取美国宏观数据失败: {str(exc)}")
+        raise ToolError(f"获取美国宏观数据失败: {str(exc)}") from exc
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -2751,7 +2751,7 @@ async def get_economic_calendar(
         )
     except Exception as exc:
         logger.error(f"获取财经日历失败: {exc}")
-        raise ToolError(f"获取财经日历失败: {str(exc)}")
+        raise ToolError(f"获取财经日历失败: {str(exc)}") from exc
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -2807,4 +2807,4 @@ async def get_earnings_calendar(
         )
     except Exception as exc:
         logger.error(f"获取财报日历失败: {exc}")
-        raise ToolError(f"获取财报日历失败: {str(exc)}")
+        raise ToolError(f"获取财报日历失败: {str(exc)}") from exc
