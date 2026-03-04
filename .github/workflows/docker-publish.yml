@@ -1,0 +1,125 @@
+name: Docker Publish
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      service:
+        description: Select one service or all
+        required: true
+        type: choice
+        default: all
+        options:
+          - all
+          - migrate
+          - macro-scraper
+          - bubbleseek-scraper
+          - futunn-scraper
+          - mcp-server
+          - trade-agent
+          - trade-agent-discord-bot
+          - stock-api
+      push:
+        description: Push images to DockerHub
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    env:
+      REGISTRY: docker.io
+      DOCKERHUB_NAMESPACE: ${{ vars.DOCKERHUB_NAMESPACE || secrets.DOCKERHUB_USERNAME }}
+      SHOULD_PUSH: ${{ github.event_name == 'push' || (github.event_name == 'workflow_dispatch' && (inputs.push == true || inputs.push == 'true')) }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: migrate
+            image: finance-migrate
+            dockerfile: migrate/Dockerfile
+            build_args: ""
+          - service: macro-scraper
+            image: finance-macro-scraper
+            dockerfile: services/Dockerfile
+            build_args: |
+              MODULE_NAME=macro-scraper
+              MODULE_ENTRY=macro_scraper.main
+          - service: bubbleseek-scraper
+            image: finance-bubbleseek-scraper
+            dockerfile: services/Dockerfile
+            build_args: |
+              MODULE_NAME=bubbleseek-scraper
+              MODULE_ENTRY=bubbleseek_scraper.main
+          - service: futunn-scraper
+            image: finance-futunn-scraper
+            dockerfile: services/Dockerfile
+            build_args: |
+              MODULE_NAME=futunn-scraper
+              MODULE_ENTRY=futunn_scraper.main
+          - service: mcp-server
+            image: finance-mcp-server
+            dockerfile: services/Dockerfile
+            build_args: |
+              MODULE_NAME=mcp-server
+              MODULE_ENTRY=mcp_server.http
+          - service: trade-agent
+            image: finance-trade-agent
+            dockerfile: services/Dockerfile
+            build_args: |
+              MODULE_NAME=trade-agent
+              MODULE_ENTRY=trade_agent.app
+          - service: trade-agent-discord-bot
+            image: finance-trade-agent-discord-bot
+            dockerfile: services/Dockerfile
+            build_args: |
+              MODULE_NAME=trade-agent
+              MODULE_ENTRY=trade_agent.discord_bot
+          - service: stock-api
+            image: finance-stock-api
+            dockerfile: services/stock-api/Dockerfile
+            build_args: ""
+    steps:
+      - name: Checkout
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.service == 'all' || inputs.service == matrix.service }}
+        uses: actions/checkout@v6
+
+      - name: Set up Docker Buildx
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.service == 'all' || inputs.service == matrix.service }}
+        uses: docker/setup-buildx-action@v3
+
+      - name: Generate image tags
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.service == 'all' || inputs.service == matrix.service }}
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.DOCKERHUB_NAMESPACE }}/${{ matrix.image }}
+          tags: |
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,format=short
+
+      - name: Login to DockerHub
+        if: ${{ (github.event_name != 'workflow_dispatch' || inputs.service == 'all' || inputs.service == matrix.service) && env.SHOULD_PUSH == 'true' }}
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push image
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.service == 'all' || inputs.service == matrix.service }}
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ${{ matrix.dockerfile }}
+          push: ${{ env.SHOULD_PUSH == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: ${{ matrix.build_args }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

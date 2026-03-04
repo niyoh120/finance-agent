@@ -60,6 +60,46 @@ docker compose --profile migrate run --rm migrate
 
 ## 服务详情
 
+### GitHub Actions 镜像发布
+
+仓库已提供工作流 `/.github/workflows/docker-publish.yml`，用于自动构建并推送 Docker 镜像到 DockerHub。
+
+### 触发方式
+
+- `push` 到 `main`：自动构建并推送 8 个镜像。
+- `workflow_dispatch`：手动触发，可选择单个服务或全部服务，并可选择仅构建（不推送）用于 dry-run。
+
+### 发布的镜像
+
+- `finance-migrate`
+- `finance-macro-scraper`
+- `finance-bubbleseek-scraper`
+- `finance-futunn-scraper`
+- `finance-mcp-server`
+- `finance-trade-agent`
+- `finance-trade-agent-discord-bot`
+- `finance-stock-api`
+
+### DockerHub 配置
+
+在 GitHub 仓库 Settings -> Secrets and variables -> Actions 中配置：
+
+- Secrets
+  - `DOCKERHUB_USERNAME`
+  - `DOCKERHUB_TOKEN`（建议使用 DockerHub Access Token，不要使用密码）
+- Variables（可选）
+  - `DOCKERHUB_NAMESPACE`（不配置时默认使用 `DOCKERHUB_USERNAME`）
+
+### 镜像 Tag 规则
+
+- `latest`：仅默认分支（`main`）生成。
+- `sha-<short>`：每次构建生成一次（对应当前提交）。
+
+### 手动触发建议
+
+- 先用 `workflow_dispatch` + `push=false` 对单服务做 dry-run。
+- 确认无误后再以 `push=true` 执行真实推送。
+
 ### Stock API
 
 - 无状态 HTTP 服务，包装 `@mathieuc/tradingview` 库。
