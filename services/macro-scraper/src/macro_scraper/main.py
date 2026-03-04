@@ -456,7 +456,10 @@ async def run_cycle(
         history_counts = (total_saved, module_saved)
 
     logger.info(
-        "Macro cycle complete protected_endpoints=%s report_rows=%s module_snapshots=%s factor_snapshots=%s total_history=%s module_history=%s",
+        (
+            "Macro cycle complete protected_endpoints=%s report_rows=%s module_snapshots=%s "
+            "factor_snapshots=%s total_history=%s module_history=%s"
+        ),
         enable_protected_endpoints,
         report_counts[0],
         report_counts[1],

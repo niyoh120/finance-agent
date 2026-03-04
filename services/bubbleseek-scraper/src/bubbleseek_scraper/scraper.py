@@ -14,7 +14,11 @@ logger = logging.getLogger(__name__)
 
 API_BASE_URL = "https://api.bubbleseek.ai/api/events/public"
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "User-Agent": (
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/120.0.0.0 Safari/537.36"
+    ),
     "Referer": "https://bubbleseek.ai/",
     "Origin": "https://bubbleseek.ai",
 }

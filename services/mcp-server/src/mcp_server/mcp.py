@@ -363,7 +363,10 @@ async def query_news_articles(
     type: Annotated[
         NewsType | None,
         Field(
-            description="新闻类型过滤: 'macro_news' (宏观新闻), 'kol_tweet' (KOL推文), 'stock_news' (个股新闻)。留空则返回所有类型"
+            description=(
+                "新闻类型过滤: 'macro_news' (宏观新闻), 'kol_tweet' (KOL推文), "
+                "'stock_news' (个股新闻)。留空则返回所有类型"
+            )
         ),
     ] = None,
     limit: Annotated[
@@ -985,7 +988,8 @@ async def fetch_stock_history(
         Timeframe,
         Field(
             description=(
-                "时间周期, 单位是分钟，D/W/M 分别为日/周/月: '1','3','5','15','30','45','60','120','180','240','D','W','M'"
+                "时间周期, 单位是分钟，D/W/M 分别为日/周/月: "
+                "'1','3','5','15','30','45','60','120','180','240','D','W','M'"
             )
         ),
     ] = "D",
@@ -1034,7 +1038,8 @@ async def fetch_stock_history(
             raise ToolError(
                 msg
                 + "\n\n可能原因：交易所前缀错误或 market id 不存在。"
-                + "建议：先调用 `search_market(query=...)` 查到正确的 TradingView market id，再调用 `fetch_stock_history`。"
+                + "建议：先调用 `search_market(query=...)` 查到正确的 TradingView market id，"
+                + "再调用 `fetch_stock_history`。"
             ) from exc
         raise
     except Exception as exc:
