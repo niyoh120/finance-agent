@@ -1376,7 +1376,7 @@ async def cn_stock_get_basic_info(
                 retries=2,
             )
             if not em_df.empty:
-                data = dict(zip(em_df["item"], em_df["value"]))
+                data = dict(zip(em_df["item"], em_df["value"], strict=True))
                 price = parse_float(data.get("最新价"))
                 if price is not None:
                     return StockBasicInfoResult(
@@ -1936,7 +1936,7 @@ async def hk_stock_get_financial_statements(
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
         dfs: list[pd.DataFrame] = []
-        for name, res in zip(["利润表", "资产负债表", "现金流量表"], results):
+        for name, res in zip(["利润表", "资产负债表", "现金流量表"], results, strict=True):
             if isinstance(res, Exception):
                 logger.error("获取港股%s失败 stock=%s error=%s", name, normalized_stock, res)
                 dfs.append(pd.DataFrame())
@@ -2722,7 +2722,7 @@ async def get_economic_calendar(
         dfs = await asyncio.gather(*tasks, return_exceptions=True)
 
         events = []
-        for d, df in zip(date_range, dfs):
+        for d, df in zip(date_range, dfs, strict=True):
             if isinstance(df, Exception):
                 logger.warning(f"获取 {d} 的财经日历数据失败: {df}")
                 continue
@@ -2773,7 +2773,7 @@ async def get_earnings_calendar(
         dfs = await asyncio.gather(*tasks, return_exceptions=True)
 
         earnings = []
-        for d, df in zip(date_range, dfs):
+        for d, df in zip(date_range, dfs, strict=True):
             if isinstance(df, Exception):
                 logger.warning(f"获取 {d} 的财报日历数据失败: {df}")
                 continue

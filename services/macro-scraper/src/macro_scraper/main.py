@@ -442,7 +442,7 @@ async def run_cycle(
             fetch_module_history(scraper, module_id, start_date, end_date) for module_id, start_date in module_requests
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
-        for (module_id, _), result in zip(module_requests, results):
+        for (module_id, _), result in zip(module_requests, results, strict=True):
             if isinstance(result, Exception):
                 logger.warning("Module history task failed for %s: %s", module_id, result)
                 continue
