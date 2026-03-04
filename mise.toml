@@ -30,7 +30,7 @@ depends = ["install"]
 dir = "services/trade-agent"
 run = "uv run python -m trade_agent.app"
 
-[tasks.trade-agent-bot]
+[tasks.trade-agent-discord-bot]
 depends = ["install"]
 dir = "services/trade-agent"
 run = "uv run python -m trade_agent.discord_bot"
