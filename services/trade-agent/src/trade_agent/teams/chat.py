@@ -21,7 +21,6 @@ def build_chat_team(
     num_history_runs: int = 15,
     db: SqliteDb | None = None,
     add_history_to_context: bool = True,
-    debug_mode: bool = False,
 ) -> Team:
     team = Team(
         name="Trade Analyst Team",
