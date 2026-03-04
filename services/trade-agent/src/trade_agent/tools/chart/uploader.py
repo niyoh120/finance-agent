@@ -1,8 +1,7 @@
 import base64
 import mimetypes
-import os
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable, Optional, Tuple
 
 import requests
 
@@ -13,7 +12,7 @@ class UploadResult:
     provider: str
 
 
-def _guess_filename_and_mime(filename: str | None) -> Tuple[str, str]:
+def _guess_filename_and_mime(filename: str | None) -> tuple[str, str]:
     name = filename or "image.png"
     mime, _ = mimetypes.guess_type(name)
     return name, (mime or "application/octet-stream")
@@ -133,14 +132,10 @@ def upload_image_bytes(
             )
         )
 
-    providers.append(
-        lambda: upload_uguu_bytes(image_bytes, filename=filename, timeout=timeout)
-    )
-    providers.append(
-        lambda: upload_0x0_bytes(image_bytes, filename=filename, timeout=timeout)
-    )
+    providers.append(lambda: upload_uguu_bytes(image_bytes, filename=filename, timeout=timeout))
+    providers.append(lambda: upload_0x0_bytes(image_bytes, filename=filename, timeout=timeout))
 
-    last_err: Optional[Exception] = None
+    last_err: Exception | None = None
     for fn in providers:
         try:
             return fn()

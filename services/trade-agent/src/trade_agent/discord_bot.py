@@ -1,6 +1,5 @@
-from langfuse import get_client
 import openlit
-
+from langfuse import get_client
 from shared.logging import configure_logging
 
 from .config import load_config
@@ -18,7 +17,8 @@ langfuse = get_client()
 assert langfuse.auth_check(), "Langfuse authentication failed. Please check your credentials and host."
 
 openlit.init(tracer=langfuse._otel_tracer, disable_batch=True)
- 
+
+
 def build_discord_team():
     return build_chat_team(
         config=config,

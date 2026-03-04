@@ -1,5 +1,5 @@
-declare module '@mathieuc/tradingview' {
-  export type MarketType = 'stock' | 'futures' | 'forex' | 'cfd' | 'crypto' | 'index' | 'economic';
+declare module "@mathieuc/tradingview" {
+  export type MarketType = "stock" | "futures" | "forex" | "cfd" | "crypto" | "index" | "economic";
 
   export interface SearchMarketResult {
     id: string;
@@ -107,19 +107,22 @@ declare module '@mathieuc/tradingview' {
 
   export function getIndicator(
     id: string,
-    version?: 'last' | string,
+    version?: "last" | string,
     session?: string,
-    signature?: string
+    signature?: string,
   ): Promise<PineIndicator>;
 
-  export function getPrivateIndicators(session: string, signature?: string): Promise<Array<{ get: () => Promise<PineIndicator> } & Record<string, unknown>>>;
+  export function getPrivateIndicators(
+    session: string,
+    signature?: string,
+  ): Promise<Array<{ get: () => Promise<PineIndicator> } & Record<string, unknown>>>;
 
   export function searchIndicator(search?: string): Promise<unknown[]>;
 
   export function searchMarketV3(
     search: string,
-    filter?: MarketType | '',
-    offset?: number
+    filter?: MarketType | "",
+    offset?: number,
   ): Promise<SearchMarketResult[]>;
 
   export function getTA(id: string): Promise<unknown>;

@@ -1,4 +1,5 @@
 from datetime import date, datetime
+
 from sqlalchemy import Date, DateTime, Float, Index, Integer, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 from sqlalchemy.sql import func

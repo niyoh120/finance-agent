@@ -111,18 +111,14 @@ class TradingViewMarketItem(McpBaseModel):
     full_exchange: str | None = Field(description="交易所全称", default=None)
     symbol: str | None = Field(description="代码/合约（不含交易所前缀）", default=None)
     description: str | None = Field(description="标的描述", default=None)
-    type: str | None = Field(
-        description="标的类型，如 stock/crypto/index", default=None
-    )
+    type: str | None = Field(description="标的类型，如 stock/crypto/index", default=None)
 
 
 class TradingViewMarketSearchResult(McpBaseModel):
     """TradingView 市场搜索结果."""
 
     query: str = Field(description="搜索关键词")
-    type: str | None = Field(
-        description="类型过滤（stock/crypto/...），留空表示不过滤", default=None
-    )
+    type: str | None = Field(description="类型过滤（stock/crypto/...），留空表示不过滤", default=None)
     limit: int = Field(description="返回数量上限")
     offset: int = Field(description="分页偏移")
     count: int = Field(description="实际返回数量")
@@ -381,9 +377,7 @@ class FinancialStatementItem(McpBaseModel):
     # 利润表
     revenue: float | None = Field(description="营业收入", default=None)
     net_profit: float | None = Field(description="净利润", default=None)
-    net_profit_deduct_non_recurring: float | None = Field(
-        description="扣非净利润", default=None
-    )
+    net_profit_deduct_non_recurring: float | None = Field(description="扣非净利润", default=None)
 
     # 资产负债表
     total_assets: float | None = Field(description="总资产", default=None)
@@ -391,15 +385,9 @@ class FinancialStatementItem(McpBaseModel):
     total_equity: float | None = Field(description="股东权益", default=None)
 
     # 现金流量表
-    operating_cash_flow: float | None = Field(
-        description="经营活动现金流净额", default=None
-    )
-    investing_cash_flow: float | None = Field(
-        description="投资活动现金流净额", default=None
-    )
-    financing_cash_flow: float | None = Field(
-        description="筹资活动现金流净额", default=None
-    )
+    operating_cash_flow: float | None = Field(description="经营活动现金流净额", default=None)
+    investing_cash_flow: float | None = Field(description="投资活动现金流净额", default=None)
+    financing_cash_flow: float | None = Field(description="筹资活动现金流净额", default=None)
 
 
 class FinancialStatementsResult(McpBaseModel):
@@ -422,9 +410,7 @@ class FinancialMetricItem(McpBaseModel):
     roe: float | None = Field(description="净资产收益率 (ROE)", default=None)
     gross_margin: float | None = Field(description="毛利率 (%)", default=None)
     net_margin: float | None = Field(description="净利率 (%)", default=None)
-    debt_to_asset_ratio: float | None = Field(
-        description="资产负债率 (%)", default=None
-    )
+    debt_to_asset_ratio: float | None = Field(description="资产负债率 (%)", default=None)
 
 
 class FinancialMetricsResult(McpBaseModel):
@@ -451,9 +437,7 @@ class ShareholderInfoResult(McpBaseModel):
     report_date: str | None = Field(description="最新报告期", default=None)
     holder_count: int | None = Field(description="股东总户数", default=None)
     avg_hold_num: float | None = Field(description="户均持股数", default=None)
-    top_holders: list[ShareholderItem] = Field(
-        description="前十大股东列表", default_factory=list
-    )
+    top_holders: list[ShareholderItem] = Field(description="前十大股东列表", default_factory=list)
 
 
 class DividendItem(McpBaseModel):
@@ -495,9 +479,7 @@ class AnalystConsensusResult(McpBaseModel):
     rating_hold: int | None = Field(description="中性评级数", default=None)
     rating_sell: int | None = Field(description="卖出评级数", default=None)
     rating_underweight: int | None = Field(description="减持评级数", default=None)
-    latest_ratings: list[AnalystRatingItem] = Field(
-        description="近期评级列表", default_factory=list
-    )
+    latest_ratings: list[AnalystRatingItem] = Field(description="近期评级列表", default_factory=list)
 
 
 class MacroIndicatorItem(McpBaseModel):

@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -85,13 +85,13 @@ def parse_date(value: Any) -> date | None:
 
 def parse_datetime(value: Any) -> datetime | None:
     if isinstance(value, datetime):
-        return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
+        return value if value.tzinfo else value.replace(tzinfo=UTC)
     if isinstance(value, str):
         try:
             dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
         except ValueError:
             return None
-        return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+        return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
     return None
 
 
@@ -109,9 +109,7 @@ def to_str(value: Any) -> str | None:
     return str(value)
 
 
-def extract_modules(
-    dashboard: dict[str, Any], report: dict[str, Any]
-) -> list[dict[str, Any]]:
+def extract_modules(dashboard: dict[str, Any], report: dict[str, Any]) -> list[dict[str, Any]]:
     modules = dashboard.get("modules") if isinstance(dashboard, dict) else None
     if not isinstance(modules, list):
         modules = report.get("modules") if isinstance(report, dict) else None
@@ -142,9 +140,7 @@ async def get_latest_total_index_date(session) -> date | None:
 
 async def get_latest_module_date(session, module_id: str) -> date | None:
     result = await session.execute(
-        select(func.max(MacroModuleHistory.date)).where(
-            MacroModuleHistory.module_id == module_id
-        )
+        select(func.max(MacroModuleHistory.date)).where(MacroModuleHistory.module_id == module_id)
     )
     return result.scalar_one_or_none()
 
@@ -161,9 +157,7 @@ async def upsert_report(session, report: dict[str, Any]) -> tuple[int, int, int]
         logger.warning("Report missing report_date, skipping snapshot")
         return 0, 0, 0
 
-    total_index = (
-        report.get("total_index") if isinstance(report.get("total_index"), dict) else {}
-    )
+    total_index = report.get("total_index") if isinstance(report.get("total_index"), dict) else {}
     report_row = {
         "report_date": report_date,
         "current_snapshot_date": parse_date(report.get("current_snapshot_date")),
@@ -205,9 +199,7 @@ async def upsert_report(session, report: dict[str, Any]) -> tuple[int, int, int]
                 "name": to_str(module.get("name")),
                 "name_cn": to_str(module.get("name_cn")),
                 "current_score": to_float(
-                    module.get("current_score")
-                    if module.get("current_score") is not None
-                    else module.get("score")
+                    module.get("current_score") if module.get("current_score") is not None else module.get("score")
                 ),
                 "compare_score": to_float(module.get("compare_score")),
                 "change": to_float(module.get("change")),
@@ -249,21 +241,16 @@ async def upsert_report(session, report: dict[str, Any]) -> tuple[int, int, int]
                 "report_date": report_date,
                 "module_id": str(module_id),
                 "module_name": to_str(factor.get("module_name")) or module_name,
-                "module_name_cn": to_str(factor.get("module_name_cn"))
-                or module_name_cn,
+                "module_name_cn": to_str(factor.get("module_name_cn")) or module_name_cn,
                 "factor_id": str(factor_id),
                 "name": to_str(factor.get("name")),
                 "name_cn": to_str(factor.get("name_cn")),
                 "display_only": display_only_value,
                 "current_value": to_float(factor.get("current_value")),
-                "current_value_formatted": to_str(
-                    factor.get("current_value_formatted")
-                ),
+                "current_value_formatted": to_str(factor.get("current_value_formatted")),
                 "current_percentile": to_float(factor.get("current_percentile")),
                 "compare_value": to_float(factor.get("compare_value")),
-                "compare_value_formatted": to_str(
-                    factor.get("compare_value_formatted")
-                ),
+                "compare_value_formatted": to_str(factor.get("compare_value_formatted")),
                 "compare_percentile": to_float(factor.get("compare_percentile")),
                 "value_change": to_float(factor.get("value_change")),
                 "value_change_pct": to_float(factor.get("value_change_pct")),
@@ -393,9 +380,7 @@ async def fetch_report(scraper: MacroScraper) -> dict[str, Any]:
         return {}
 
 
-async def fetch_total_history(
-    scraper: MacroScraper, start_date: date, end_date: date
-) -> list[dict[str, Any]]:
+async def fetch_total_history(scraper: MacroScraper, start_date: date, end_date: date) -> list[dict[str, Any]]:
     try:
         return await scraper.fetch_total_index_history(start_date, end_date)
     except httpx.HTTPError as exc:
@@ -423,9 +408,7 @@ async def run_cycle(
     if enable_protected_endpoints:
         report = await fetch_report(scraper)
     else:
-        logger.info(
-            "Skipping protected endpoint export/report (FA_MACRO_SCRAPER_ENABLE_PROTECTED_ENDPOINTS=false)"
-        )
+        logger.info("Skipping protected endpoint export/report (FA_MACRO_SCRAPER_ENABLE_PROTECTED_ENDPOINTS=false)")
 
     modules = extract_modules(dashboard, report)
     module_map = build_module_map(modules)
@@ -435,7 +418,7 @@ async def run_cycle(
         if report:
             report_counts = await upsert_report(session, report)
 
-    end_date = datetime.now(timezone.utc).date()
+    end_date = datetime.now(UTC).date()
     default_start = end_date - timedelta(days=history_days)
 
     async with session_scope() as session:
@@ -450,30 +433,21 @@ async def run_cycle(
 
     total_rows: list[dict[str, Any]] = []
     if total_start <= end_date:
-        total_rows = build_total_index_rows(
-            await fetch_total_history(scraper, total_start, end_date)
-        )
+        total_rows = build_total_index_rows(await fetch_total_history(scraper, total_start, end_date))
 
     module_history_rows: list[dict[str, Any]] = []
     module_requests = list(module_windows.items())
     if module_requests:
         tasks = [
-            fetch_module_history(scraper, module_id, start_date, end_date)
-            for module_id, start_date in module_requests
+            fetch_module_history(scraper, module_id, start_date, end_date) for module_id, start_date in module_requests
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
         for (module_id, _), result in zip(module_requests, results):
             if isinstance(result, Exception):
-                logger.warning(
-                    "Module history task failed for %s: %s", module_id, result
-                )
+                logger.warning("Module history task failed for %s: %s", module_id, result)
                 continue
             module_name, module_name_cn = module_map.get(module_id, (None, None))
-            module_history_rows.extend(
-                build_module_history_rows(
-                    module_id, module_name, module_name_cn, result
-                )
-            )
+            module_history_rows.extend(build_module_history_rows(module_id, module_name, module_name_cn, result))
 
     history_counts = (0, 0)
     async with session_scope() as session:
@@ -509,13 +483,13 @@ async def main() -> None:
     async with httpx.AsyncClient(timeout=timeout) as client:
         scraper = MacroScraper(client, get_base_url())
         while True:
-            start_time = datetime.now(timezone.utc)
+            start_time = datetime.now(UTC)
             try:
                 await run_cycle(scraper, history_days, enable_protected_endpoints)
             except Exception as exc:
                 logger.exception("Macro scraper cycle failed: %s", exc)
 
-            elapsed = (datetime.now(timezone.utc) - start_time).total_seconds()
+            elapsed = (datetime.now(UTC) - start_time).total_seconds()
             sleep_time = max(1, poll_interval - elapsed)
             await asyncio.sleep(sleep_time)
 

@@ -1,6 +1,6 @@
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import httpx
 from shared.models import NewsArticle, OptionsFlow
@@ -21,21 +21,15 @@ HEADERS = {
 
 
 class BubbleSeekScraper:
-    async def get_latest_event_time(self, session: AsyncSession) -> Optional[datetime]:
+    async def get_latest_event_time(self, session: AsyncSession) -> datetime | None:
         """Get the latest event time from both NewsArticle and OptionsFlow tables."""
         # Check NewsArticle table
-        news_stmt = (
-            select(NewsArticle.published_at)
-            .order_by(desc(NewsArticle.published_at))
-            .limit(1)
-        )
+        news_stmt = select(NewsArticle.published_at).order_by(desc(NewsArticle.published_at)).limit(1)
         news_result = await session.execute(news_stmt)
         latest_news = news_result.scalar_one_or_none()
 
         # Check OptionsFlow table
-        options_stmt = (
-            select(OptionsFlow.timestamp).order_by(desc(OptionsFlow.timestamp)).limit(1)
-        )
+        options_stmt = select(OptionsFlow.timestamp).order_by(desc(OptionsFlow.timestamp)).limit(1)
         options_result = await session.execute(options_stmt)
         latest_options = options_result.scalar_one_or_none()
 
@@ -46,9 +40,7 @@ class BubbleSeekScraper:
         # Both have data, return the older one to avoid gaps
         return min(latest_news, latest_options)
 
-    async def fetch_events_page(
-        self, limit: int = 50, offset: int = 0
-    ) -> List[Dict[str, Any]]:
+    async def fetch_events_page(self, limit: int = 50, offset: int = 0) -> list[dict[str, Any]]:
         url = f"{API_BASE_URL}?limit={limit}"
         if offset > 0:
             url += f"&offset={offset}"
@@ -68,16 +60,14 @@ class BubbleSeekScraper:
                 logger.error(f"Error fetching events: {e}")
                 return []
 
-    async def backfill_historical_data(
-        self, session: AsyncSession, backfill_days: int = 60
-    ) -> int:
+    async def backfill_historical_data(self, session: AsyncSession, backfill_days: int = 60) -> int:
         """回填历史数据。"""
         total_saved = 0
         offset = 0
         batch_size = 50
-        cutoff_time = datetime.now(timezone.utc).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        ) - timedelta(days=backfill_days)
+        cutoff_time = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
+            days=backfill_days
+        )
 
         logger.info(f"Starting historical backfill until {cutoff_time}")
 
@@ -111,9 +101,7 @@ class BubbleSeekScraper:
                         oldest_in_batch = event_ts
 
             await session.commit()
-            logger.info(
-                f"Batch offset={offset}: saved {saved_count}/{len(events)}, oldest: {oldest_in_batch}"
-            )
+            logger.info(f"Batch offset={offset}: saved {saved_count}/{len(events)}, oldest: {oldest_in_batch}")
 
             if oldest_in_batch and oldest_in_batch < cutoff_time:
                 break
@@ -127,18 +115,16 @@ class BubbleSeekScraper:
         logger.info(f"Backfill complete. Total saved: {total_saved}")
         return total_saved
 
-    async def fetch_latest_events(self) -> List[Dict[str, Any]]:
+    async def fetch_latest_events(self) -> list[dict[str, Any]]:
         return await self.fetch_events_page(limit=50, offset=0)
 
-    def _get_event_timestamp(self, event: Dict[str, Any]) -> Optional[datetime]:
+    def _get_event_timestamp(self, event: dict[str, Any]) -> datetime | None:
         ts_str = event.get("timestamp")
         if ts_str:
             return datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
         return None
 
-    def _parse_event(
-        self, event: Dict[str, Any]
-    ) -> Tuple[Optional[NewsArticle], Optional[OptionsFlow]]:
+    def _parse_event(self, event: dict[str, Any]) -> tuple[NewsArticle | None, OptionsFlow | None]:
         """Parse event and return (NewsArticle, OptionsFlow) tuple.
         Only one will be non-None based on event type.
         """
@@ -149,7 +135,7 @@ class BubbleSeekScraper:
         else:
             return self._parse_news_event(event), None
 
-    def _parse_options_event(self, event: Dict[str, Any]) -> Optional[OptionsFlow]:
+    def _parse_options_event(self, event: dict[str, Any]) -> OptionsFlow | None:
         """Parse options_alert event into OptionsFlow model."""
         try:
             event_id = event.get("id")
@@ -167,7 +153,7 @@ class BubbleSeekScraper:
             if ts_str:
                 timestamp = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
             else:
-                timestamp = datetime.now(timezone.utc)
+                timestamp = datetime.now(UTC)
 
             # Use the options parser
             parsed = parse_message(str(event_id), content, timestamp)
@@ -200,7 +186,7 @@ class BubbleSeekScraper:
             logger.error(f"Error parsing options event {event.get('id')}: {e}")
             return None
 
-    def _parse_news_event(self, event: Dict[str, Any]) -> Optional[NewsArticle]:
+    def _parse_news_event(self, event: dict[str, Any]) -> NewsArticle | None:
         """Parse news/kol event into NewsArticle model."""
         try:
             event_id = event.get("id")
@@ -231,7 +217,7 @@ class BubbleSeekScraper:
             if ts_str:
                 published_at = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
             else:
-                published_at = datetime.now(timezone.utc)
+                published_at = datetime.now(UTC)
 
             return NewsArticle(
                 external_id=str(event_id),
@@ -251,9 +237,7 @@ class BubbleSeekScraper:
             logger.error(f"Error parsing news event {event.get('id')}: {e}")
             return None
 
-    async def _save_news_event(
-        self, session: AsyncSession, article: NewsArticle
-    ) -> bool:
+    async def _save_news_event(self, session: AsyncSession, article: NewsArticle) -> bool:
         try:
             stmt = (
                 insert(NewsArticle)
@@ -291,9 +275,7 @@ class BubbleSeekScraper:
             logger.error(f"Error saving news event {article.external_id}: {e}")
             return False
 
-    async def _save_options_event(
-        self, session: AsyncSession, flow: OptionsFlow
-    ) -> bool:
+    async def _save_options_event(self, session: AsyncSession, flow: OptionsFlow) -> bool:
         try:
             stmt = (
                 insert(OptionsFlow)
@@ -326,7 +308,7 @@ class BubbleSeekScraper:
             logger.error(f"Error saving options event {flow.message_id}: {e}")
             return False
 
-    async def save_events(self, session: AsyncSession, events: List[Dict[str, Any]]):
+    async def save_events(self, session: AsyncSession, events: list[dict[str, Any]]):
         news_count = 0
         options_count = 0
 

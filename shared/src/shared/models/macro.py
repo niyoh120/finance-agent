@@ -23,16 +23,12 @@ class MacroReport(Base):
     report_date: Mapped[date] = mapped_column(Date, nullable=False)
     current_snapshot_date: Mapped[date | None] = mapped_column(Date, nullable=True)
     compare_date: Mapped[date | None] = mapped_column(Date, nullable=True)
-    generated_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )
+    generated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
     current_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     compare_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     change: Mapped[float | None] = mapped_column(Float, nullable=True)
     change_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         UniqueConstraint("report_date", name="uq_macro_report"),
@@ -52,9 +48,7 @@ class MacroModuleSnapshot(Base):
     compare_score: Mapped[float | None] = mapped_column(Float, nullable=True)
     change: Mapped[float | None] = mapped_column(Float, nullable=True)
     change_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         UniqueConstraint("report_date", "module_id", name="uq_macro_module_snapshot"),
@@ -76,28 +70,20 @@ class MacroFactorSnapshot(Base):
     name_cn: Mapped[str | None] = mapped_column(String(128), nullable=True)
     display_only: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     current_value: Mapped[float | None] = mapped_column(Float, nullable=True)
-    current_value_formatted: Mapped[str | None] = mapped_column(
-        String(64), nullable=True
-    )
+    current_value_formatted: Mapped[str | None] = mapped_column(String(64), nullable=True)
     current_percentile: Mapped[float | None] = mapped_column(Float, nullable=True)
     compare_value: Mapped[float | None] = mapped_column(Float, nullable=True)
-    compare_value_formatted: Mapped[str | None] = mapped_column(
-        String(64), nullable=True
-    )
+    compare_value_formatted: Mapped[str | None] = mapped_column(String(64), nullable=True)
     compare_percentile: Mapped[float | None] = mapped_column(Float, nullable=True)
     value_change: Mapped[float | None] = mapped_column(Float, nullable=True)
     value_change_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     percentile_change: Mapped[float | None] = mapped_column(Float, nullable=True)
     percentile_change_pct: Mapped[float | None] = mapped_column(Float, nullable=True)
     color: Mapped[str | None] = mapped_column(String(16), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
-        UniqueConstraint(
-            "report_date", "module_id", "factor_id", name="uq_macro_factor_snapshot"
-        ),
+        UniqueConstraint("report_date", "module_id", "factor_id", name="uq_macro_factor_snapshot"),
         Index("idx_macro_factor_snapshot_report", "report_date"),
         Index("idx_macro_factor_snapshot_module", "module_id"),
         Index("idx_macro_factor_snapshot_factor", "factor_id"),
@@ -114,9 +100,7 @@ class MacroModuleHistory(Base):
     date: Mapped[date] = mapped_column(Date, nullable=False)
     value: Mapped[float | None] = mapped_column(Float, nullable=True)
     percentile: Mapped[float | None] = mapped_column(Float, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         UniqueConstraint("module_id", "date", name="uq_macro_module_history"),
@@ -132,9 +116,7 @@ class MacroTotalIndexHistory(Base):
     date: Mapped[date] = mapped_column(Date, nullable=False)
     value: Mapped[float | None] = mapped_column(Float, nullable=True)
     percentile: Mapped[float | None] = mapped_column(Float, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     __table_args__ = (
         UniqueConstraint("date", name="uq_macro_total_index_history"),

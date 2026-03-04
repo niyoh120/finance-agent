@@ -1,6 +1,6 @@
-import TradingView from '@mathieuc/tradingview';
-import type { BuiltInIndicator, Client, MarketType, PineIndicator, SearchMarketResult } from '@mathieuc/tradingview';
-import { Candle, IndicatorResult, QuoteData, TechnicalAnalysis } from './types.js';
+import TradingView from "@mathieuc/tradingview";
+import type { BuiltInIndicator, Client, MarketType, PineIndicator, SearchMarketResult } from "@mathieuc/tradingview";
+import { Candle, IndicatorResult, QuoteData, TechnicalAnalysis } from "./types.js";
 
 type TradingViewModule = typeof TradingView;
 
@@ -22,7 +22,7 @@ export async function searchMarkets(params: {
   if (!query) return [];
 
   const offset = params.offset ?? 0;
-  const filter = params.type ?? '';
+  const filter = params.type ?? "";
 
   const results = (await TradingView.searchMarketV3(query, filter, offset)) as SearchMarketResult[];
 
@@ -32,7 +32,7 @@ export async function searchMarkets(params: {
     full_exchange: r.fullExchange,
     symbol: r.symbol,
     description: r.description,
-    type: r.type
+    type: r.type,
   }));
 }
 
@@ -43,7 +43,7 @@ function createClient(): Client {
   if (token) {
     return new TradingView.Client({
       token,
-      signature
+      signature,
     });
   }
 
@@ -73,7 +73,7 @@ export async function getQuote(symbol: string): Promise<QuoteData> {
   return withTimeout(
     new Promise((resolve, reject) => {
       const client = createClient();
-      const session = new client.Session.Quote({ fields: 'all' });
+      const session = new client.Session.Quote({ fields: "all" });
       const market = new session.Market(symbol);
 
       let done = false;
@@ -85,17 +85,17 @@ export async function getQuote(symbol: string): Promise<QuoteData> {
       };
 
       market.onData((data: unknown) => {
-        if (done || typeof data !== 'object' || data === null) return;
+        if (done || typeof data !== "object" || data === null) return;
 
         const d = data as Record<string, unknown>;
         if (d.lp === undefined) return;
 
         const num = (value: unknown, fallback = 0): number => {
-          return typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+          return typeof value === "number" && Number.isFinite(value) ? value : fallback;
         };
 
-        const str = (value: unknown, fallback = ''): string => {
-          return typeof value === 'string' ? value : fallback;
+        const str = (value: unknown, fallback = ""): string => {
+          return typeof value === "string" ? value : fallback;
         };
 
         const quote: QuoteData = {
@@ -110,8 +110,8 @@ export async function getQuote(symbol: string): Promise<QuoteData> {
           prevClose: num(d.prev_close_price),
           bid: num(d.bid),
           ask: num(d.ask),
-          status: str(d.status, 'unknown'),
-          timestamp: Date.now()
+          status: str(d.status, "unknown"),
+          timestamp: Date.now(),
         };
 
         cleanup();
@@ -125,7 +125,7 @@ export async function getQuote(symbol: string): Promise<QuoteData> {
       });
     }),
     10000,
-    `Timeout fetching quote for ${symbol}`
+    `Timeout fetching quote for ${symbol}`,
   );
 }
 
@@ -172,7 +172,7 @@ export async function getHistory(params: {
             high: p.max,
             low: p.min,
             close: p.close,
-            volume: p.volume
+            volume: p.volume,
           }))
           .filter((c: Candle) => Number.isFinite(c.time) && Number.isFinite(c.close));
 
@@ -183,11 +183,11 @@ export async function getHistory(params: {
       chart.setMarket(symbol, {
         timeframe,
         range,
-        ...(to ? { to } : {})
+        ...(to ? { to } : {}),
       });
     }),
     20000,
-    `Timeout fetching history for ${symbol}`
+    `Timeout fetching history for ${symbol}`,
   );
 }
 
@@ -205,12 +205,12 @@ export async function getIndicator(params: {
 }): Promise<IndicatorResult> {
   const { symbol, timeframe, range, indicatorId, to, options } = params;
 
-  const session = process.env.FA_STOCK_API_TV_SESSION ?? '';
-  const signature = process.env.FA_STOCK_API_TV_SIGNATURE ?? '';
+  const session = process.env.FA_STOCK_API_TV_SESSION ?? "";
+  const signature = process.env.FA_STOCK_API_TV_SIGNATURE ?? "";
 
-  const indicator: PineIndicator | BuiltInIndicator = indicatorId.includes('@')
+  const indicator: PineIndicator | BuiltInIndicator = indicatorId.includes("@")
     ? new TradingView.BuiltInIndicator(indicatorId)
-    : await TradingView.getIndicator(indicatorId, 'last', session, signature);
+    : await TradingView.getIndicator(indicatorId, "last", session, signature);
 
   if (options) {
     Object.entries(options).forEach(([key, value]) => {
@@ -244,7 +244,7 @@ export async function getIndicator(params: {
       chart.setMarket(symbol, {
         timeframe,
         range,
-        ...(to ? { to } : {})
+        ...(to ? { to } : {}),
       });
 
       const study = new chart.Study(indicator);
@@ -268,10 +268,10 @@ export async function getIndicator(params: {
             high: p.max,
             low: p.min,
             close: p.close,
-            volume: p.volume
+            volume: p.volume,
           }))
           .filter((c: Candle) => Number.isFinite(c.time) && Number.isFinite(c.close));
- 
+
         const result: IndicatorResult = {
           symbol,
           timeframe,
@@ -279,9 +279,9 @@ export async function getIndicator(params: {
           indicatorId,
           candles,
           periods: study.periods,
-          plots: 'plots' in indicator ? indicator.plots : undefined,
+          plots: "plots" in indicator ? indicator.plots : undefined,
           strategyReport: study.strategyReport,
-          graphic: study.graphic
+          graphic: study.graphic,
         };
 
         cleanup();
@@ -289,17 +289,19 @@ export async function getIndicator(params: {
       });
     }),
     30000,
-    `Timeout fetching indicator ${indicatorId} for ${symbol}`
+    `Timeout fetching indicator ${indicatorId} for ${symbol}`,
   );
 }
 
-export async function getPrivateIndicators(): Promise<Array<{ id: string; version: string; name: string; access: string; type: string }>> {
+export async function getPrivateIndicators(): Promise<
+  Array<{ id: string; version: string; name: string; access: string; type: string }>
+> {
   const session = process.env.FA_STOCK_API_TV_SESSION;
   if (!session) {
-    throw new Error('FA_STOCK_API_TV_SESSION is required to fetch private indicators');
+    throw new Error("FA_STOCK_API_TV_SESSION is required to fetch private indicators");
   }
 
-  const signature = process.env.FA_STOCK_API_TV_SIGNATURE ?? '';
+  const signature = process.env.FA_STOCK_API_TV_SIGNATURE ?? "";
   const list = await TradingView.getPrivateIndicators(session, signature);
 
   return list.map((i: any) => ({
@@ -307,6 +309,6 @@ export async function getPrivateIndicators(): Promise<Array<{ id: string; versio
     version: i.version,
     name: i.name,
     access: i.access,
-    type: i.type
+    type: i.type,
   }));
 }

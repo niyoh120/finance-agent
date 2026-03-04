@@ -6,9 +6,10 @@ Create Date: 2026-01-18 10:45:00.000000
 
 """
 
-from alembic import op
 import sqlalchemy as sa
 from sqlalchemy.dialects import postgresql
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "9bfd6d725b27"
@@ -53,9 +54,7 @@ def upgrade() -> None:
         ["published_at"],
         unique=False,
     )
-    op.create_index(
-        op.f("ix_news_articles_type"), "news_articles", ["type"], unique=False
-    )
+    op.create_index(op.f("ix_news_articles_type"), "news_articles", ["type"], unique=False)
 
 
 def downgrade() -> None:

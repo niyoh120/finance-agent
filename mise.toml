@@ -9,6 +9,12 @@ _.file = ".env"
 [tasks.install]
 run = "uv sync --all-packages"
 
+[tasks.hooks-install]
+run = "uvx pre-commit install --hook-type pre-commit --hook-type commit-msg"
+
+[tasks.hooks-run]
+run = "uvx pre-commit run --all-files"
+
 [tasks.bubbleseek-scraper]
 depends = ["install"]
 run = "uv run python -m bubbleseek_scraper.main"

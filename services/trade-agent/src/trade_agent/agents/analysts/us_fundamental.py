@@ -77,7 +77,7 @@ def build_us_fundamental_analyst(config: AppConfig, db=None) -> Agent:
                     "get_income_statements",
                     "get_key_financial_ratios",
                     "get_analyst_recommendations",
-                ]
+                ],
             ),
             ExaWebSearchTools(),
         ],

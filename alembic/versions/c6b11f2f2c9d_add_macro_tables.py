@@ -6,8 +6,9 @@ Create Date: 2026-01-27 00:00:00.000000
 
 """
 
-from alembic import op
 import sqlalchemy as sa
+
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "c6b11f2f2c9d"
@@ -37,9 +38,7 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("report_date", name="uq_macro_report"),
     )
-    op.create_index(
-        "idx_macro_report_date", "macro_reports", ["report_date"], unique=False
-    )
+    op.create_index("idx_macro_report_date", "macro_reports", ["report_date"], unique=False)
 
     op.create_table(
         "macro_module_snapshots",
@@ -59,9 +58,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "report_date", "module_id", name="uq_macro_module_snapshot"
-        ),
+        sa.UniqueConstraint("report_date", "module_id", name="uq_macro_module_snapshot"),
     )
     op.create_index(
         "idx_macro_module_snapshot_report",
@@ -105,9 +102,7 @@ def upgrade() -> None:
             nullable=False,
         ),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint(
-            "report_date", "module_id", "factor_id", name="uq_macro_factor_snapshot"
-        ),
+        sa.UniqueConstraint("report_date", "module_id", "factor_id", name="uq_macro_factor_snapshot"),
     )
     op.create_index(
         "idx_macro_factor_snapshot_report",
@@ -190,23 +185,13 @@ def downgrade() -> None:
     op.drop_index("idx_macro_module_history_date", table_name="macro_module_history")
     op.drop_table("macro_module_history")
 
-    op.drop_index(
-        "idx_macro_factor_snapshot_factor", table_name="macro_factor_snapshots"
-    )
-    op.drop_index(
-        "idx_macro_factor_snapshot_module", table_name="macro_factor_snapshots"
-    )
-    op.drop_index(
-        "idx_macro_factor_snapshot_report", table_name="macro_factor_snapshots"
-    )
+    op.drop_index("idx_macro_factor_snapshot_factor", table_name="macro_factor_snapshots")
+    op.drop_index("idx_macro_factor_snapshot_module", table_name="macro_factor_snapshots")
+    op.drop_index("idx_macro_factor_snapshot_report", table_name="macro_factor_snapshots")
     op.drop_table("macro_factor_snapshots")
 
-    op.drop_index(
-        "idx_macro_module_snapshot_module", table_name="macro_module_snapshots"
-    )
-    op.drop_index(
-        "idx_macro_module_snapshot_report", table_name="macro_module_snapshots"
-    )
+    op.drop_index("idx_macro_module_snapshot_module", table_name="macro_module_snapshots")
+    op.drop_index("idx_macro_module_snapshot_report", table_name="macro_module_snapshots")
     op.drop_table("macro_module_snapshots")
 
     op.drop_index("idx_macro_report_date", table_name="macro_reports")

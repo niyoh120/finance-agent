@@ -2,7 +2,7 @@ from agno.agent import Agent
 from agno.tools.yfinance import YFinanceTools
 
 from ...config import AppConfig
-from ...tools import FinanceTools, ExaWebSearchTools
+from ...tools import ExaWebSearchTools, FinanceTools
 
 
 def build_sentiment_analyst(config: AppConfig, db=None) -> Agent:

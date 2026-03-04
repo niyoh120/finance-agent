@@ -5,9 +5,7 @@ from dataclasses import dataclass
 try:
     import discord
 except (ImportError, ModuleNotFoundError) as exc:
-    raise ImportError(
-        "`discord.py` not installed. Please install using `pip install discord.py`"
-    ) from exc
+    raise ImportError("`discord.py` not installed. Please install using `pip install discord.py`") from exc
 
 
 EMBED_DESCRIPTION_LIMIT = 4096

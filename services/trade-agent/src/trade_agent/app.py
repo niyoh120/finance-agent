@@ -1,7 +1,7 @@
 import structlog
-from agno.os import AgentOS
 from agno.agent import Agent
 from agno.db.sqlite import SqliteDb
+from agno.os import AgentOS
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from shared.logging import configure_logging

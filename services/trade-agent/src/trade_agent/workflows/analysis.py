@@ -1,7 +1,8 @@
 import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import Any, AsyncIterator, Union, cast
+from collections.abc import AsyncIterator
+from datetime import UTC, datetime
+from typing import Any, cast
 
 from agno.agent import Agent
 from agno.db.in_memory import InMemoryDb
@@ -110,7 +111,7 @@ def build_parallel_analysis_step(config: AppConfig) -> Parallel:
     def make_executor(step_config: AnalysisStepConfig):
         async def executor(
             step_input: StepInput,
-        ) -> AsyncIterator[Union[WorkflowRunOutputEvent, StepOutput]]:
+        ) -> AsyncIterator[WorkflowRunOutputEvent | StepOutput]:
             async with sem:
                 agent = step_config.agent_builder(config, db=InMemoryDb())
                 response_iter = agent.arun(
@@ -140,16 +141,14 @@ def build_parallel_analysis_step(config: AppConfig) -> Parallel:
     # 添加基本面分析步骤（带市场路由）
     async def fundamental_executor(
         step_input: StepInput,
-    ) -> AsyncIterator[Union[WorkflowRunOutputEvent, StepOutput]]:
+    ) -> AsyncIterator[WorkflowRunOutputEvent | StepOutput]:
         async with sem:
             # 从输入中提取 ticker
             input_str = str(step_input.input)
             # 简单提取第一个看起来像代码的部分
             import re
 
-            ticker_match = re.search(
-                r"\b[A-Z0-9]+(?:\.HK)?\b", input_str, re.IGNORECASE
-            )
+            ticker_match = re.search(r"\b[A-Z0-9]+(?:\.HK)?\b", input_str, re.IGNORECASE)
             ticker = ticker_match.group(0) if ticker_match else ""
 
             # 根据市场选择分析师
@@ -222,14 +221,12 @@ def build_analysis_workflow(config: AppConfig) -> Workflow:
             f"威科夫分析: {wyckoff_signal}\n"
             f"风险控制 {risk_limits}"
         )
-        response = await portfolio_manager.arun(
-            input=prompt, stream=False, output_schema=DecisionDraft
-        )
+        response = await portfolio_manager.arun(input=prompt, stream=False, output_schema=DecisionDraft)
         draft = cast(DecisionDraft, response.content)
 
         decision = TradingDecision(
             ticker=draft.ticker,
-            timestamp=datetime.now(timezone.utc),
+            timestamp=datetime.now(UTC),
             action=draft.action,
             target_position_size=draft.target_position_size,
             confidence=draft.confidence,

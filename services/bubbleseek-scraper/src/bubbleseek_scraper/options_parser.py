@@ -1,7 +1,6 @@
 import re
 from dataclasses import dataclass
 from datetime import date, datetime
-from typing import Optional
 
 
 @dataclass
@@ -28,14 +27,10 @@ class OptionsFlowData:
 
 
 # 🕑 Interval (5 Min) - Bid Side
-HEADER_PATTERN = re.compile(
-    r"(?:🕑|:clock2:)?\s*Interval\s*\((\d+\s*Min)\)\s*-\s*(Bid|Ask)\s*Side", re.IGNORECASE
-)
+HEADER_PATTERN = re.compile(r"(?:🕑|:clock2:)?\s*Interval\s*\((\d+\s*Min)\)\s*-\s*(Bid|Ask)\s*Side", re.IGNORECASE)
 
 # 🔥 Hot Contract - Ask Side
-HOT_CONTRACT_PATTERN = re.compile(
-    r"(?:🔥|:fire:)?\s*Hot Contract\s*-\s*(Bid|Ask)\s*Side", re.IGNORECASE
-)
+HOT_CONTRACT_PATTERN = re.compile(r"(?:🔥|:fire:)?\s*Hot Contract\s*-\s*(Bid|Ask)\s*Side", re.IGNORECASE)
 
 # **[MSTR 145 P 04/17/2026 (92 DTE)](...
 # Pattern matches Markdown links in embed description. Essential for parsing Unusual Whales format.
@@ -59,7 +54,7 @@ def parse_number(s: str) -> float:
     return float(s.replace(",", ""))
 
 
-def parse_message(message_id: str, content: str, timestamp: datetime) -> Optional[OptionsFlowData]:
+def parse_message(message_id: str, content: str, timestamp: datetime) -> OptionsFlowData | None:
     interval_match = HEADER_PATTERN.search(content)
     hot_match = HOT_CONTRACT_PATTERN.search(content)
 

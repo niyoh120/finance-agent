@@ -13,9 +13,7 @@ from pydantic_settings import (
 )
 
 http_url_adapter = TypeAdapter(HttpUrl)
-StrHttpUrl = Annotated[
-    str, BeforeValidator(lambda value: str(http_url_adapter.validate_python(value)))
-]
+StrHttpUrl = Annotated[str, BeforeValidator(lambda value: str(http_url_adapter.validate_python(value)))]
 
 
 class ModelConfig(BaseSettings):
@@ -99,9 +97,7 @@ class AppConfig(BaseSettings):
             agent_config = self.agents.get("default")
 
         if not agent_config:
-            raise ValueError(
-                f"No agent configuration found for agent '{agent_name}' and no 'default' defined."
-            )
+            raise ValueError(f"No agent configuration found for agent '{agent_name}' and no 'default' defined.")
         return agent_config
 
     def get_model_for_agent(self, agent_name: str) -> Any:

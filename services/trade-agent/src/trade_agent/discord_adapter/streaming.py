@@ -5,13 +5,10 @@ import time
 try:
     import discord
 except (ImportError, ModuleNotFoundError) as exc:
-    raise ImportError(
-        "`discord.py` not installed. Please install using `pip install discord.py`"
-    ) from exc
+    raise ImportError("`discord.py` not installed. Please install using `pip install discord.py`") from exc
 
 from .formatting import build_final_render, normalize_markdown, split_markdown_text
 from .views import FullTextView
-
 
 DISCORD_MESSAGE_LIMIT = 2000
 

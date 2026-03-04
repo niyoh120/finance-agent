@@ -22,9 +22,7 @@ class MacroScraper:
         self.client = client
         self.base_url = normalize_base_url(base_url)
 
-    async def _get_json(
-        self, path: str, params: dict[str, str] | None = None
-    ) -> dict[str, Any]:
+    async def _get_json(self, path: str, params: dict[str, str] | None = None) -> dict[str, Any]:
         url = f"{self.base_url}/{path.lstrip('/')}"
         response = await self.client.get(url, params=params)
         response.raise_for_status()
@@ -37,9 +35,7 @@ class MacroScraper:
     async def fetch_report(self) -> dict[str, Any]:
         return await self._get_json("export/report")
 
-    async def fetch_total_index_history(
-        self, start_date: date, end_date: date
-    ) -> list[dict[str, Any]]:
+    async def fetch_total_index_history(self, start_date: date, end_date: date) -> list[dict[str, Any]]:
         payload = await self._get_json(
             "dashboard/total-index/history",
             params={
@@ -50,9 +46,7 @@ class MacroScraper:
         data = payload.get("data")
         return data if isinstance(data, list) else []
 
-    async def fetch_module_history(
-        self, module_id: str, start_date: date, end_date: date
-    ) -> list[dict[str, Any]]:
+    async def fetch_module_history(self, module_id: str, start_date: date, end_date: date) -> list[dict[str, Any]]:
         payload = await self._get_json(
             f"modules/{module_id}/history",
             params={

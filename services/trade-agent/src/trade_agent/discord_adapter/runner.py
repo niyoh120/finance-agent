@@ -2,10 +2,10 @@ from __future__ import annotations
 
 import asyncio
 import inspect
+from collections.abc import Callable
 from dataclasses import dataclass
 from textwrap import dedent
 from typing import Any
-from typing import Callable
 
 import structlog
 from agno.media import Audio, File, Image, Video
@@ -19,9 +19,7 @@ from .streaming import StreamMessageEditor
 try:
     import discord
 except (ImportError, ModuleNotFoundError) as exc:
-    raise ImportError(
-        "`discord.py` not installed. Please install using `pip install discord.py`"
-    ) from exc
+    raise ImportError("`discord.py` not installed. Please install using `pip install discord.py`") from exc
 
 logger = structlog.get_logger(__name__)
 
@@ -41,9 +39,7 @@ class TeamRunRunner:
         self._semaphore = asyncio.Semaphore(max(1, config.max_concurrency))
         self._thread_locks: dict[int, asyncio.Lock] = {}
 
-    async def run_message(
-        self, message: discord.Message, bot_user_id: int | None
-    ) -> None:
+    async def run_message(self, message: discord.Message, bot_user_id: int | None) -> None:
         thread_lock = self._get_thread_lock(message.channel.id)
         async with thread_lock:
             async with self._semaphore:
@@ -62,12 +58,8 @@ class TeamRunRunner:
                 try:
                     session_id = self._build_session_id(message)
                     media = await self._prepare_media(message)
-                    history_context = await self._build_thread_history_context(
-                        message, bot_user_id
-                    )
-                    team.additional_context = self._build_additional_context(
-                        message, history_context
-                    )
+                    history_context = await self._build_thread_history_context(message, bot_user_id)
+                    team.additional_context = self._build_additional_context(message, history_context)
 
                     stream = team.arun(  # type: ignore[misc]
                         input=message.content or "",
@@ -98,9 +90,7 @@ class TeamRunRunner:
                             delta, last_seen_text = _as_delta(text, last_seen_text)
                             await editor.append(delta)
 
-                    async with asyncio.timeout(
-                        max(5, self._config.run_timeout_seconds)
-                    ):
+                    async with asyncio.timeout(max(5, self._config.run_timeout_seconds)):
                         if self._config.typing_indicator_enabled:
                             async with message.channel.typing():
                                 await consume_stream()
@@ -116,7 +106,7 @@ class TeamRunRunner:
                                 overflow_strategy=self._config.final_overflow_strategy,
                                 max_final_chars=self._config.max_final_chars,
                             )
-                except asyncio.TimeoutError:
+                except TimeoutError:
                     await self._cancel_run_if_needed(team, run_id)
                     logger.warning("discord team run timeout", run_id=run_id)
                     await editor.fail("请求处理超时，请稍后重试。")
@@ -124,9 +114,7 @@ class TeamRunRunner:
                     await self._cancel_run_if_needed(team, run_id)
                     raise
                 except Exception as exc:  # noqa: BLE001
-                    logger.exception(
-                        "discord team run failed", error=str(exc), run_id=run_id
-                    )
+                    logger.exception("discord team run failed", error=str(exc), run_id=run_id)
                     await editor.fail("处理消息时出现错误，请稍后重试。")
 
     def _get_thread_lock(self, thread_id: int) -> asyncio.Lock:
@@ -187,9 +175,7 @@ class TeamRunRunner:
         guild_id = str(message.guild.id) if message.guild else "dm"
         return f"{guild_id}:channel:{message.channel.id}"
 
-    def _build_additional_context(
-        self, message: discord.Message, history_context: str
-    ) -> str:
+    def _build_additional_context(self, message: discord.Message, history_context: str) -> str:
         context = dedent(
             f"""
             Discord username: {message.author.name}
@@ -210,15 +196,11 @@ class TeamRunRunner:
             context = f"{context}\n{thread_context}"
 
         if history_context:
-            context = (
-                f"{context}\n\n<discord_history>\n{history_context}\n</discord_history>"
-            )
+            context = f"{context}\n\n<discord_history>\n{history_context}\n</discord_history>"
 
         return context
 
-    async def _build_thread_history_context(
-        self, message: discord.Message, bot_user_id: int | None
-    ) -> str:
+    async def _build_thread_history_context(self, message: discord.Message, bot_user_id: int | None) -> str:
         channel = message.channel
         if not isinstance(channel, discord.Thread):
             return ""
@@ -247,11 +229,7 @@ class TeamRunRunner:
                 if not text and not attachment_summary:
                     continue
 
-                role = (
-                    "assistant"
-                    if bot_user_id is not None and item.author.id == bot_user_id
-                    else "user"
-                )
+                role = "assistant" if bot_user_id is not None and item.author.id == bot_user_id else "user"
                 timestamp = item.created_at.isoformat(timespec="seconds")
                 line = f"[{timestamp}] [{role}] {item.author.display_name}: {text or '(no text)'}"
                 if attachment_summary:

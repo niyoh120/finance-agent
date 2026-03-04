@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import io
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -24,9 +24,7 @@ from matplotlib.patches import Rectangle
 logger = logging.getLogger(__name__)
 
 # 项目内嵌中文字体路径
-_EMBEDDED_FONT_PATH = (
-    Path(__file__).parent.parent.parent / "assets" / "fonts" / "NotoSansSC-Regular.ttf"
-)
+_EMBEDDED_FONT_PATH = Path(__file__).parent.parent.parent / "assets" / "fonts" / "NotoSansSC-Regular.ttf"
 
 
 class MatplotlibRenderTools(Toolkit):
@@ -459,7 +457,7 @@ def _coerce_float(value: Any) -> float | None:
 def _coerce_datetime(value: Any) -> datetime | None:
     if isinstance(value, datetime):
         if value.tzinfo is not None:
-            return value.astimezone(timezone.utc).replace(tzinfo=None)
+            return value.astimezone(UTC).replace(tzinfo=None)
         return value
     if isinstance(value, (int, float)):
         if value <= 0:
@@ -478,7 +476,7 @@ def _coerce_datetime(value: Any) -> datetime | None:
         except ValueError:
             return None
         if parsed.tzinfo is not None:
-            return parsed.astimezone(timezone.utc).replace(tzinfo=None)
+            return parsed.astimezone(UTC).replace(tzinfo=None)
         return parsed
     return None
 

@@ -3,9 +3,7 @@ from __future__ import annotations
 try:
     import discord
 except (ImportError, ModuleNotFoundError) as exc:
-    raise ImportError(
-        "`discord.py` not installed. Please install using `pip install discord.py`"
-    ) from exc
+    raise ImportError("`discord.py` not installed. Please install using `pip install discord.py`") from exc
 
 
 ALLOWED_MESSAGE_TYPES: set[discord.MessageType] = {

@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Callable
 from os import getenv
-from typing import Callable
 
+import discord
 import structlog
 from agno.team.team import Team
-import discord
 
 from ..config import DiscordBotConfig
 from .filtering import should_process_message

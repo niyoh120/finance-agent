@@ -83,19 +83,13 @@ def _get_column_value(df: pd.DataFrame | None, prefix: str) -> float | None:
         return None
     matches = [col for col in df.columns if col.startswith(prefix)]
     if not matches:
-        logger.debug(
-            "indicator column missing", extra={"prefix": prefix, "columns": df.columns}
-        )
+        logger.debug("indicator column missing", extra={"prefix": prefix, "columns": df.columns})
         return None
-    logger.debug(
-        "indicator column selected", extra={"prefix": prefix, "column": matches[0]}
-    )
+    logger.debug("indicator column selected", extra={"prefix": prefix, "column": matches[0]})
     return _last_value(df[matches[0]])
 
 
-def _infer_trend(
-    closes: pd.Series, sma20: pd.Series | None, sma50: pd.Series | None
-) -> str | None:
+def _infer_trend(closes: pd.Series, sma20: pd.Series | None, sma50: pd.Series | None) -> str | None:
     if closes.empty or sma20 is None or sma20.empty:
         return None
 

@@ -3,16 +3,14 @@ import json
 import logging
 import os
 import re
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any, Literal
 
 import akshare as ak
 import httpx
 import pandas as pd
 from fastmcp import FastMCP
-from fastmcp.client.transports import UvxStdioTransport
 from fastmcp.exceptions import ToolError
-from fastmcp.tools.tool_transform import ToolTransformConfig
 from pydantic import Field, ValidationError
 from shared.database import session_scope
 from shared.logging import configure_logging
@@ -103,10 +101,8 @@ def parse_iso_date(value: str) -> date:
         raise ToolError(f"日期格式错误: {value}") from exc
 
 
-def resolve_date_range(
-    days: int | None, start_date: str | None, end_date: str | None
-) -> tuple[date, date]:
-    today = datetime.now(tz=timezone.utc).date()
+def resolve_date_range(days: int | None, start_date: str | None, end_date: str | None) -> tuple[date, date]:
+    today = datetime.now(tz=UTC).date()
     if start_date:
         start = parse_iso_date(start_date)
         end = parse_iso_date(end_date) if end_date else today
@@ -129,7 +125,7 @@ def resolve_optional_date_range(
     if days is None and start_date is None and end_date is None:
         return None, None
 
-    today = datetime.now(tz=timezone.utc).date()
+    today = datetime.now(tz=UTC).date()
     end = parse_iso_date(end_date) if end_date else today
 
     if start_date:
@@ -362,11 +358,7 @@ async def query_news_articles(
     ] = 7,
     symbols: Annotated[
         list[str] | None,
-        Field(
-            description=(
-                "股票代码列表（不带交易所前缀），如 ['AAPL', 'TSLA']。用于过滤新闻。"
-            )
-        ),
+        Field(description=("股票代码列表（不带交易所前缀），如 ['AAPL', 'TSLA']。用于过滤新闻。")),
     ] = None,
     type: Annotated[
         NewsType | None,
@@ -396,7 +388,7 @@ async def query_news_articles(
     返回结果按发布时间降序排列 (最新的在前)。
     """
 
-    since = datetime.now(tz=timezone.utc) - timedelta(days=days)
+    since = datetime.now(tz=UTC) - timedelta(days=days)
 
     stmt = select(NewsArticle).where(NewsArticle.published_at >= since)
 
@@ -503,17 +495,9 @@ async def query_macro_reports(
         reports=[
             MacroReportItem(
                 report_date=row.report_date.isoformat(),
-                current_snapshot_date=(
-                    row.current_snapshot_date.isoformat()
-                    if row.current_snapshot_date
-                    else None
-                ),
-                compare_date=(
-                    row.compare_date.isoformat() if row.compare_date else None
-                ),
-                generated_at=(
-                    row.generated_at.isoformat() if row.generated_at else None
-                ),
+                current_snapshot_date=(row.current_snapshot_date.isoformat() if row.current_snapshot_date else None),
+                compare_date=(row.compare_date.isoformat() if row.compare_date else None),
+                generated_at=(row.generated_at.isoformat() if row.generated_at else None),
                 current_score=row.current_score,
                 compare_score=row.compare_score,
                 change=row.change,
@@ -916,16 +900,12 @@ async def fetch_stock_api_json(path: str, params: dict[str, str]) -> dict[str, A
                     detail = value.strip()
 
             if detail:
-                raise ToolError(
-                    f"stock-api 请求失败 (HTTP {resp.status_code}): {detail}"
-                )
+                raise ToolError(f"stock-api 请求失败 (HTTP {resp.status_code}): {detail}")
 
             body = resp.text.strip()
             if len(body) > 1000:
                 body = body[:1000] + "..."
-            raise ToolError(
-                f"stock-api 请求失败 (HTTP {resp.status_code}): {body or resp.reason_phrase}"
-            )
+            raise ToolError(f"stock-api 请求失败 (HTTP {resp.status_code}): {body or resp.reason_phrase}")
 
         if not isinstance(payload, dict):
             raise ToolError("stock-api 返回格式不符合预期: 不是 JSON object")
@@ -939,22 +919,14 @@ async def search_market(
         str,
         Field(
             description=(
-                "搜索关键词。"
-                "支持 ticker、公司名或 'EXCHANGE:' 前缀提示。"
-                "示例：'WMT'、'walmart'、'NASDAQ:'、'BINANCE:'."
+                "搜索关键词。支持 ticker、公司名或 'EXCHANGE:' 前缀提示。示例：'WMT'、'walmart'、'NASDAQ:'、'BINANCE:'."
             ),
             min_length=1,
         ),
     ],
     type: Annotated[
-        Literal["stock", "futures", "forex", "cfd", "crypto", "index", "economic"]
-        | None,
-        Field(
-            description=(
-                "市场类型过滤。留空则不过滤。"
-                "可选：stock/futures/forex/cfd/crypto/index/economic"
-            )
-        ),
+        Literal["stock", "futures", "forex", "cfd", "crypto", "index", "economic"] | None,
+        Field(description=("市场类型过滤。留空则不过滤。可选：stock/futures/forex/cfd/crypto/index/economic")),
     ] = "stock",
     limit: Annotated[
         int,
@@ -1118,11 +1090,7 @@ async def list_private_indicators() -> str:
 async def query_options_flow(
     symbol: Annotated[
         str | None,
-        Field(
-            description=(
-                "股票代码（不带交易所前缀），如 'BSX', 'AAPL'。用于过滤期权流。"
-            )
-        ),
+        Field(description=("股票代码（不带交易所前缀），如 'BSX', 'AAPL'。用于过滤期权流。")),
     ] = None,
     side: Annotated[
         OptionsSide | None,
@@ -1162,7 +1130,7 @@ async def query_options_flow(
     返回结果按时间降序排列 (最新的在前)。
     """
 
-    since = datetime.now(tz=timezone.utc) - timedelta(days=days)
+    since = datetime.now(tz=UTC) - timedelta(days=days)
 
     stmt = select(OptionsFlow).where(OptionsFlow.timestamp >= since)
 
@@ -1220,7 +1188,7 @@ async def get_flow_summary(
     汇总指定时间范围内的交易数、权利金，并按方向/类型聚合，返回 Top 标的。
     """
 
-    since = datetime.now(tz=timezone.utc) - timedelta(days=days)
+    since = datetime.now(tz=UTC) - timedelta(days=days)
 
     async with session_scope() as session:
         total_stmt = select(
@@ -1268,14 +1236,8 @@ async def get_flow_summary(
         period_days=days,
         total_trades=total.count or 0,
         total_premium=float(total.total_premium or 0),
-        by_side={
-            row.side: SideStats(count=row.count, premium=float(row.premium or 0))
-            for row in by_side
-        },
-        by_type={
-            row.option_type: TypeStats(count=row.count, premium=float(row.premium or 0))
-            for row in by_type
-        },
+        by_side={row.side: SideStats(count=row.count, premium=float(row.premium or 0)) for row in by_side},
+        by_type={row.option_type: TypeStats(count=row.count, premium=float(row.premium or 0)) for row in by_type},
         top_symbols=[
             TopSymbol(
                 symbol=row.symbol,
@@ -1318,7 +1280,7 @@ async def get_unusual_activity(
     返回结果按 Vol/OI 降序排列 (最异常的在前)。
     """
 
-    since = datetime.now(tz=timezone.utc) - timedelta(days=days)
+    since = datetime.now(tz=UTC) - timedelta(days=days)
 
     stmt = (
         select(OptionsFlow)
@@ -1455,9 +1417,7 @@ async def cn_stock_get_basic_info(
                 profile_exc,
             )
 
-        prefixed_symbol = (
-            f"{infer_a_share_market_prefix(normalized_symbol)}{normalized_symbol}"
-        )
+        prefixed_symbol = f"{infer_a_share_market_prefix(normalized_symbol)}{normalized_symbol}"
 
         price: float | None = None
         market_cap: float | None = None
@@ -1473,11 +1433,7 @@ async def cn_stock_get_basic_info(
                 latest = daily_df.iloc[-1]
                 price = parse_float(latest.get("close"))
                 outstanding_share = parse_float(latest.get("outstanding_share"))
-                market_cap = (
-                    price * outstanding_share
-                    if price is not None and outstanding_share is not None
-                    else None
-                )
+                market_cap = price * outstanding_share if price is not None and outstanding_share is not None else None
         except Exception as daily_exc:
             daily_error = daily_exc
             logger.warning(
@@ -1517,9 +1473,7 @@ async def cn_stock_get_basic_info(
         industry = None
         listing_date = None
         if profile_row is not None:
-            display_name = str(
-                profile_row.get("A股简称") or profile_row.get("公司名称") or ""
-            )
+            display_name = str(profile_row.get("A股简称") or profile_row.get("公司名称") or "")
             industry = str(profile_row.get("所属行业") or "")
             listing_date = str(profile_row.get("上市日期") or "")
 
@@ -1537,9 +1491,7 @@ async def cn_stock_get_basic_info(
 
     except Exception as exc:
         logger.error("获取股票基本信息失败 symbol=%s error=%s", normalized_symbol, exc)
-        raise ToolError(
-            f"获取股票 {normalized_symbol} 基本信息失败: {str(exc)}"
-        ) from exc
+        raise ToolError(f"获取股票 {normalized_symbol} 基本信息失败: {str(exc)}") from exc
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -1627,11 +1579,7 @@ async def cn_stock_get_financial_statements(
         def standardize_date_col(df: pd.DataFrame) -> pd.DataFrame:
             if df.empty:
                 return df
-            col_map = {
-                c: "REPORT_DATE"
-                for c in df.columns
-                if c in ["REPORT_DATE", "报告期", "PUBLISH_DATE"]
-            }
+            col_map = {c: "REPORT_DATE" for c in df.columns if c in ["REPORT_DATE", "报告期", "PUBLISH_DATE"]}
             df = df.rename(columns=col_map)
             # 有些接口可能没有 REPORT_DATE，只有日期列
             return df
@@ -1680,9 +1628,7 @@ async def cn_stock_get_financial_statements(
 
         # 按日期降序，取最近 8 期
         if "REPORT_DATE" in merged.columns:
-            merged["REPORT_DATE"] = pd.to_datetime(
-                merged["REPORT_DATE"], errors="coerce"
-            )
+            merged["REPORT_DATE"] = pd.to_datetime(merged["REPORT_DATE"], errors="coerce")
             merged = merged.sort_values("REPORT_DATE", ascending=False).head(8)
         else:
             merged = merged.head(8)
@@ -1693,7 +1639,7 @@ async def cn_stock_get_financial_statements(
                 if k in row and pd.notna(row[k]):
                     try:
                         return float(row[k])
-                    except:
+                    except (TypeError, ValueError):
                         pass
             return None
 
@@ -1715,28 +1661,16 @@ async def cn_stock_get_financial_statements(
                         "营业收入",
                     ],
                 ),
-                net_profit=get_val(
-                    row, ["PARENT_NETPROFIT", "归母净利润", "NETPROFIT", "净利润"]
-                ),
-                net_profit_deduct_non_recurring=get_val(
-                    row, ["DEDUCT_PARENT_NETPROFIT", "扣非净利润"]
-                ),
+                net_profit=get_val(row, ["PARENT_NETPROFIT", "归母净利润", "NETPROFIT", "净利润"]),
+                net_profit_deduct_non_recurring=get_val(row, ["DEDUCT_PARENT_NETPROFIT", "扣非净利润"]),
                 # 资产负债表
                 total_assets=get_val(row, ["TOTAL_ASSETS", "资产总计"]),
                 total_liabilities=get_val(row, ["TOTAL_LIABILITIES", "负债合计"]),
-                total_equity=get_val(
-                    row, ["TOTAL_EQUITY", "股东权益合计", "SHEQUITY", "所有者权益合计"]
-                ),
+                total_equity=get_val(row, ["TOTAL_EQUITY", "股东权益合计", "SHEQUITY", "所有者权益合计"]),
                 # 现金流量表
-                operating_cash_flow=get_val(
-                    row, ["NETCASH_OPERATE", "经营活动产生的现金流量净额"]
-                ),
-                investing_cash_flow=get_val(
-                    row, ["NETCASH_INVEST", "投资活动产生的现金流量净额"]
-                ),
-                financing_cash_flow=get_val(
-                    row, ["NETCASH_FINANCE", "筹资活动产生的现金流量净额"]
-                ),
+                operating_cash_flow=get_val(row, ["NETCASH_OPERATE", "经营活动产生的现金流量净额"]),
+                investing_cash_flow=get_val(row, ["NETCASH_INVEST", "投资活动产生的现金流量净额"]),
+                financing_cash_flow=get_val(row, ["NETCASH_FINANCE", "筹资活动产生的现金流量净额"]),
             )
             statements.append(item)
 
@@ -1749,9 +1683,7 @@ async def cn_stock_get_financial_statements(
 
     except Exception as exc:
         logger.error("获取财务报表失败 symbol=%s error=%s", normalized_symbol, exc)
-        raise ToolError(
-            f"获取股票 {normalized_symbol} 财务报表失败: {str(exc)}"
-        ) from exc
+        raise ToolError(f"获取股票 {normalized_symbol} 财务报表失败: {str(exc)}") from exc
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -1802,9 +1734,7 @@ async def cn_stock_get_financial_metrics(
                 adjust="",
             )
             if not daily_df.empty:
-                close_val = pd.to_numeric(
-                    daily_df.iloc[-1].get("close"), errors="coerce"
-                )
+                close_val = pd.to_numeric(daily_df.iloc[-1].get("close"), errors="coerce")
                 if pd.notna(close_val):
                     return float(close_val)
         except Exception as daily_exc:
@@ -1821,9 +1751,7 @@ async def cn_stock_get_financial_metrics(
                 period="5",
             )
             if not minute_df.empty:
-                close_val = pd.to_numeric(
-                    minute_df.iloc[-1].get("close"), errors="coerce"
-                )
+                close_val = pd.to_numeric(minute_df.iloc[-1].get("close"), errors="coerce")
                 if pd.notna(close_val):
                     return float(close_val)
         except Exception as minute_exc:
@@ -1876,11 +1804,7 @@ async def cn_stock_get_financial_metrics(
             if date_col is not None:
                 date_val = row.get(date_col)
                 if pd.notna(date_val):
-                    date_text = (
-                        date_val.strftime("%Y-%m-%d")
-                        if hasattr(date_val, "strftime")
-                        else str(date_val)
-                    )
+                    date_text = date_val.strftime("%Y-%m-%d") if hasattr(date_val, "strftime") else str(date_val)
 
             if not date_text:
                 for alt in ("REPORT_DATE_NAME", "报告期", "日期"):
@@ -1896,9 +1820,7 @@ async def cn_stock_get_financial_metrics(
         if latest_row is None:
             return FinancialMetricsResult(symbol=normalized_symbol, count=0, metrics=[])
 
-        eps_val = get_val(
-            latest_row, ["EPSJB", "BASIC_EPS", "每股收益(元)", "每股收益"]
-        )
+        eps_val = get_val(latest_row, ["EPSJB", "BASIC_EPS", "每股收益(元)", "每股收益"])
         bvps_val = get_val(latest_row, ["BPS", "每股净资产(元)", "每股净资产"])
         latest_price = await fetch_latest_price(normalized_symbol)
 
@@ -1939,9 +1861,7 @@ async def cn_stock_get_financial_metrics(
 
     except Exception as exc:
         logger.error("获取财务指标失败 symbol=%s error=%s", normalized_symbol, exc)
-        raise ToolError(
-            f"获取股票 {normalized_symbol} 财务指标失败: {str(exc)}"
-        ) from exc
+        raise ToolError(f"获取股票 {normalized_symbol} 财务指标失败: {str(exc)}") from exc
 
 
 @mcp.tool(annotations={"readOnlyHint": True})
@@ -2018,9 +1938,7 @@ async def hk_stock_get_financial_statements(
         dfs: list[pd.DataFrame] = []
         for name, res in zip(["利润表", "资产负债表", "现金流量表"], results):
             if isinstance(res, Exception):
-                logger.error(
-                    "获取港股%s失败 stock=%s error=%s", name, normalized_stock, res
-                )
+                logger.error("获取港股%s失败 stock=%s error=%s", name, normalized_stock, res)
                 dfs.append(pd.DataFrame())
             else:
                 dfs.append(to_wide(res))
@@ -2064,9 +1982,7 @@ async def hk_stock_get_financial_statements(
             )
 
         if "REPORT_DATE" in merged.columns:
-            merged["REPORT_DATE"] = pd.to_datetime(
-                merged["REPORT_DATE"], errors="coerce"
-            )
+            merged["REPORT_DATE"] = pd.to_datetime(merged["REPORT_DATE"], errors="coerce")
             merged = merged.sort_values("REPORT_DATE", ascending=False).head(8)
         else:
             merged = merged.head(8)
@@ -2500,9 +2416,7 @@ async def get_china_macro_indicators(
         if failures:
             logger.warning("中国宏观指标抓取部分失败: %s", "; ".join(failures[:8]))
         if not indicators:
-            raise ToolError(
-                "获取中国宏观数据失败: 无可用指标，请检查 AKShare 接口变更或上游数据源。"
-            )
+            raise ToolError("获取中国宏观数据失败: 无可用指标，请检查 AKShare 接口变更或上游数据源。")
 
         return MacroIndicatorsResult(
             category=category,
@@ -2616,9 +2530,7 @@ async def get_hk_macro_indicators(
         if failures:
             logger.warning("香港宏观指标抓取部分失败: %s", "; ".join(failures[:8]))
         if not indicators:
-            raise ToolError(
-                "获取香港宏观数据失败: 无可用指标，请检查 AKShare 接口变更或上游数据源。"
-            )
+            raise ToolError("获取香港宏观数据失败: 无可用指标，请检查 AKShare 接口变更或上游数据源。")
 
         return MacroIndicatorsResult(
             category="HK",
@@ -2635,10 +2547,7 @@ async def get_us_macro_indicators(
     category: Annotated[
         Literal["overview", "growth", "inflation", "employment", "business"],
         Field(
-            description=(
-                "数据类别: overview(总览), growth(增长), inflation(通胀), "
-                "employment(就业), business(景气)"
-            )
+            description=("数据类别: overview(总览), growth(增长), inflation(通胀), employment(就业), business(景气)")
         ),
     ] = "overview",
     days: Annotated[
@@ -2783,9 +2692,7 @@ async def get_us_macro_indicators(
         if failures:
             logger.warning("美国宏观指标抓取部分失败: %s", "; ".join(failures[:8]))
         if not indicators:
-            raise ToolError(
-                "获取美国宏观数据失败: 无可用指标，请检查 AKShare 接口变更或上游数据源。"
-            )
+            raise ToolError("获取美国宏观数据失败: 无可用指标，请检查 AKShare 接口变更或上游数据源。")
 
         return MacroIndicatorsResult(
             category=category,
@@ -2800,12 +2707,8 @@ async def get_us_macro_indicators(
 @mcp.tool(annotations={"readOnlyHint": True})
 async def get_economic_calendar(
     days: Annotated[int, Field(description="查询未来多少天的数据", ge=1, le=30)] = 7,
-    start_date: Annotated[
-        str | None, Field(description="起始日期 (YYYY-MM-DD)，与days二选一")
-    ] = None,
-    end_date: Annotated[
-        str | None, Field(description="结束日期 (YYYY-MM-DD)，与days二选一")
-    ] = None,
+    start_date: Annotated[str | None, Field(description="起始日期 (YYYY-MM-DD)，与days二选一")] = None,
+    end_date: Annotated[str | None, Field(description="结束日期 (YYYY-MM-DD)，与days二选一")] = None,
 ) -> EconomicCalendarResult:
     """查询财经日历，获取经济指标、央行决议等全球财经事件。
 
@@ -2815,10 +2718,7 @@ async def get_economic_calendar(
         start, end = resolve_date_range(days, start_date, end_date)
         date_range = [start + timedelta(days=i) for i in range((end - start).days + 1)]
 
-        tasks = [
-            asyncio.to_thread(ak.news_economic_baidu, date=d.strftime("%Y%m%d"))
-            for d in date_range
-        ]
+        tasks = [asyncio.to_thread(ak.news_economic_baidu, date=d.strftime("%Y%m%d")) for d in date_range]
         dfs = await asyncio.gather(*tasks, return_exceptions=True)
 
         events = []
@@ -2837,12 +2737,8 @@ async def get_economic_calendar(
                         country=str(row.get("地区", "")),
                         event=str(row.get("事件", "")),
                         actual=str(row["公布"]) if pd.notna(row.get("公布")) else None,
-                        forecast=str(row["预期"])
-                        if pd.notna(row.get("预期"))
-                        else None,
-                        previous=str(row["前值"])
-                        if pd.notna(row.get("前值"))
-                        else None,
+                        forecast=str(row["预期"]) if pd.notna(row.get("预期")) else None,
+                        previous=str(row["前值"]) if pd.notna(row.get("前值")) else None,
                         importance=int(row.get("重要性", 1)),
                     )
                 )
@@ -2861,15 +2757,9 @@ async def get_economic_calendar(
 @mcp.tool(annotations={"readOnlyHint": True})
 async def get_earnings_calendar(
     days: Annotated[int, Field(description="查询未来多少天的数据", ge=1, le=30)] = 7,
-    start_date: Annotated[
-        str | None, Field(description="起始日期 (YYYY-MM-DD)，与days二选一")
-    ] = None,
-    end_date: Annotated[
-        str | None, Field(description="结束日期 (YYYY-MM-DD)，与days二选一")
-    ] = None,
-    exchange: Annotated[
-        str | None, Field(description="交易所过滤: US(美股)/HK(港股)/SH(沪股)/SZ(深股)")
-    ] = None,
+    start_date: Annotated[str | None, Field(description="起始日期 (YYYY-MM-DD)，与days二选一")] = None,
+    end_date: Annotated[str | None, Field(description="结束日期 (YYYY-MM-DD)，与days二选一")] = None,
+    exchange: Annotated[str | None, Field(description="交易所过滤: US(美股)/HK(港股)/SH(沪股)/SZ(深股)")] = None,
 ) -> EarningsCalendarResult:
     """查询财报日历，获取美股、港股、A股的财报发布日期。
 
@@ -2879,10 +2769,7 @@ async def get_earnings_calendar(
         start, end = resolve_date_range(days, start_date, end_date)
         date_range = [start + timedelta(days=i) for i in range((end - start).days + 1)]
 
-        tasks = [
-            asyncio.to_thread(ak.news_report_time_baidu, date=d.strftime("%Y%m%d"))
-            for d in date_range
-        ]
+        tasks = [asyncio.to_thread(ak.news_report_time_baidu, date=d.strftime("%Y%m%d")) for d in date_range]
         dfs = await asyncio.gather(*tasks, return_exceptions=True)
 
         earnings = []
@@ -2907,9 +2794,7 @@ async def get_earnings_calendar(
                         exchange=row_exchange,
                         report_type=str(row.get("财报类型", "")),
                         release_time=str(row.get("发布时间", "--")),
-                        market_cap=int(row["市值"])
-                        if pd.notna(row.get("市值"))
-                        else None,
+                        market_cap=int(row["市值"]) if pd.notna(row.get("市值")) else None,
                         report_date=str(row.get("发布日期", d.strftime("%Y-%m-%d"))),
                     )
                 )

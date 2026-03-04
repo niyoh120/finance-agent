@@ -6,9 +6,9 @@ Create Date: 2026-01-17 13:51:32.895711
 
 """
 
-from alembic import op
 import sqlalchemy as sa
 
+from alembic import op
 
 # revision identifiers, used by Alembic.
 revision = "75c5d088c846"
@@ -51,9 +51,7 @@ def upgrade() -> None:
         sa.UniqueConstraint("message_id"),
     )
     op.create_index("idx_timestamp", "options_flow", ["timestamp"], unique=False)
-    op.create_index(
-        "ix_options_flow_option_type", "options_flow", ["option_type"], unique=False
-    )
+    op.create_index("ix_options_flow_option_type", "options_flow", ["option_type"], unique=False)
     op.create_index("ix_options_flow_side", "options_flow", ["side"], unique=False)
     op.create_index("ix_options_flow_symbol", "options_flow", ["symbol"], unique=False)
 

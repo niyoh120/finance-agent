@@ -23,15 +23,9 @@ async def run_scraper():
                     latest_time = await scraper.get_latest_event_time(session)
 
                     if latest_time is None:
-                        backfill_days = int(
-                            os.getenv("FA_BUBBLESEEK_SCRAPER_BACKFILL_DAYS", "60")
-                        )
-                        logger.info(
-                            f"Database is empty, starting historical backfill for {backfill_days} days..."
-                        )
-                        await scraper.backfill_historical_data(
-                            session, backfill_days=backfill_days
-                        )
+                        backfill_days = int(os.getenv("FA_BUBBLESEEK_SCRAPER_BACKFILL_DAYS", "60"))
+                        logger.info(f"Database is empty, starting historical backfill for {backfill_days} days...")
+                        await scraper.backfill_historical_data(session, backfill_days=backfill_days)
                     else:
                         logger.info(f"Found existing data, latest: {latest_time}")
 

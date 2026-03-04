@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -32,9 +32,7 @@ def convert_futu_code(code: str) -> str | None:
 
 
 class FutunnScraper:
-    async def get_latest_futunn_news_time(
-        self, session: AsyncSession
-    ) -> datetime | None:
+    async def get_latest_futunn_news_time(self, session: AsyncSession) -> datetime | None:
         """获取数据库中最新的富途新闻时间。"""
         stmt = (
             select(NewsArticle.published_at)
@@ -76,22 +74,18 @@ class FutunnScraper:
                 logger.error(f"Error fetching news: {e}")
                 return [], None, False
 
-    async def backfill_historical_data(
-        self, session: AsyncSession, backfill_days: int = 60
-    ) -> int:
+    async def backfill_historical_data(self, session: AsyncSession, backfill_days: int = 60) -> int:
         """回填历史数据。"""
         total_saved = 0
         seq_mark = None
-        cutoff_time = datetime.now(timezone.utc).replace(
-            hour=0, minute=0, second=0, microsecond=0
-        ) - timedelta(days=backfill_days)
+        cutoff_time = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0) - timedelta(
+            days=backfill_days
+        )
 
         logger.info(f"Starting historical backfill until {cutoff_time}")
 
         while True:
-            news_list, next_seq_mark, has_more = await self.fetch_news_page(
-                page_size=30, seq_mark=seq_mark
-            )
+            news_list, next_seq_mark, has_more = await self.fetch_news_page(page_size=30, seq_mark=seq_mark)
 
             if not news_list:
                 logger.info("No more news to fetch")
@@ -118,9 +112,7 @@ class FutunnScraper:
                     oldest_in_batch = article.published_at
 
             await session.commit()
-            logger.info(
-                f"Batch saved {saved_count}/{len(news_list)}, oldest: {oldest_in_batch}"
-            )
+            logger.info(f"Batch saved {saved_count}/{len(news_list)}, oldest: {oldest_in_batch}")
 
             if not has_more or not next_seq_mark:
                 break
@@ -158,9 +150,9 @@ class FutunnScraper:
             # 时间戳转换 (秒)
             time_str = news_item.get("time")
             if time_str:
-                published_at = datetime.fromtimestamp(int(time_str), tz=timezone.utc)
+                published_at = datetime.fromtimestamp(int(time_str), tz=UTC)
             else:
-                published_at = datetime.now(timezone.utc)
+                published_at = datetime.now(UTC)
 
             # 提取股票代码
             quote_list = news_item.get("quote", [])
@@ -197,9 +189,7 @@ class FutunnScraper:
             logger.error(f"Error parsing news item {news_item.get('id')}: {e}")
             return None
 
-    async def _save_news_article(
-        self, session: AsyncSession, article: NewsArticle
-    ) -> bool:
+    async def _save_news_article(self, session: AsyncSession, article: NewsArticle) -> bool:
         """保存新闻到数据库 (UPSERT)。"""
         try:
             stmt = (
@@ -235,9 +225,7 @@ class FutunnScraper:
             logger.error(f"Error saving news {article.external_id}: {e}")
             return False
 
-    async def save_news(
-        self, session: AsyncSession, news_list: list[dict[str, Any]]
-    ) -> int:
+    async def save_news(self, session: AsyncSession, news_list: list[dict[str, Any]]) -> int:
         """批量保存新闻。"""
         saved_count = 0
 
