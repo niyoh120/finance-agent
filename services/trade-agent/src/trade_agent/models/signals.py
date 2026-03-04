@@ -1,10 +1,10 @@
-from enum import Enum
+from enum import StrEnum
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
 
-class SignalDirection(str, Enum):
+class SignalDirection(StrEnum):
     bullish = "bullish"
     bearish = "bearish"
     neutral = "neutral"
