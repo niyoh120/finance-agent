@@ -63,7 +63,7 @@ class NewsArticleItem(McpBaseModel):
     external_id: str = Field(description="外部唯一标识")
     type: str = Field(description="新闻类型")
     source: str | None = Field(description="数据来源 (futunn, bubbleseek 等)")
-    title: str = Field(description="新闻标题")
+    news_title: str = Field(description="新闻标题")
     url: str = Field(description="新闻链接")
     author: str | None = Field(description="作者")
     symbols: list[str] = Field(description="相关股票代码列表")

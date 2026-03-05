@@ -419,7 +419,7 @@ async def query_news_articles(
                 external_id=row.external_id,
                 type=row.type,
                 source=row.source,
-                title=row.title or "",
+                news_title=row.title or "",
                 url=row.url or "",
                 author=row.author,
                 symbols=row.symbols or [],
