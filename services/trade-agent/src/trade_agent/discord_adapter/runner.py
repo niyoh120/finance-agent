@@ -57,13 +57,19 @@ class TeamRunRunner:
                 team = self._team_factory()
                 try:
                     session_id = self._build_session_id(message)
+                    session_user_id = self._build_session_user_id(message)
                     media = await self._prepare_media(message)
-                    history_context = await self._build_thread_history_context(message, bot_user_id)
+                    has_session = self._has_existing_session(team, session_id)
+                    history_context = await self._build_thread_history_context(
+                        message,
+                        bot_user_id,
+                        include_history=(not has_session or self._config.thread_history_on_session_hit),
+                    )
                     team.additional_context = self._build_additional_context(message, history_context)
 
                     stream = team.arun(  # type: ignore[misc]
                         input=message.content or "",
-                        user_id=str(message.author.id),
+                        user_id=session_user_id,
                         session_id=session_id,
                         images=media.images,
                         videos=media.videos,
@@ -117,6 +123,14 @@ class TeamRunRunner:
                     logger.exception("discord team run failed", error=str(exc), run_id=run_id)
                     await editor.fail("处理消息时出现错误，请稍后重试。")
 
+    @staticmethod
+    def _has_existing_session(team: Team, session_id: str) -> bool:
+        try:
+            return team.get_session(session_id=session_id) is not None
+        except Exception:  # noqa: BLE001
+            logger.warning("discord team session lookup failed", session_id=session_id)
+            return False
+
     def _get_thread_lock(self, thread_id: int) -> asyncio.Lock:
         lock = self._thread_locks.get(thread_id)
         if lock is None:
@@ -166,14 +180,20 @@ class TeamRunRunner:
         if inspect.isawaitable(cancel_result):
             await cancel_result
 
-    @staticmethod
-    def _build_session_id(message: discord.Message) -> str:
+    def _build_session_id(self, message: discord.Message) -> str:
+        prefix = self._config.session_id_prefix.strip() or "discord"
         if isinstance(message.channel, discord.Thread):
             guild_id = str(message.guild.id) if message.guild else "dm"
-            return f"{guild_id}:thread:{message.channel.id}"
+            return f"{prefix}:{guild_id}:thread:{message.channel.id}"
 
         guild_id = str(message.guild.id) if message.guild else "dm"
-        return f"{guild_id}:channel:{message.channel.id}"
+        return f"{prefix}:{guild_id}:channel:{message.channel.id}"
+
+    def _build_session_user_id(self, message: discord.Message) -> str:
+        if self._config.session_user_mode == "thread_shared" and isinstance(message.channel, discord.Thread):
+            return f"discord_thread:{message.channel.id}"
+
+        return str(message.author.id)
 
     def _build_additional_context(self, message: discord.Message, history_context: str) -> str:
         context = dedent(
@@ -200,15 +220,20 @@ class TeamRunRunner:
 
         return context
 
-    async def _build_thread_history_context(self, message: discord.Message, bot_user_id: int | None) -> str:
+    async def _build_thread_history_context(
+        self,
+        message: discord.Message,
+        bot_user_id: int | None,
+        include_history: bool,
+    ) -> str:
         channel = message.channel
-        if not isinstance(channel, discord.Thread):
+        if not include_history or not isinstance(channel, discord.Thread):
             return ""
 
         lines: list[str] = []
         try:
             async for item in channel.history(
-                limit=max(1, self._config.thread_history_messages),
+                limit=max(1, self._config.bootstrap_thread_history_messages or self._config.thread_history_messages),
                 before=message,
                 oldest_first=True,
             ):

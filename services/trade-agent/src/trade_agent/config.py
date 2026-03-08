@@ -63,13 +63,22 @@ class AnalysisConfig(BaseSettings):
 class DiscordBotConfig(BaseSettings):
     max_concurrency: int = 3
     run_timeout_seconds: int = 180
-    num_history_runs: int = 8
+    num_history_runs: int = 3
+    session_user_mode: Literal["thread_shared", "author"] = "thread_shared"
+    session_id_prefix: str = "discord"
+    enable_session_summaries: bool = True
+    add_session_summary_to_context: bool = True
+    add_history_to_context: bool = True
+    thread_history_on_session_hit: bool = False
+    bootstrap_thread_history_messages: int | None = None
     thread_history_messages: int = 20
     thread_history_max_chars: int = 3000
     thread_history_include_bots: bool = False
     stream_events: bool = False
     stream_member_events: bool = False
     include_reasoning: bool = False
+    compress_tool_results: bool = False
+    compress_token_limit: int | None = None
 
     typing_indicator_enabled: bool = True
     min_edit_interval_ms: int = 700

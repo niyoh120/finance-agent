@@ -44,8 +44,19 @@ discord_bot:
     max_concurrency: 3
     run_timeout_seconds: 180
 
-    # Team 会话上下文窗口
-    num_history_runs: 8
+    # Team 会话记忆（thread 共享）
+    session_user_mode: "thread_shared" # thread_shared | author
+    session_id_prefix: "discord"
+    enable_session_summaries: true
+    add_session_summary_to_context: true
+    add_history_to_context: true
+    thread_history_on_session_hit: false
+    bootstrap_thread_history_messages: null
+    num_history_runs: 3
+
+    # 工具输出压缩（可选）
+    compress_tool_results: false
+    compress_token_limit: null
 
     # thread 历史上下文（thread-only 模式）
     thread_history_messages: 20

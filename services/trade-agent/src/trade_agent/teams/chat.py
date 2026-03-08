@@ -1,3 +1,5 @@
+from typing import Any
+
 from agno.db.sqlite import SqliteDb
 from agno.team.team import Team
 
@@ -21,6 +23,10 @@ def build_chat_team(
     num_history_runs: int = 15,
     db: SqliteDb | None = None,
     add_history_to_context: bool = True,
+    enable_session_summaries: bool = False,
+    add_session_summary_to_context: bool = False,
+    compress_tool_results: bool = False,
+    compression_manager: Any | None = None,
 ) -> Team:
     team = Team(
         name="Trade Analyst Team",
@@ -44,10 +50,14 @@ def build_chat_team(
         share_member_interactions=True,
         markdown=True,
         add_history_to_context=add_history_to_context,
+        enable_session_summaries=enable_session_summaries,
+        add_session_summary_to_context=add_session_summary_to_context,
         stream=stream,
         stream_events=stream_events,
         stream_member_events=stream_member_events,
         num_history_runs=num_history_runs,
+        compress_tool_results=compress_tool_results,
+        compression_manager=compression_manager,
         **config.get_params_for_agent("trade_analyst"),
     )
 
