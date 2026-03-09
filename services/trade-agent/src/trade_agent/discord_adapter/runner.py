@@ -9,7 +9,7 @@ from typing import Any
 
 import structlog
 from agno.media import Audio, File, Image, Video
-from agno.team.team import Team
+from agno.team.team import Team, TeamRunEvent
 from agno.utils.message import get_text_from_message
 
 from ..config import DiscordBotConfig
@@ -81,33 +81,37 @@ class TeamRunRunner:
                     )
 
                     last_seen_text = ""
+                    final_text = ""
 
                     async def consume_stream() -> None:
-                        nonlocal last_seen_text, run_id
+                        nonlocal last_seen_text, run_id, final_text
                         async for event in stream:
                             event_run_id = getattr(event, "run_id", None)
                             if isinstance(event_run_id, str) and event_run_id:
                                 run_id = event_run_id
 
+                            if not _should_capture_event_text(event):
+                                continue
+
                             text = _extract_text(event)
                             if not text:
                                 continue
 
-                            delta, last_seen_text = _as_delta(text, last_seen_text)
-                            await editor.append(delta)
+                            final_text = _merge_stream_text(text, last_seen_text)
+                            last_seen_text = final_text
 
                     async with asyncio.timeout(max(5, self._config.run_timeout_seconds)):
                         if self._config.typing_indicator_enabled:
                             async with message.channel.typing():
                                 await consume_stream()
-                                await editor.flush(force=True)
+                                editor.set_full_text(final_text)
                                 await editor.finish(
                                     overflow_strategy=self._config.final_overflow_strategy,
                                     max_final_chars=self._config.max_final_chars,
                                 )
                         else:
                             await consume_stream()
-                            await editor.flush(force=True)
+                            editor.set_full_text(final_text)
                             await editor.finish(
                                 overflow_strategy=self._config.final_overflow_strategy,
                                 max_final_chars=self._config.max_final_chars,
@@ -202,6 +206,15 @@ class TeamRunRunner:
             Discord userid: {message.author.id}
             Discord url: {message.jump_url}
             Discord channel: {message.channel.id}
+
+            Discord 回复格式要求:
+            - 使用中文回答。
+            - 先给结论，再给 3-6 个关键点。
+            - 每段尽量短，避免长段落。
+            - 使用简短小标题和项目符号，提升移动端可读性。
+            - 股票代码、指标、命令、路径使用反引号。
+            - 非必要不要输出大块代码或冗长推理过程。
+            - 信息不足时直接说明不确定性。
             """
         ).strip()
 
@@ -307,11 +320,22 @@ def _extract_text(event: Any) -> str:
     return get_text_from_message(content)
 
 
-def _as_delta(current_text: str, previous_text: str) -> tuple[str, str]:
+def _should_capture_event_text(event: Any) -> bool:
+    event_name = getattr(event, "event", None)
+    if event_name is None:
+        return True
+
+    return event_name == TeamRunEvent.run_content.value
+
+
+def _merge_stream_text(current_text: str, previous_text: str) -> str:
     if not previous_text:
-        return current_text, current_text
+        return current_text
 
     if current_text.startswith(previous_text):
-        return current_text[len(previous_text) :], current_text
+        return current_text
 
-    return current_text, previous_text + current_text
+    if previous_text.startswith(current_text):
+        return previous_text
+
+    return previous_text + current_text

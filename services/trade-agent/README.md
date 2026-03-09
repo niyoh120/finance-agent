@@ -73,9 +73,9 @@ discord_bot:
   stream_events: false
   stream_member_events: false
   typing_indicator_enabled: true
-  min_edit_interval_ms: 700
-  min_edit_chars: 24
-  max_stream_chars: 1800
+  min_edit_interval_ms: 700 # 兼容保留，当前最终回复模式不再使用
+  min_edit_chars: 24 # 兼容保留，当前最终回复模式不再使用
+  max_stream_chars: 1800 # 兼容保留，当前最终回复模式不再使用
   max_final_chars: 1900
   final_overflow_strategy: "split" # split | truncate
   render_mode: "auto" # auto | markdown | embed
@@ -113,7 +113,7 @@ Discord Bot 行为说明：
 - Discord bot 使用 Team SQLite 历史 + session summary 控制长对话上下文。
 - 默认仅在 session 冷启动时注入 Discord thread 历史；命中已有 session 后不再重复注入。
 - `bootstrap_thread_history_messages` 未配置时，冷启动历史条数复用 `thread_history_messages`。
-- 回复前使用 Discord 输入状态（typing indicator），首个有效 token 到达后再创建回复并流式编辑。
+- 回复前使用 Discord 输入状态（typing indicator）；内部仍以流式方式消费模型输出，但只在最终结果准备好后一次性回复到 Discord。
 - 超长输出默认按分段发送（可配置为截断）。
 - 超长/截断场景可通过按钮查看全文（ephemeral）。
 

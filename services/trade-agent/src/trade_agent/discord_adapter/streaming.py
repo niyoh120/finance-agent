@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import time
-
 try:
     import discord
 except (ImportError, ModuleNotFoundError) as exc:
@@ -27,49 +25,20 @@ class StreamMessageEditor:
     ):
         self._source_message = source_message
         self._message: discord.Message | None = None
-        self._min_edit_interval_sec = max(min_edit_interval_ms, 100) / 1000
-        self._min_edit_chars = max(min_edit_chars, 1)
-        self._max_stream_chars = min(max_stream_chars, DISCORD_MESSAGE_LIMIT - 10)
+        _ = min_edit_interval_ms, min_edit_chars, max_stream_chars
         self._render_mode = render_mode
         self._buttons_enabled = buttons_enabled
         self._button_full_text_max_chars = max(1000, button_full_text_max_chars)
 
         self._full_text = ""
-        self._last_sent_text = ""
-        self._last_flush_at = 0.0
-        self._chars_since_flush = 0
         self._allowed_mentions = discord.AllowedMentions.none()
 
     @property
     def full_text(self) -> str:
         return self._full_text
 
-    async def append(self, delta: str) -> None:
-        if not delta:
-            return
-
-        self._full_text += delta
-        self._chars_since_flush += len(delta)
-
-        now = time.monotonic()
-        due_to_time = now - self._last_flush_at >= self._min_edit_interval_sec
-        due_to_size = self._chars_since_flush >= self._min_edit_chars
-
-        if due_to_time and due_to_size:
-            await self.flush()
-
-    async def flush(self, force: bool = False) -> None:
-        content = self._render_stream_content()
-        if not content:
-            return
-
-        if not force and content == self._last_sent_text:
-            return
-
-        await self._upsert(content=content)
-        self._last_sent_text = content
-        self._last_flush_at = time.monotonic()
-        self._chars_since_flush = 0
+    def set_full_text(self, text: str) -> None:
+        self._full_text = text
 
     async def finish(
         self,
@@ -142,14 +111,3 @@ class StreamMessageEditor:
             requester_id=self._source_message.author.id,
             max_text_chars=self._button_full_text_max_chars,
         )
-
-    def _render_stream_content(self) -> str:
-        stream_text = self._full_text.strip()
-        if not stream_text:
-            return ""
-
-        if len(stream_text) <= self._max_stream_chars:
-            return stream_text
-
-        tail = stream_text[-self._max_stream_chars :]
-        return f"...\n{tail}"
