@@ -1,0 +1,17 @@
+[project]
+name = "options-scraper"
+version = "0.1.0"
+description = "Scrapes Discord for options flow"
+requires-python = ">=3.11"
+dependencies = [
+  "discord.py-self",
+  "finance-shared",
+  "sqlalchemy[asyncio]>=2.0.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.26,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+finance-shared = { workspace = true }

@@ -16,6 +16,7 @@ on:
           - migrate
           - macro-scraper
           - bubbleseek-scraper
+          - options-scraper
           - futunn-scraper
           - mcp-server
           - trade-agent
@@ -57,6 +58,12 @@ jobs:
             build_args: |
               MODULE_NAME=bubbleseek-scraper
               MODULE_ENTRY=bubbleseek_scraper.main
+          - service: options-scraper
+            image: finance-options-scraper
+            dockerfile: services/Dockerfile
+            build_args: |
+              MODULE_NAME=options-scraper
+              MODULE_ENTRY=options_scraper.main
           - service: futunn-scraper
             image: finance-futunn-scraper
             dockerfile: services/Dockerfile

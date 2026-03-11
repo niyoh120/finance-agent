@@ -1,6 +1,6 @@
 # Finance MCP & Microservices
 
-基于 Docker Compose 的微服务架构，包含 BubbleSeek 数据抓取、宏观金融数据抓取、Stock API、Trade Agent 与 MCP 服务。
+基于 Docker Compose 的微服务架构，包含 Discord 期权流抓取、BubbleSeek 数据抓取、宏观金融数据抓取、Stock API、Trade Agent 与 MCP 服务。
 
 ## 架构概览 (Microservices Architecture)
 
@@ -12,6 +12,7 @@
 | **stock-api**          | `services/stock-api`          | TypeScript | TradingView API 包装器 (Fastify) | 3000  |
 | **macro-scraper**      | `services/macro-scraper`      | Python     | 宏观金融数据抓取                 | -     |
 | **bubbleseek-scraper** | `services/bubbleseek-scraper` | Python     | 新闻与期权流抓取 (bubbleseek.ai) | -     |
+| **options-scraper**    | `services/options-scraper`    | Python     | Discord `UW Live Options Flow` 抓取 | -   |
 | **trade-agent**        | `services/trade-agent`        | Python     | 多智能体交易分析与 Discord Bot   | 8089  |
 | **mcp-server**         | `services/mcp-server`         | Python     | Model Context Protocol 服务器    | Stdio |
 
@@ -32,6 +33,13 @@ cp .env.example .env
 ```
 
 > 项目使用 `mise` 从根目录 `.env` 注入环境变量（见 `mise.toml`），应用代码本身不再读取 `.env`。
+
+### 获取 Options Scraper 所需配置
+
+- `FA_OPTIONS_SCRAPER_CHANNEL_ID`：在 Discord 中开启开发者模式后，右键目标频道复制频道 ID。
+- `FA_OPTIONS_SCRAPER_DISCORD_TOKEN`：这是 Discord user token，不是 bot token。
+
+> 风险提示：user token 方式违反 Discord ToS，存在封号风险，请自行评估并尽量使用低风险账号。
 
 ### 获取 TradingView Session (可选)
 
@@ -74,6 +82,7 @@ docker compose --profile migrate run --rm migrate
 - `finance-migrate`
 - `finance-macro-scraper`
 - `finance-bubbleseek-scraper`
+- `finance-options-scraper`
 - `finance-futunn-scraper`
 - `finance-mcp-server`
 - `finance-trade-agent`
@@ -202,6 +211,12 @@ docker compose --profile migrate run --rm migrate
 - 新闻类型：KOL 推文、财经新闻等。
 - 期权流：解析 Unusual Whales 格式的期权大单。
 - 通过 `FA_BUBBLESEEK_SCRAPER_INTERVAL` 控制轮询间隔。
+
+### Options Scraper
+
+- 使用 Discord user token 读取指定频道，抓取 `UW Live Options Flow` 消息。
+- 通过 `FA_OPTIONS_SCRAPER_CHANNEL_ID`、`FA_OPTIONS_SCRAPER_POLL_INTERVAL`、`FA_OPTIONS_SCRAPER_START_DATE` 控制抓取范围与轮询频率。
+- 当前分支按兼容优先处理：`bubbleseek-scraper` 仍保留期权流写入，因此 `options_flow` 暂时可能来自两个来源。
 
 ### MCP Server
 
@@ -337,23 +352,29 @@ mise run macro-scraper
 mise run bubbleseek-scraper
 ```
 
-**终端 4: MCP Server**
+**终端 4: Options Scraper (Discord 期权流抓取)**
+
+```bash
+mise run options-scraper
+```
+
+**终端 5: MCP Server**
 
 ```bash
 mise run mcp-server
 ```
 
-**终端 5: Trade Agent API**
+**终端 6: Trade Agent API**
 
 ```bash
 mise run trade-agent
 ```
 
-**终端 6: Trade Agent Discord Bot**
+**终端 7: Trade Agent Discord Bot**
 
 ```bash
-# 需要在 .env 中配置 DISCORD_BOT_TOKEN
-mise run trade-agent-bot
+# 需要在 .env 中配置 FA_DISCORD_BOT_TOKEN
+mise run trade-agent-discord-bot
 ```
 
 ### 目录结构
@@ -363,11 +384,12 @@ mise run trade-agent-bot
 │   ├── macro-scraper/     # 宏观抓取
 │   ├── mcp-server/        # MCP 服务
 │   ├── bubbleseek-scraper/ # 新闻与期权抓取
+│   ├── options-scraper/   # Discord 期权流抓取
 │   ├── stock-api/         # TS API
 │   └── ...
 ├── shared/                # 共享 Python 模块 (Models, DB)
 ├── scripts/               # 运维/迁移脚本
 ├── alembic/               # 数据库迁移文件
-├── docker-compose.yml     # 容器编排
+├── docker-compose.yml     # 容器编排（当前工作区缺失，需从主线恢复后再补 options-scraper service）
 └── pyproject.toml         # Workspace 配置
 ```

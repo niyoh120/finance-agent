@@ -19,6 +19,10 @@ run = "uvx pre-commit run --all-files"
 depends = ["install"]
 run = "uv run python -m bubbleseek_scraper.main"
 
+[tasks.options-scraper]
+depends = ["install"]
+run = "uv run python -m options_scraper.main"
+
 [tasks.futunn-scraper]
 depends = ["install"]
 run = "uv run python -m futunn_scraper.main"
@@ -54,6 +58,9 @@ run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=macro-scraper
 [tasks.docker-build-bubbleseek-scraper]
 run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=bubbleseek-scraper --build-arg MODULE_ENTRY=bubbleseek_scraper.main -t {{vars.image_repo}}finance-bubbleseek-scraper:latest -t {{vars.image_repo}}finance-bubbleseek-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
 
+[tasks.docker-build-options-scraper]
+run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=options-scraper --build-arg MODULE_ENTRY=options_scraper.main -t {{vars.image_repo}}finance-options-scraper:latest -t {{vars.image_repo}}finance-options-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
+
 [tasks.docker-build-futunn-scraper]
 run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=futunn-scraper --build-arg MODULE_ENTRY=futunn_scraper.main -t {{vars.image_repo}}finance-futunn-scraper:latest -t {{vars.image_repo}}finance-futunn-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
 
@@ -75,6 +82,7 @@ run = [
     "docker-build-migrate",
     "docker-build-macro-scraper",
     "docker-build-bubbleseek-scraper",
+    "docker-build-options-scraper",
     "docker-build-futunn-scraper",
     "docker-build-mcp-server",
     "docker-build-trade-agent",
@@ -99,6 +107,12 @@ run = [
 run = [
   "docker push {{vars.image_repo}}finance-bubbleseek-scraper:latest",
   "docker push {{vars.image_repo}}finance-bubbleseek-scraper:{{exec(command='git rev-parse --short HEAD')}}",
+]
+
+[tasks.docker-push-options-scraper]
+run = [
+  "docker push {{vars.image_repo}}finance-options-scraper:latest",
+  "docker push {{vars.image_repo}}finance-options-scraper:{{exec(command='git rev-parse --short HEAD')}}",
 ]
 
 [tasks.docker-push-futunn-scraper]
@@ -138,6 +152,7 @@ run = [
     "docker-push-migrate",
     "docker-push-macro-scraper",
     "docker-push-bubbleseek-scraper",
+    "docker-push-options-scraper",
     "docker-push-futunn-scraper",
     "docker-push-mcp-server",
     "docker-push-trade-agent",
@@ -162,6 +177,12 @@ run = [
 run = [
   { tasks = ["docker-build-bubbleseek-scraper"] },
   { tasks = ["docker-push-bubbleseek-scraper"] },
+]
+
+[tasks.docker-build-push-options-scraper]
+run = [
+  { tasks = ["docker-build-options-scraper"] },
+  { tasks = ["docker-push-options-scraper"] },
 ]
 
 [tasks.docker-build-push-futunn-scraper]

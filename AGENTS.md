@@ -29,7 +29,12 @@ This is a **Monorepo** using `uv` workspaces for Python and `npm` for TypeScript
     - Path: `services/bubbleseek-scraper`
     - Logic: Fetches news and options flow data from bubbleseek.ai API and writes to DB using `finance-shared`.
 
-5.  **mcp-server** (Python):
+5.  **options-scraper** (Python):
+    - Path: `services/options-scraper`
+    - Logic: Uses a Discord user token to read the target channel, parses `UW Live Options Flow` messages, and writes to DB using `finance-shared`.
+    - **Note**: Current branch still keeps BubbleSeek options ingestion, so `options_flow` may temporarily be written by two sources.
+
+6.  **mcp-server** (Python):
     - Path: `services/mcp-server`
     - Logic: Exposes DB data via Model Context Protocol (MCP) over HTTP.
     - **Direct**: Uses `akshare` library directly for A-share/HK-share fundamental data and global macro indicators.
