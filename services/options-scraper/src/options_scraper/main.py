@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, time
 from zoneinfo import ZoneInfo
 
-from shared.database import session_scope
+from shared.database import is_disconnect_error, reset_engine, session_scope
 from shared.logging import configure_logging
 from shared.models.options import OptionsFlow
 from shared.options_flow_parser import OptionsFlowData, parse_message
@@ -123,32 +123,51 @@ def build_discord_client(settings: Settings):  # pragma: no cover - exercised vi
                 if now_et.weekday() < 5 and market_open <= now_et.time() <= market_close:
                     try:
                         await self._fetch_and_store(channel)
-                    except Exception:
+                    except Exception as exc:
+                        if is_disconnect_error(exc):
+                            logger.warning("Database connection invalidated, resetting engine")
+                            await reset_engine()
                         logger.exception("Polling error")
                 await asyncio.sleep(self._settings.poll_interval)
 
         async def _fetch_and_store(self, channel: object) -> None:
+            resume_cursor = await self._get_resume_cursor_from_db(discord.utils.time_snowflake)
+            if resume_cursor is not None:
+                after = discord.Object(id=resume_cursor)
+            else:
+                after = discord.Object(id=discord.utils.time_snowflake(self._settings.start_date))
+
+            parsed_flows = await self._collect_parsed_flows(channel, after)
+            inserted = await self._store_flows(parsed_flows)
+
+            if inserted:
+                logger.info("Inserted %s options flow rows", inserted)
+
+        async def _get_resume_cursor_from_db(self, time_snowflake: Callable[[datetime], int]) -> int | None:
             async with session_scope() as session:
-                resume_cursor = await self._get_resume_cursor(session, discord.utils.time_snowflake)
-                if resume_cursor is not None:
-                    after = discord.Object(id=resume_cursor)
-                else:
-                    after = discord.Object(id=discord.utils.time_snowflake(self._settings.start_date))
+                return await self._get_resume_cursor(session, time_snowflake)
 
-                inserted = 0
-                async for message in channel.history(limit=100, after=after, oldest_first=True):
-                    author_name = getattr(getattr(message, "author", None), "name", "")
-                    if author_name != "UW Live Options Flow":
-                        continue
-                    content = build_message_content(message)
-                    parsed = parse_message(str(message.id), content, message.created_at.astimezone(UTC))
-                    if parsed is None:
-                        continue
-                    await self._insert_flow(session, parsed)
-                    inserted += 1
+        async def _collect_parsed_flows(self, channel: object, after: object) -> list[OptionsFlowData]:
+            parsed_flows: list[OptionsFlowData] = []
+            async for message in channel.history(limit=100, after=after, oldest_first=True):
+                author_name = getattr(getattr(message, "author", None), "name", "")
+                if author_name != "UW Live Options Flow":
+                    continue
+                content = build_message_content(message)
+                parsed = parse_message(str(message.id), content, message.created_at.astimezone(UTC))
+                if parsed is None:
+                    continue
+                parsed_flows.append(parsed)
+            return parsed_flows
 
-                if inserted:
-                    logger.info("Inserted %s options flow rows", inserted)
+        async def _store_flows(self, parsed_flows: list[OptionsFlowData]) -> int:
+            if not parsed_flows:
+                return 0
+
+            async with session_scope() as session:
+                for parsed_flow in parsed_flows:
+                    await self._insert_flow(session, parsed_flow)
+            return len(parsed_flows)
 
         async def _get_resume_cursor(self, session: object, time_snowflake: Callable[[datetime], int]) -> int | None:
             result = await session.execute(

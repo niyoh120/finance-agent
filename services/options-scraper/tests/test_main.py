@@ -1,9 +1,13 @@
+import asyncio
 import sys
+from contextlib import asynccontextmanager
 from datetime import UTC, datetime
+from types import SimpleNamespace
 from types import ModuleType
 
 import pytest
 
+import options_scraper.main as main_module
 from options_scraper.main import (
     Settings,
     build_discord_client,
@@ -38,6 +42,51 @@ class DummyMessage:
         self.author = DummyAuthor("UW Live Options Flow")
         self.id = 1
         self.created_at = datetime(2026, 1, 1, tzinfo=UTC)
+
+
+class DummyChannel:
+    def __init__(self, messages: list[DummyMessage]):
+        self._messages = messages
+
+    async def history(self, **_kwargs: object):
+        for message in self._messages:
+            yield message
+
+
+def build_fake_client(monkeypatch: pytest.MonkeyPatch, settings: Settings | None = None):
+    fake_discord = ModuleType("discord")
+
+    class FakeClient:
+        def __init__(self, **kwargs: object):
+            self.kwargs = kwargs
+
+        async def wait_until_ready(self) -> None:
+            return None
+
+        def get_channel(self, _channel_id: int) -> object | None:
+            return getattr(self, "_channel", None)
+
+        def is_closed(self) -> bool:
+            sequence = getattr(self, "_closed_sequence", [True])
+            if not sequence:
+                return True
+            return sequence.pop(0)
+
+    fake_discord.Client = FakeClient
+    fake_discord.Object = lambda **kwargs: SimpleNamespace(**kwargs)
+    fake_discord.utils = type("Utils", (), {"time_snowflake": staticmethod(lambda _dt: 1)})
+
+    monkeypatch.setitem(sys.modules, "discord", fake_discord)
+
+    return build_discord_client(
+        settings
+        or Settings(
+            discord_token="token",
+            channel_id=123,
+            poll_interval=0,
+            start_date=datetime(2025, 12, 1, tzinfo=UTC),
+        )
+    )
 
 
 def test_load_settings_requires_token_and_channel_id(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -163,3 +212,152 @@ def test_get_resume_cursor_falls_back_to_latest_timestamp_when_latest_id_is_not_
 
 def test_get_resume_cursor_returns_none_when_there_is_no_history() -> None:
     assert get_resume_cursor([], lambda dt: 1) is None
+
+
+def test_fetch_and_store_reads_cursor_before_history_and_writes_in_new_session(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = build_fake_client(monkeypatch)
+    events: list[str] = []
+    session_names = iter(["read-session", "write-session"])
+
+    @asynccontextmanager
+    async def fake_session_scope():
+        session_name = next(session_names)
+        events.append(f"enter:{session_name}")
+        try:
+            yield session_name
+        finally:
+            events.append(f"exit:{session_name}")
+
+    async def fake_get_resume_cursor(session: object, _time_snowflake) -> int | None:
+        events.append(f"cursor:{session}")
+        return None
+
+    async def fake_insert_flow(session: object, _data: object) -> None:
+        events.append(f"insert:{session}")
+
+    monkeypatch.setattr(main_module, "session_scope", fake_session_scope)
+    monkeypatch.setattr(client, "_get_resume_cursor", fake_get_resume_cursor)
+    monkeypatch.setattr(client, "_insert_flow", fake_insert_flow)
+    monkeypatch.setattr(main_module, "parse_message", lambda *_args: object())
+
+    message = DummyMessage(content="flow", embeds=[])
+    channel = DummyChannel([message])
+
+    original_history = channel.history
+
+    async def instrumented_history(**kwargs: object):
+        events.append("history:start")
+        async for item in original_history(**kwargs):
+            yield item
+
+    setattr(channel, "history", instrumented_history)
+
+    asyncio.run(client._fetch_and_store(channel))
+
+    assert events == [
+        "enter:read-session",
+        "cursor:read-session",
+        "exit:read-session",
+        "history:start",
+        "enter:write-session",
+        "insert:write-session",
+        "exit:write-session",
+    ]
+
+
+def test_poll_loop_resets_engine_after_disconnect_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = build_fake_client(monkeypatch)
+    client._channel = object()
+    client._closed_sequence = [False, True]
+    disconnect_error = RuntimeError("disconnect")
+    reset_calls: list[str] = []
+
+    class FakeDateTime:
+        @staticmethod
+        def now(_tz) -> datetime:
+            return datetime(2026, 3, 30, 10, 0, tzinfo=UTC)
+
+    async def fake_fetch_and_store(_channel: object) -> None:
+        raise disconnect_error
+
+    async def fake_reset_engine() -> None:
+        reset_calls.append("reset")
+
+    async def fake_sleep(_seconds: int) -> None:
+        return None
+
+    monkeypatch.setattr(main_module, "datetime", FakeDateTime)
+    monkeypatch.setattr(client, "_fetch_and_store", fake_fetch_and_store)
+    monkeypatch.setattr(main_module, "is_disconnect_error", lambda exc: exc is disconnect_error, raising=False)
+    monkeypatch.setattr(main_module, "reset_engine", fake_reset_engine, raising=False)
+    monkeypatch.setattr(main_module.asyncio, "sleep", fake_sleep)
+
+    asyncio.run(client._poll_loop())
+
+    assert reset_calls == ["reset"]
+
+
+def test_fetch_and_store_skips_write_session_when_nothing_is_parsed(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client = build_fake_client(monkeypatch)
+    events: list[str] = []
+
+    @asynccontextmanager
+    async def fake_session_scope():
+        events.append("enter:read-session")
+        try:
+            yield "read-session"
+        finally:
+            events.append("exit:read-session")
+
+    async def fake_get_resume_cursor(session: object, _time_snowflake) -> int | None:
+        events.append(f"cursor:{session}")
+        return None
+
+    monkeypatch.setattr(main_module, "session_scope", fake_session_scope)
+    monkeypatch.setattr(client, "_get_resume_cursor", fake_get_resume_cursor)
+    monkeypatch.setattr(main_module, "parse_message", lambda *_args: None)
+
+    channel = DummyChannel([DummyMessage(content="flow", embeds=[])])
+
+    asyncio.run(client._fetch_and_store(channel))
+
+    assert events == [
+        "enter:read-session",
+        "cursor:read-session",
+        "exit:read-session",
+    ]
+
+
+def test_poll_loop_does_not_reset_engine_after_non_db_error(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = build_fake_client(monkeypatch)
+    client._channel = object()
+    client._closed_sequence = [False, True]
+    reset_calls: list[str] = []
+
+    class FakeDateTime:
+        @staticmethod
+        def now(_tz) -> datetime:
+            return datetime(2026, 3, 30, 10, 0, tzinfo=UTC)
+
+    async def fake_fetch_and_store(_channel: object) -> None:
+        raise RuntimeError("parse failure")
+
+    async def fake_reset_engine() -> None:
+        reset_calls.append("reset")
+
+    async def fake_sleep(_seconds: int) -> None:
+        return None
+
+    monkeypatch.setattr(main_module, "datetime", FakeDateTime)
+    monkeypatch.setattr(client, "_fetch_and_store", fake_fetch_and_store)
+    monkeypatch.setattr(main_module, "is_disconnect_error", lambda _exc: False, raising=False)
+    monkeypatch.setattr(main_module, "reset_engine", fake_reset_engine, raising=False)
+    monkeypatch.setattr(main_module.asyncio, "sleep", fake_sleep)
+
+    asyncio.run(client._poll_loop())
+
+    assert reset_calls == []
