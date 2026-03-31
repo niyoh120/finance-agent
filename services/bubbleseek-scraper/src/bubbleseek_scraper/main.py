@@ -3,7 +3,7 @@ import logging
 import os
 import signal
 
-from shared.database import session_scope
+from shared.database import safe_session_scope as session_scope
 from shared.logging import configure_logging
 
 from .scraper import BubbleSeekScraper
