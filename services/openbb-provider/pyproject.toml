@@ -1,0 +1,26 @@
+[project]
+name = "openbb-finance"
+version = "0.1.0"
+description = "OpenBB provider for finance-agent options unusual flow data"
+requires-python = ">=3.11"
+dependencies = [
+  "asyncpg>=0.29.0",
+  "finance-shared",
+  "openbb-core>=1.4.0",
+  "python-dateutil>=2.9.0",
+  "sqlalchemy[asyncio]>=2.0.0",
+]
+
+[project.entry-points."openbb_provider_extension"]
+finance = "openbb_finance:provider"
+
+[build-system]
+requires = ["uv_build>=0.9.26,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.build-backend]
+module-root = "."
+module-name = "openbb_finance"
+
+[tool.uv.sources]
+finance-shared = { workspace = true }
