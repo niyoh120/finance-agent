@@ -32,7 +32,7 @@
 ## Commit Convention
 - Follow the existing Conventional Commit style such as `feat(scope): ...`, `fix(scope): ...`, and `chore(scope): ...`.
 - Use a concise scope that matches the changed service or subsystem, such as `openbb`, `trade-agent`, `mcp-server`, or `db`.
-- Write commit messages in imperative mood and describe the intent of the change.
+- Write commit messages in Chinese, using imperative mood and describing the intent of the change.
 - Keep each commit focused on one logical change so history stays easy to review and revert.
 
 ## Branch Merge Guidelines
