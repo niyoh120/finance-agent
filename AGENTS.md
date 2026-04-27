@@ -1,63 +1,71 @@
-# Context for AI Agents
+# Project AGENTS.md
 
-This file provides architectural context for AI agents working on this repository.
+## Commands
+- Use `mise tasks ls` to discover the current task list before running project commands.
+- Install workspace dependencies with `mise run install`.
+- Start services through `mise run <task-name>` for app tasks such as `stock-api`, `mcp-server`, `macro-scraper`, `options-scraper`, `bubbleseek-scraper`, `futunn-scraper`, `trade-agent`, and `trade-agent-discord-bot`.
+- Manage database migrations with `mise run db-upgrade`, `mise run db-downgrade <revision>`, `mise run db-revision <message>`, `mise run db-revision-manual <message>`, `mise run db-current`, and `mise run db-history`.
+- Install and run hooks with `mise run hooks-install` and `mise run hooks-run`.
+- Build and publish container images with the `mise run docker-build-*`, `mise run docker-push-*`, and `mise run docker-build-push-*` tasks when relevant.
 
-## Project Structure
+## Monorepo
+- Root `pyproject.toml` defines the `uv` workspace for Python services and shared packages.
+- `shared/` contains reusable database models and utilities consumed as `finance-shared`.
+- `services/` contains independently deployable services.
+- `services/stock-api` is the only Node.js service; the rest of the services use Python.
 
-This is a **Monorepo** using `uv` workspaces for Python and `npm` for TypeScript.
+## Environment & Dependency Management
+- Manage all development environment tool versions and task entry points through `mise`.
+- Use `mise.toml` as the source of truth for local development configuration.
+- Manage Python dependencies and workspaces with `uv`.
+- Manage Node.js dependencies in `services/stock-api` with `npm`.
+- Add Python dependencies with `uv add` in the target service or shared package.
+- Add Node.js dependencies with `npm install` in `services/stock-api`.
 
-- **Root**: `pyproject.toml` defines the workspace.
-- **Shared**: `shared/` contains common Python code (Database, Models). It is linked as a local dependency (`finance-shared`) in other services.
-- **Services**: `services/` contains independent microservices.
+## Git Workflow
+- Keep work on topic branches and merge back into `main` through reviewed pull requests.
+- Sync with the latest target branch before opening or merging a pull request.
+- Rebase or merge the target branch into the working branch before final validation when conflicts or drift appear.
+- Run relevant validators before commit, before pull request creation, and again after conflict resolution.
+- Review `git diff` and `git status` before commit to confirm the exact file set and content.
 
-### Microservices
+## Commit Convention
+- Follow the existing Conventional Commit style such as `feat(scope): ...`, `fix(scope): ...`, and `chore(scope): ...`.
+- Use a concise scope that matches the changed service or subsystem, such as `openbb`, `trade-agent`, `mcp-server`, or `db`.
+- Write commit messages in imperative mood and describe the intent of the change.
+- Keep each commit focused on one logical change so history stays easy to review and revert.
 
-1.  **db** (PostgreSQL):
-    - Defined in `docker-compose.yml` only.
-    - Credentials in `.env`.
+## Branch Merge Guidelines
+- Prefer squash merge or rebase-friendly history when preparing a clean pull request branch.
+- Resolve conflicts locally, rerun validators, and inspect the final diff before merging.
+- Preserve service boundaries and shared package contracts during conflict resolution.
+- Merge only after reviewers approve and required checks pass.
 
-2.  **stock-api** (TypeScript/Node.js):
-    - Path: `services/stock-api`
-    - Logic: Fastify server wrapping `@mathieuc/tradingview`.
-    - **Constraint**: MUST NOT access the Database directly. It only provides data via HTTP API.
+## Python
+- Use Python 3.11+ compatible code.
+- Keep service-specific dependencies inside each service `pyproject.toml`.
+- Put shared DB models and reusable persistence utilities in `shared/`.
+- Use `sqlalchemy` async patterns already present in the repository.
+- Validate integrations and parsing logic with focused pytest coverage when behavior changes.
 
-3.  **macro-scraper** (Python):
-    - Path: `services/macro-scraper`
-    - Logic: Pulls macro data from indexbha.com (The Dial) and writes to DB using `finance-shared`.
+## TypeScript
+- Use strict TypeScript.
+- Avoid `any`; use `unknown` plus narrowing when needed.
+- Exported functions must have explicit return types.
+- Prefer discriminated unions for state machines and result types.
 
-4.  **bubbleseek-scraper** (Python):
-    - Path: `services/bubbleseek-scraper`
-    - Logic: Fetches news and options flow data from bubbleseek.ai API and writes to DB using `finance-shared`.
+## Fastify / Node.js
+- Follow the existing Fastify patterns in `services/stock-api`.
+- Keep `stock-api` stateless and database-agnostic.
+- Expose data through HTTP boundaries only.
 
-5.  **options-scraper** (Python):
-    - Path: `services/options-scraper`
-    - Logic: Uses a Discord user token to read the target channel, parses `UW Live Options Flow` messages, and writes to DB using `finance-shared`.
-    - **Note**: Current branch still keeps BubbleSeek options ingestion, so `options_flow` may temporarily be written by two sources.
+## Architecture Constraints
+- `stock-api` provides TradingView-backed market data over HTTP and does not access PostgreSQL.
+- Scraper and provider services write through `finance-shared` instead of duplicating DB logic.
+- Run DB migrations through Alembic from the root using a service environment that has the DB driver installed.
+- Prefer the smallest service-local change that preserves current Docker Compose workflows.
 
-6.  **mcp-server** (Python):
-    - Path: `services/mcp-server`
-    - Logic: Exposes DB data via Model Context Protocol (MCP) over HTTP.
-    - **Direct**: Uses `akshare` library directly for A-share/HK-share fundamental data and global macro indicators.
-    - **Note**: A-share market data (K-lines) uses TradingView (stock-api).
-
-## Key Constraints
-
-1.  **Dependency Isolation**: Each service has its own `pyproject.toml`. Do NOT add dependencies to the root `pyproject.toml` unless they are for dev tooling (e.g., `ruff`).
-2.  **Shared Logic**: Any DB model or utility MUST go into `shared/`. Services import from `finance-shared`.
-3.  **Docker**: The project is designed to run via `docker compose`.
-4.  **No ORM in TS**: The TypeScript service (`stock-api`) is stateless and DB-agnostic.
-
-## Common Tasks
-
-### Adding a new dependency to a service
-```bash
-cd services/<service-name>
-uv add <package-name>
-```
-
-### Running Migrations
-Migrations are managed by Alembic in the root, but executed in the context of a service (for example `macro-scraper`) that has the DB driver installed.
-
-```bash
-docker compose run --rm macro-scraper uv run alembic upgrade head
-```
+## Tests
+- Unit-test pure parsing and transformation logic.
+- Add integration tests for API boundaries and DB write paths when behavior changes.
+- Run the narrowest relevant checks during iteration and the full relevant validators before finishing.
