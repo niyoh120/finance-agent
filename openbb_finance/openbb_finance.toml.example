@@ -1,0 +1,29 @@
+[database]
+# Used by finance-shared when reading cached options flow from PostgreSQL.
+# Sensitive values can be injected from environment variables with ${NAME}.
+url = "${FA_DATABASE_URL}"
+
+[sources.baostock]
+enabled = true
+priority = 90
+
+[sources.akshare]
+enabled = true
+priority = 70
+
+[sources.tickflow]
+enabled = true
+priority = 80
+api_key = "${TICKFLOW_API_KEY}"
+
+[sources.futunn]
+enabled = true
+priority = 100
+
+[sources.yahoo]
+enabled = true
+priority = 60
+
+[sources.openbb]
+enabled = true
+priority = 50

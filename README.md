@@ -66,6 +66,12 @@ docker compose up --build -d
 docker compose --profile migrate run --rm migrate
 ```
 
+## OpenBB Finance Provider
+
+`openbb_finance/` 是独立的 OpenBB provider 包，注册名为 `finance` 的 provider，并依赖 `finance-shared` 读取本地 PostgreSQL 缓存中的期权流数据。
+
+使用说明、数据源路由、环境变量和开发命令见：[`openbb_finance/README.md`](openbb_finance/README.md)。
+
 ## 服务详情
 
 ### GitHub Actions 镜像发布

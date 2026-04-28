@@ -4,12 +4,13 @@ from unittest.mock import AsyncMock
 
 import pytest
 from openbb_core.provider.utils.errors import EmptyDataError
-from openbb_finance import provider
 from openbb_finance.models.options_unusual import (
     FinanceOptionsUnusualData,
     FinanceOptionsUnusualFetcher,
     FinanceOptionsUnusualQueryParams,
 )
+
+from openbb_finance import provider
 
 
 def test_query_defaults_date_range():
