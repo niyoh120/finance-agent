@@ -1,0 +1,25 @@
+[project]
+name = "openbb-agent-cli"
+version = "0.1.0"
+description = "Agent-friendly JSON CLI for the OpenBB finance provider"
+requires-python = ">=3.11"
+dependencies = [
+  "cyclopts>=4.0.0",
+  "openbb>=4.7.1",
+  "openbb-finance",
+]
+
+[project.scripts]
+openbb-agent-cli = "openbb_agent_cli.cli:main"
+
+[build-system]
+requires = ["uv_build>=0.9.26,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+openbb-finance = { workspace = true }
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0.0",
+]

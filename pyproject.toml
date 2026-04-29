@@ -25,6 +25,7 @@ members = [
   "services/futunn-scraper",
   "services/mcp-server",
   "services/trade-agent",
+  "services/openbb-agent-cli",
   "openbb_finance",
 ]
 

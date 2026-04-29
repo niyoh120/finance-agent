@@ -46,6 +46,10 @@ depends = ["install"]
 dir = "services/trade-agent"
 run = "uv run python -m trade_agent.discord_bot"
 
+[tasks.openbb-agent-cli]
+depends = ["install"]
+run = "uv run --package openbb-agent-cli openbb-agent-cli"
+
 [tasks.stock-api]
 dir = "services/stock-api"
 run = "npm run dev"
