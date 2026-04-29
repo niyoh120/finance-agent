@@ -6,6 +6,7 @@ from openbb import obb
 from openbb_finance.models.equity_historical import FinanceEquityHistoricalData
 from openbb_finance.models.equity_quote import FinanceEquityQuoteData
 from openbb_finance.models.equity_search import FinanceEquitySearchData
+from openbb_finance.models.world_news import FinanceWorldNewsFetcher
 
 from openbb_finance import provider
 
@@ -19,7 +20,9 @@ def test_finance_provider_registered_in_openbb_coverage():
     assert ".etf.historical" in obb.coverage.providers["finance"]
     assert ".economy.calendar" in obb.coverage.providers["finance"]
     assert ".news.company" in obb.coverage.providers["finance"]
+    assert ".news.world" in obb.coverage.providers["finance"]
     assert ".derivatives.options.unusual" in obb.coverage.providers["finance"]
+    assert provider.fetcher_dict["WorldNews"] is FinanceWorldNewsFetcher
 
 
 @pytest.mark.anyio

@@ -3,7 +3,7 @@ import logging
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Callable, Awaitable, TypeVar
+from typing import Awaitable, Callable, TypeVar
 
 from sqlalchemy.exc import DBAPIError, DisconnectionError, InvalidatePoolError
 from sqlalchemy.ext.asyncio import (

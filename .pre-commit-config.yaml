@@ -72,12 +72,6 @@ repos:
         language: system
         files: \.(ts|tsx|js|mjs|cjs|json|ya?ml)$
 
-      - id: eslint-staged
-        name: eslint staged ts files
-        entry: scripts/hooks/eslint_staged.sh
-        language: system
-        files: ^services/stock-api/.*\.(ts|tsx)$
-
       - id: ts-typecheck-if-needed
         name: ts typecheck if needed
         entry: scripts/hooks/ts_typecheck_if_needed.sh

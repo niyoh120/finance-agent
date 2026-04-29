@@ -11,6 +11,7 @@ from openbb_finance.models.equity_search import FinanceEquitySearchFetcher
 from openbb_finance.models.etf_historical import FinanceEtfHistoricalFetcher
 from openbb_finance.models.index_historical import FinanceIndexHistoricalFetcher
 from openbb_finance.models.options_unusual import FinanceOptionsUnusualFetcher
+from openbb_finance.models.world_news import FinanceWorldNewsFetcher
 
 apply_runtime_environment()
 
@@ -28,5 +29,6 @@ provider = Provider(
         "EtfHistorical": FinanceEtfHistoricalFetcher,
         "IndexHistorical": FinanceIndexHistoricalFetcher,
         "OptionsUnusual": FinanceOptionsUnusualFetcher,
+        "WorldNews": FinanceWorldNewsFetcher,
     },
 )

@@ -34,3 +34,8 @@ finance-shared = { workspace = true }
 [tool.uv.build-backend]
 module-root = "src"
 module-name = "openbb_finance"
+
+[dependency-groups]
+dev = [
+    "openbb-cli>=1.4.1",
+]

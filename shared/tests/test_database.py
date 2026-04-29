@@ -1,8 +1,7 @@
 import asyncio
 
-from sqlalchemy.exc import DBAPIError, DisconnectionError
-
 import shared.database as database
+from sqlalchemy.exc import DBAPIError, DisconnectionError
 
 
 class FakeEngine:

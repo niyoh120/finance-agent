@@ -2,12 +2,10 @@ import asyncio
 import sys
 from contextlib import asynccontextmanager
 from datetime import UTC, datetime
-from types import SimpleNamespace
-from types import ModuleType
-
-import pytest
+from types import ModuleType, SimpleNamespace
 
 import options_scraper.main as main_module
+import pytest
 from options_scraper.main import (
     Settings,
     build_discord_client,

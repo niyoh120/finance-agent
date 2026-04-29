@@ -13,6 +13,7 @@ run = "uv sync --all-packages"
 run = "uvx pre-commit install --hook-type pre-commit --hook-type commit-msg"
 
 [tasks.hooks-run]
+depends = ["install"]
 run = "uvx pre-commit run --all-files"
 
 [tasks.bubbleseek-scraper]
