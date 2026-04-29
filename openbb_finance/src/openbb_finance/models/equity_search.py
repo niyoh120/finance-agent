@@ -33,11 +33,14 @@ class FinanceEquitySearchFetcher(Fetcher[EquitySearchQueryParams, list[FinanceEq
     ) -> list[dict[str, Any]]:
         del credentials
         registry = kwargs.get("registry") or build_default_registry()
-        for source in registry.ordered_by_names(["akshare"]):
+        # Eastmoney supports Chinese/English search for US/HK/CN stocks
+        for source in registry.ordered_by_names(["eastmoney", "akshare"]):
             if not hasattr(source, "fetch_equity_search"):
                 continue
             try:
-                return await source.fetch_equity_search(query.query, query.is_symbol)
+                results = await source.fetch_equity_search(query.query, query.is_symbol)
+                if results:
+                    return results
             except Exception:
                 continue
         return []

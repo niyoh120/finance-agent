@@ -20,6 +20,7 @@ class SourceConfig:
 
 DEFAULT_PRIORITIES = {
     "futunn": 100,
+    "eastmoney": 95,
     "baostock": 90,
     "tickflow": 80,
     "akshare": 70,
@@ -90,6 +91,6 @@ def get_source_config(name: str) -> SourceConfig:
     config = load_config()
     source = config.get("sources", {}).get(name, {})
     enabled = bool(source.get("enabled", True))
-    priority = int(source.get("priority", DEFAULT_PRIORITIES[name]))
+    priority = int(source.get("priority", DEFAULT_PRIORITIES.get(name, 50)))
     api_key = source.get("api_key")
     return SourceConfig(name=name, enabled=enabled, priority=priority, api_key=api_key)

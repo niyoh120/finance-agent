@@ -40,13 +40,22 @@ class DataSourceRegistry:
 def build_default_registry() -> DataSourceRegistry:
     from openbb_finance.sources.akshare import AkshareSource
     from openbb_finance.sources.baostock import BaostockSource
+    from openbb_finance.sources.eastmoney import EastmoneySource
     from openbb_finance.sources.futunn import FutunnSource
     from openbb_finance.sources.openbb import OpenbbSource
     from openbb_finance.sources.tickflow import TickflowSource
     from openbb_finance.sources.yahoo import YahooSource
 
     registry = DataSourceRegistry()
-    for source_cls in [AkshareSource, BaostockSource, TickflowSource, FutunnSource, YahooSource, OpenbbSource]:
+    for source_cls in [
+        AkshareSource,
+        BaostockSource,
+        EastmoneySource,
+        TickflowSource,
+        FutunnSource,
+        YahooSource,
+        OpenbbSource,
+    ]:
         config = get_source_config(source_cls.name)
         registry.register(source_cls(config))
     return registry
