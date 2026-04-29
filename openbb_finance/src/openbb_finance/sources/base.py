@@ -40,14 +40,9 @@ class SourceError(RuntimeError):
 
 
 def infer_market(symbol: str) -> Market:
-    value = symbol.strip().upper()
-    if value.endswith((".XSHG", ".XSHE", ".SH", ".SZ")):
-        return "cn"
-    if value.endswith(".HK") or (value.isdigit() and len(value) == 5):
-        return "hk"
-    if value.isdigit() and len(value) == 6:
-        return "cn"
-    return "us"
+    from openbb_finance.sources.symbols import infer_market_from_symbol
+
+    return infer_market_from_symbol(symbol)
 
 
 def is_intraday_interval(interval: str) -> bool:

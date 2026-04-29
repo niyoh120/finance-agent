@@ -16,9 +16,7 @@ from openbb_finance.aggregator import aggregate_records
 from openbb_finance.registry import build_default_registry
 
 
-class FinanceEconomicCalendarFetcher(
-    Fetcher[EconomicCalendarQueryParams, list[EconomicCalendarData]]
-):
+class FinanceEconomicCalendarFetcher(Fetcher[EconomicCalendarQueryParams, list[EconomicCalendarData]]):
     """Fetcher for priority-merged economic calendar data."""
 
     @staticmethod
@@ -34,10 +32,12 @@ class FinanceEconomicCalendarFetcher(
         del credentials
         registry = kwargs.get("registry") or build_default_registry()
         sources = registry.ordered_by_names(["futunn", "akshare", "openbb"])
+        start_date = query.start_date or dateType.today()
+        end_date = query.end_date or start_date
 
         async def fetch(source: Any) -> list[dict[str, Any]]:
             if hasattr(source, "fetch_economic_calendar"):
-                return await source.fetch_economic_calendar(query.start_date, query.end_date)
+                return await source.fetch_economic_calendar(start_date, end_date)
             return []
 
         return await aggregate_records(sources, fetch, key_fields=("date", "country", "event"))
