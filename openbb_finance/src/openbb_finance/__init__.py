@@ -9,7 +9,10 @@ from openbb_finance.models.equity_historical import FinanceEquityHistoricalFetch
 from openbb_finance.models.equity_quote import FinanceEquityQuoteFetcher
 from openbb_finance.models.equity_search import FinanceEquitySearchFetcher
 from openbb_finance.models.etf_historical import FinanceEtfHistoricalFetcher
+from openbb_finance.models.index_available import FinanceAvailableIndicesFetcher
 from openbb_finance.models.index_historical import FinanceIndexHistoricalFetcher
+from openbb_finance.models.index_search import FinanceIndexSearchFetcher
+from openbb_finance.models.index_snapshots import FinanceIndexSnapshotsFetcher
 from openbb_finance.models.options_unusual import FinanceOptionsUnusualFetcher
 from openbb_finance.models.world_news import FinanceWorldNewsFetcher
 
@@ -21,6 +24,7 @@ provider = Provider(
     description="Pluggable finance data provider for market data, calendars, news, and options flow.",
     credentials=None,
     fetcher_dict={
+        "AvailableIndices": FinanceAvailableIndicesFetcher,
         "CompanyNews": FinanceCompanyNewsFetcher,
         "EconomicCalendar": FinanceEconomicCalendarFetcher,
         "EquityHistorical": FinanceEquityHistoricalFetcher,
@@ -28,6 +32,8 @@ provider = Provider(
         "EquitySearch": FinanceEquitySearchFetcher,
         "EtfHistorical": FinanceEtfHistoricalFetcher,
         "IndexHistorical": FinanceIndexHistoricalFetcher,
+        "IndexSearch": FinanceIndexSearchFetcher,
+        "IndexSnapshots": FinanceIndexSnapshotsFetcher,
         "OptionsUnusual": FinanceOptionsUnusualFetcher,
         "WorldNews": FinanceWorldNewsFetcher,
     },

@@ -28,7 +28,18 @@ def _drop_none(params: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in params.items() if value is not None}
 
 
+def _inject_obbject_types() -> None:
+    """Inject OBBject_* types into provider_interface module for openbb compatibility."""
+    import openbb_core.app.provider_interface as pi_module
+    from openbb_core.app.provider_interface import ProviderInterface
+
+    pi = ProviderInterface()
+    for name, cls in pi.return_annotations.items():
+        setattr(pi_module, f"OBBject_{name}", cls)
+
+
 def _resolve_route(route: str) -> Callable[..., Any]:
+    _inject_obbject_types()
     from openbb import obb
 
     target: Any = obb
@@ -90,6 +101,18 @@ def equity_search(query: str, is_symbol: bool = False) -> None:
     _run_route("equity.search", query=query, is_symbol=is_symbol)
 
 
+@app.command(name="index.available")
+def index_available() -> None:
+    """Get available indices."""
+    _run_route("index.available")
+
+
+@app.command(name="index.search")
+def index_search(query: str, is_symbol: bool = False) -> None:
+    """Search indices."""
+    _run_route("index.search", query=query, is_symbol=is_symbol)
+
+
 @app.command(name="index.price.historical")
 def index_price_historical(
     symbol: str,
@@ -98,6 +121,20 @@ def index_price_historical(
 ) -> None:
     """Get index historical price data."""
     _run_route("index.price.historical", symbol=symbol, start_date=start_date, end_date=end_date)
+
+
+@app.command(name="index.snapshots")
+def index_snapshots(
+    region: Literal["cn", "us", "hk"] = "cn",
+    symbol: list[str] | None = None,
+) -> None:
+    """Get index snapshots.
+
+    Args:
+        region: Market region - cn (China), us (US), or hk (Hong Kong).
+        symbol: Optional list of index symbols to fetch. If not provided, returns default indices for the region.
+    """
+    _run_route("index.snapshots", region=region, symbol=symbol)
 
 
 @app.command(name="etf.historical")
