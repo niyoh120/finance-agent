@@ -23,3 +23,7 @@ openbb-finance = { workspace = true }
 dev = [
   "pytest>=8.0.0",
 ]
+
+[tool.uv.build-backend]
+module-root = "src"
+module-name = "openbb_agent_cli"

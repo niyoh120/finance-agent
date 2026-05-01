@@ -2921,7 +2921,7 @@ all = [
 [[package]]
 name = "openbb-agent-cli"
 version = "0.1.0"
-source = { editable = "services/openbb-agent-cli" }
+source = { editable = "openbb-agent-cli" }
 dependencies = [
     { name = "cyclopts" },
     { name = "openbb" },
