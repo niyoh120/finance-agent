@@ -65,3 +65,4 @@ opencode.json
 assets
 .opencode
 .worktrees/
+.factory
