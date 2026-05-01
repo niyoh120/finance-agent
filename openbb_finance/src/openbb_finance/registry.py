@@ -43,6 +43,7 @@ def build_default_registry() -> DataSourceRegistry:
     from openbb_finance.sources.eastmoney import EastmoneySource
     from openbb_finance.sources.futunn import FutunnSource
     from openbb_finance.sources.openbb import OpenbbSource
+    from openbb_finance.sources.sina import SinaSource
     from openbb_finance.sources.tickflow import TickflowSource
     from openbb_finance.sources.yahoo import YahooSource
 
@@ -50,6 +51,7 @@ def build_default_registry() -> DataSourceRegistry:
     for source_cls in [
         AkshareSource,
         BaostockSource,
+        SinaSource,
         EastmoneySource,
         TickflowSource,
         FutunnSource,

@@ -55,3 +55,26 @@ def test_run_route_outputs_json_error(monkeypatch: pytest.MonkeyPatch, capsys: p
 
     assert exc_info.value.code == 1
     assert capsys.readouterr().out == '{"error":"boom","code":"RUNTIMEERROR"}\n'
+
+
+def test_index_snapshots_coerces_single_symbol(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def run_provider_model(
+        model_name: str,
+        standard_params: dict[str, Any] | None = None,
+        extra_params: dict[str, Any] | None = None,
+    ) -> None:
+        captured["model_name"] = model_name
+        captured["standard_params"] = standard_params
+        captured["extra_params"] = extra_params
+
+    monkeypatch.setattr(cli, "_run_provider_model", run_provider_model)
+
+    cli.index_snapshots(symbol="000001.XSHG")  # type: ignore[arg-type]
+
+    assert captured == {
+        "model_name": "IndexSnapshots",
+        "standard_params": {"region": "cn"},
+        "extra_params": {"symbol": ["000001.XSHG"]},
+    }

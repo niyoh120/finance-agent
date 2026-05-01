@@ -49,7 +49,7 @@ class FinanceIndexSnapshotsFetcher(Fetcher[FinanceIndexSnapshotsQueryParams, lis
         # Determine region
         region = query.region or "cn"
         
-        for source in registry.ordered_by_names(["eastmoney"]):
+        for source in registry.ordered_by_names(["tickflow", "sina", "eastmoney"]):
             if not hasattr(source, "fetch_index_snapshots"):
                 continue
             try:

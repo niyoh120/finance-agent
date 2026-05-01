@@ -1,4 +1,5 @@
 from openbb_finance.sources.base import infer_market
+from openbb_finance.sources.baostock import _to_baostock_symbol
 from openbb_finance.sources.symbols import cn_plain_symbol, to_openbb_symbol, to_yfinance_symbol
 
 
@@ -17,3 +18,10 @@ def test_infer_market_uses_china_symbol_suffixes():
     assert infer_market("600000.SS") == "cn"
     assert infer_market("000001.SZ") == "cn"
     assert infer_market("AAPL") == "us"
+
+
+def test_baostock_symbol_conversion_preserves_exchange_suffix():
+    assert _to_baostock_symbol("000001") == "sz.000001"
+    assert _to_baostock_symbol("000001.XSHE") == "sz.000001"
+    assert _to_baostock_symbol("000001.XSHG") == "sh.000001"
+    assert _to_baostock_symbol("399001.XSHE") == "sz.399001"

@@ -20,6 +20,7 @@ class SourceConfig:
 
 DEFAULT_PRIORITIES = {
     "futunn": 100,
+    "sina": 98,
     "eastmoney": 95,
     "baostock": 90,
     "tickflow": 80,

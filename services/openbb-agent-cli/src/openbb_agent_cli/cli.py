@@ -28,6 +28,16 @@ def _drop_none(params: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in params.items() if value is not None}
 
 
+def _ensure_list(value: Any) -> list[str] | None:
+    if value is None:
+        return None
+    if isinstance(value, list):
+        return value
+    if isinstance(value, tuple):
+        return list(value)
+    return [str(value)]
+
+
 def _inject_obbject_types() -> None:
     """Inject OBBject_* types into provider_interface module for openbb compatibility."""
     import openbb_core.app.provider_interface as pi_module
@@ -65,6 +75,39 @@ def _run_route(route: str, **params: Any) -> None:
             command = _resolve_route(route)
             result = command(provider="finance", **_drop_none(params))
         _print_json(result.model_dump(mode="json").get("results", []))
+    except Exception as exc:
+        _print_json({"error": str(exc), "code": _error_code(exc)})
+        raise SystemExit(1) from exc
+
+
+def _run_provider_model(
+    model_name: str,
+    standard_params: dict[str, Any] | None = None,
+    extra_params: dict[str, Any] | None = None,
+) -> None:
+    import asyncio
+
+    async def _execute() -> None:
+        from openbb_core.app.model.command_context import CommandContext
+        from openbb_core.app.provider_interface import ProviderInterface
+        from openbb_core.app.query import Query
+
+        _inject_obbject_types()
+        pi = ProviderInterface()
+        provider_choices = pi.model_providers[model_name](provider="finance")
+        standard = pi.params[model_name]["standard"](**_drop_none(standard_params or {}))
+        extra = pi.params[model_name]["extra"](**(extra_params or {}))
+        query_obj = Query(CommandContext(), provider_choices, standard, extra)
+
+        stdout = io.StringIO()
+        stderr = io.StringIO()
+        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+            result = await query_obj.execute()
+
+        _print_json([item.model_dump(mode="json") for item in result])
+
+    try:
+        asyncio.run(_execute())
     except Exception as exc:
         _print_json({"error": str(exc), "code": _error_code(exc)})
         raise SystemExit(1) from exc
@@ -134,7 +177,7 @@ def index_snapshots(
         region: Market region - cn (China), us (US), or hk (Hong Kong).
         symbol: Optional list of index symbols to fetch. If not provided, returns default indices for the region.
     """
-    _run_route("index.snapshots", region=region, symbol=symbol)
+    _run_provider_model("IndexSnapshots", {"region": region}, {"symbol": _ensure_list(symbol)})
 
 
 @app.command(name="etf.historical")
@@ -145,6 +188,12 @@ def etf_historical(
 ) -> None:
     """Get ETF historical price data."""
     _run_route("etf.historical", symbol=symbol, start_date=start_date, end_date=end_date)
+
+
+@app.command(name="etf.search")
+def etf_search(query: str) -> None:
+    """Search ETFs."""
+    _run_provider_model("EtfSearch", {"query": query})
 
 
 @app.command(name="economy.calendar")

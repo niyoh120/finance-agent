@@ -7,7 +7,14 @@ from datetime import date, datetime
 from typing import Any
 
 from openbb_finance.config import SourceConfig
-from openbb_finance.sources.base import DataType, Market, PriceQuery, SourceError, normalize_interval
+from openbb_finance.sources.base import (
+    DataType,
+    Market,
+    PriceQuery,
+    SourceError,
+    is_intraday_interval,
+    normalize_interval,
+)
 
 
 class BaostockSource:
@@ -24,10 +31,17 @@ class BaostockSource:
     async def fetch_price(self, query: PriceQuery) -> list[dict[str, Any]]:
         import baostock as bs
 
-        fields = "date,time,open,high,low,close,volume,amount"
+        code = _to_baostock_symbol(query.symbol)
+        interval = normalize_interval(query.interval)
+        fields = (
+            "date,time,open,high,low,close,volume,amount"
+            if is_intraday_interval(interval)
+            else "date,open,high,low,close,volume,amount"
+        )
+
         with _baostock_session(bs):
             rs = bs.query_history_k_data_plus(
-                _to_baostock_symbol(query.symbol),
+                code,
                 fields,
                 start_date=query.start_date.isoformat() if query.start_date else "",
                 end_date=query.end_date.isoformat() if query.end_date else "",
@@ -58,7 +72,17 @@ def _to_baostock_symbol(symbol: str) -> str:
     value = symbol.strip().lower()
     if value.startswith(("sh.", "sz.")):
         return value
+
     code = value.split(".")[0]
+    suffix = value.split(".")[1] if "." in value else None
+
+    if suffix in ("xshg", "sh", "ss"):
+        return f"sh.{code}"
+    if suffix in ("xshe", "sz"):
+        return f"sz.{code}"
+
+    if code.startswith("399"):
+        return f"sz.{code}"
     if code.startswith("6"):
         return f"sh.{code}"
     return f"sz.{code}"

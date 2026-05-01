@@ -62,7 +62,9 @@ class FinanceEquityHistoricalFetcher(
             if not hasattr(source, "fetch_price"):
                 continue
             try:
-                return await source.fetch_price(price_query)
+                data = await source.fetch_price(price_query)
+                if data:
+                    return data
             except Exception:
                 continue
         return []

@@ -5,12 +5,19 @@ from __future__ import annotations
 import pytest
 from openbb_finance.config import SourceConfig
 from openbb_finance.sources.eastmoney import EastmoneySource
+from openbb_finance.sources.sina import SinaSource, _parse_hk
 
 
 @pytest.fixture
 def eastmoney_source() -> EastmoneySource:
     config = SourceConfig(name="eastmoney", enabled=True, priority=95)
     return EastmoneySource(config)
+
+
+@pytest.fixture
+def sina_source() -> SinaSource:
+    config = SourceConfig(name="sina", enabled=True, priority=98)
+    return SinaSource(config)
 
 
 @pytest.mark.anyio
@@ -49,14 +56,12 @@ async def test_index_search_is_symbol(eastmoney_source: EastmoneySource):
 
 
 @pytest.mark.anyio
-async def test_index_snapshots_cn(eastmoney_source: EastmoneySource):
+async def test_index_snapshots_cn(sina_source: SinaSource):
     """Test fetching CN index snapshots."""
-    results = await eastmoney_source.fetch_index_snapshots(region="cn")
+    results = await sina_source.fetch_index_snapshots(region="cn")
     assert len(results) > 0
-    # Should have default CN indices
     symbols = [r["symbol"] for r in results]
-    assert any(s in symbols for s in ["000001", "000300", "000905"])
-    # Check data structure
+    assert any(s in symbols for s in ["000001.XSHG", "000300.XSHG", "000905.XSHG"])
     first = results[0]
     assert "symbol" in first
     assert "name" in first
@@ -64,31 +69,48 @@ async def test_index_snapshots_cn(eastmoney_source: EastmoneySource):
 
 
 @pytest.mark.anyio
-async def test_index_snapshots_us(eastmoney_source: EastmoneySource):
+async def test_index_snapshots_us(sina_source: SinaSource):
     """Test fetching US index snapshots."""
-    results = await eastmoney_source.fetch_index_snapshots(region="us")
+    results = await sina_source.fetch_index_snapshots(region="us")
     assert len(results) > 0
     symbols = [r["symbol"] for r in results]
     assert any(s in symbols for s in ["SPX", "DJI", "NDX"])
 
 
 @pytest.mark.anyio
-async def test_index_snapshots_hk(eastmoney_source: EastmoneySource):
+async def test_index_snapshots_hk(sina_source: SinaSource):
     """Test fetching HK index snapshots."""
-    results = await eastmoney_source.fetch_index_snapshots(region="hk")
+    results = await sina_source.fetch_index_snapshots(region="hk")
     assert len(results) > 0
     symbols = [r["symbol"] for r in results]
     assert "HSI" in symbols
 
 
 @pytest.mark.anyio
-async def test_index_snapshots_with_symbols(eastmoney_source: EastmoneySource):
+async def test_index_snapshots_with_symbols(sina_source: SinaSource):
     """Test fetching index snapshots with specific symbols."""
-    results = await eastmoney_source.fetch_index_snapshots(
+    results = await sina_source.fetch_index_snapshots(
         region="cn",
         symbols=["000001", "000300"],
     )
     assert len(results) >= 2
     symbols = [r["symbol"] for r in results]
-    assert "000001" in symbols
-    assert "000300" in symbols
+    assert "000001.XSHG" in symbols
+    assert "000300.XSHG" in symbols
+
+
+def test_sina_hk_index_snapshot_field_mapping():
+    fields = (
+        "HSI,恒生指数,26008.320,26111.840,26072.240,25734.160,25776.529,"
+        "-335.310,-1.280,0.000,0.000,291552653.621,16811064518"
+    ).split(",")
+
+    result = _parse_hk("HSI", fields)
+
+    assert result is not None
+    assert result["open"] == 26008.32
+    assert result["prev_close"] == 26111.84
+    assert result["high"] == 26072.24
+    assert result["low"] == 25734.16
+    assert result["price"] == 25776.529
+    assert result["close"] == 25776.529

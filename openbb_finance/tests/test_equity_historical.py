@@ -11,7 +11,8 @@ from openbb_finance.models.equity_historical import (
 
 class FakeRegistry:
     def ordered_by_names(self, names):
-        assert names == ["baostock", "tickflow", "akshare"]
+        # Eastmoney is now included in the routing
+        assert names == ["baostock", "eastmoney", "tickflow", "akshare"]
         return [
             SimpleNamespace(
                 name="baostock",

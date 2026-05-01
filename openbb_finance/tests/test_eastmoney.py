@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from openbb_finance.config import SourceConfig
+from openbb_finance.sources.base import PriceQuery, SourceError
 from openbb_finance.sources.eastmoney import EastmoneySource, normalize_hk_symbol
 
 
@@ -26,7 +27,31 @@ def test_eastmoney_source_supports_search(eastmoney_source: EastmoneySource):
     assert eastmoney_source.supports("cn", "search")
     assert eastmoney_source.supports("us", "search")
     assert eastmoney_source.supports("hk", "search")
-    assert not eastmoney_source.supports("cn", "price")
+    # Eastmoney now supports price for A-share ETFs
+    assert eastmoney_source.supports("cn", "price")
+    assert not eastmoney_source.supports("us", "price")
+    assert not eastmoney_source.supports("hk", "price")
+
+
+def test_eastmoney_index_symbol_normalization(eastmoney_source: EastmoneySource):
+    assert eastmoney_source._normalize_index_symbol("000001", "Index") == "000001.XSHG"
+    assert eastmoney_source._normalize_index_symbol("399001", "Index") == "399001.XSHE"
+
+
+def test_eastmoney_etf_detection_and_normalization(eastmoney_source: EastmoneySource):
+    assert eastmoney_source._is_etf({"Classify": "Fund", "SecurityType": "8"})
+    assert eastmoney_source._is_etf({"Classify": "UsStock", "SecurityType": "7", "TypeUS": "5"})
+    assert eastmoney_source._is_etf({"Classify": "HK", "SecurityType": "6"})
+    assert not eastmoney_source._is_etf({"Classify": "UsStock", "SecurityType": "7", "TypeUS": "1"})
+    assert eastmoney_source._normalize_etf_symbol("02800", "HK") == "2800.HK"
+
+
+@pytest.mark.anyio
+async def test_eastmoney_price_rejects_unsupported_interval(eastmoney_source: EastmoneySource):
+    query = PriceQuery(symbol="600519.XSHG", market="cn", interval="1Q")
+
+    with pytest.raises(SourceError, match="unsupported interval"):
+        await eastmoney_source.fetch_price(query)
 
 
 @pytest.mark.anyio
