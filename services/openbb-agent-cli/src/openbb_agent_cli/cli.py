@@ -144,6 +144,57 @@ def equity_search(query: str, is_symbol: bool = False) -> None:
     _run_route("equity.search", query=query, is_symbol=is_symbol)
 
 
+@app.command(name="equity.screener")
+def equity_screener(
+    market: Literal["america", "hongkong", "china", "global"] | None = None,
+    limit: int = 150,
+    # Simple filters
+    price_min: float | None = None,
+    price_max: float | None = None,
+    change_percent_min: float | None = None,
+    change_percent_max: float | None = None,
+    volume_min: int | None = None,
+    volume_max: int | None = None,
+    market_cap_min: float | None = None,
+    market_cap_max: float | None = None,
+    rsi_min: float | None = None,
+    rsi_max: float | None = None,
+    sector: list[str] | None = None,
+    # Advanced filters (JSON string)
+    filters: str | None = None,
+) -> None:
+    """Screen equities with custom filters.
+
+    Simple filters: Use individual parameters like --price-min, --volume-min.
+
+    Advanced filters: Use --filters with JSON string for arbitrary StockField filtering.
+    Example: --filters '{"MACD_LEVEL_12_26": {"min": 0}, "YEAR_BETA_1": {"max": 1.5}}'
+
+    Available StockFields (3526 total): PRICE, VOLUME, MARKET_CAPITALIZATION, CHANGE_PERCENT,
+    RELATIVE_STRENGTH_INDEX_14, MACD_LEVEL_12_26, YEAR_BETA_1, EMA_20, SMA_50, PE_RATIO_TTM,
+    EPS_DILUTED_TTM, DIVIDEND_YIELD, DEBT_TO_EQUITY, etc.
+
+    Use tvscreener.StockField.search("keyword") to find specific fields.
+    """
+    _run_route(
+        "equity.screener",
+        market=market,
+        limit=limit,
+        price_min=price_min,
+        price_max=price_max,
+        change_percent_min=change_percent_min,
+        change_percent_max=change_percent_max,
+        volume_min=volume_min,
+        volume_max=volume_max,
+        market_cap_min=market_cap_min,
+        market_cap_max=market_cap_max,
+        rsi_min=rsi_min,
+        rsi_max=rsi_max,
+        sector=_ensure_list(sector),
+        filters=filters,
+    )
+
+
 @app.command(name="index.available")
 def index_available() -> None:
     """Get available indices."""

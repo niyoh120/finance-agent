@@ -78,3 +78,48 @@ def test_index_snapshots_coerces_single_symbol(monkeypatch: pytest.MonkeyPatch) 
         "standard_params": {"region": "cn"},
         "extra_params": {"symbol": ["000001.XSHG"]},
     }
+
+
+def test_equity_screener_uses_run_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def run_route(route: str, **params: Any) -> None:
+        captured["route"] = route
+        captured["params"] = params
+
+    monkeypatch.setattr(cli, "_run_route", run_route)
+
+    cli.equity_screener(
+        market="america",
+        limit=50,
+        price_min=50.0,
+        price_max=200.0,
+        change_percent_min=5.0,
+        volume_min=1000000,
+        sector=["Technology"],
+    )
+
+    assert captured["route"] == "equity.screener"
+    assert captured["params"]["market"] == "america"
+    assert captured["params"]["limit"] == 50
+    assert captured["params"]["price_min"] == 50.0
+    assert captured["params"]["price_max"] == 200.0
+    assert captured["params"]["change_percent_min"] == 5.0
+    assert captured["params"]["volume_min"] == 1000000
+    assert captured["params"]["sector"] == ["Technology"]
+
+
+def test_equity_screener_with_rsi_filter(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def run_route(route: str, **params: Any) -> None:
+        captured["route"] = route
+        captured["params"] = params
+
+    monkeypatch.setattr(cli, "_run_route", run_route)
+
+    cli.equity_screener(market="hongkong", rsi_max=30)
+
+    assert captured["route"] == "equity.screener"
+    assert captured["params"]["market"] == "hongkong"
+    assert captured["params"]["rsi_max"] == 30
