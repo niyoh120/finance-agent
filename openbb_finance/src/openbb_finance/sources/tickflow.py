@@ -19,7 +19,7 @@ class TickflowSource:
         self.enabled = config.enabled
         self.priority = config.priority
         self.api_key = config.api_key
-        self.base_url = "https://api.tickflow.org"
+        self.base_url = config.base_url or "https://api.tickflow.org"
 
     def supports(self, market: Market, data_type: DataType, **kwargs: Any) -> bool:
         del kwargs
