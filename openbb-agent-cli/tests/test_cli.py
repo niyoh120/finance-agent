@@ -123,3 +123,98 @@ def test_equity_screener_with_rsi_filter(monkeypatch: pytest.MonkeyPatch) -> Non
     assert captured["route"] == "equity.screener"
     assert captured["params"]["market"] == "hongkong"
     assert captured["params"]["rsi_max"] == 30
+
+
+def test_economy_available_indicators_uses_run_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def run_route(route: str, **params: Any) -> None:
+        captured["route"] = route
+        captured["params"] = params
+
+    monkeypatch.setattr(cli, "_run_route", run_route)
+
+    cli.economy_available_indicators()
+
+    assert captured == {"route": "economy.available_indicators", "params": {}}
+
+
+def test_economy_indicators_uses_run_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def run_route(route: str, **params: Any) -> None:
+        captured["route"] = route
+        captured["params"] = params
+
+    monkeypatch.setattr(cli, "_run_route", run_route)
+
+    cli.economy_indicators(
+        symbol="PMI",
+        country="china",
+        frequency="month",
+        start_date="2026-01-01",
+        end_date="2026-03-31",
+    )
+
+    assert captured == {
+        "route": "economy.indicators",
+        "params": {
+            "symbol": "PMI",
+            "country": "china",
+            "frequency": "month",
+            "start_date": "2026-01-01",
+            "end_date": "2026-03-31",
+        },
+    }
+
+
+def test_economy_gdp_nominal_uses_run_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def run_route(route: str, **params: Any) -> None:
+        captured["route"] = route
+        captured["params"] = params
+
+    monkeypatch.setattr(cli, "_run_route", run_route)
+
+    cli.economy_gdp_nominal(country="CN", start_date="2025-01-01")
+
+    assert captured == {
+        "route": "economy.gdp.nominal",
+        "params": {
+            "country": "CN",
+            "start_date": "2025-01-01",
+            "end_date": None,
+        },
+    }
+
+
+def test_economy_cpi_uses_run_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def run_route(route: str, **params: Any) -> None:
+        captured["route"] = route
+        captured["params"] = params
+
+    monkeypatch.setattr(cli, "_run_route", run_route)
+
+    cli.economy_cpi(
+        country="china",
+        transform="yoy",
+        frequency="quarter",
+        harmonized=True,
+        start_date="2025-01-01",
+        end_date="2025-12-31",
+    )
+
+    assert captured == {
+        "route": "economy.cpi",
+        "params": {
+            "country": "china",
+            "transform": "yoy",
+            "frequency": "quarter",
+            "harmonized": True,
+            "start_date": "2025-01-01",
+            "end_date": "2025-12-31",
+        },
+    }

@@ -256,6 +256,67 @@ def economy_calendar(
     _run_route("economy.calendar", start_date=start_date, end_date=end_date)
 
 
+@app.command(name="economy.available-indicators")
+def economy_available_indicators() -> None:
+    """Get available economic indicators."""
+    _run_route("economy.available_indicators")
+
+
+@app.command(name="economy.indicators")
+def economy_indicators(
+    symbol: str,
+    country: str = "china",
+    frequency: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> None:
+    """Get economic indicators data."""
+    _run_route(
+        "economy.indicators",
+        symbol=symbol,
+        country=country,
+        frequency=frequency,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
+@app.command(name="economy.gdp.nominal")
+def economy_gdp_nominal(
+    country: str = "china",
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> None:
+    """Get nominal GDP data."""
+    _run_route(
+        "economy.gdp.nominal",
+        country=country,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
+@app.command(name="economy.cpi")
+def economy_cpi(
+    country: str = "china",
+    transform: Literal["index", "yoy", "period"] | None = None,
+    frequency: Literal["annual", "quarter", "monthly"] = "monthly",
+    harmonized: bool = False,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> None:
+    """Get Consumer Price Index data."""
+    _run_route(
+        "economy.cpi",
+        country=country,
+        transform=transform,
+        frequency=frequency,
+        harmonized=harmonized,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
 @app.command(name="news.company")
 def news_company(
     symbol: str,

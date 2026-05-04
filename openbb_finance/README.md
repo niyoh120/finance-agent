@@ -33,10 +33,16 @@ PY
 - `.equity.price.historical`
 - `.equity.price.quote`
 - `.equity.search`
+- `.equity.screener`
+- `.index.available`
+- `.index.search`
 - `.index.price.historical`
+- `.index.snapshots`
 - `.etf.historical`
+- `.etf.search`
 - `.economy.calendar`
 - `.news.company`
+- `.news.world`
 - `.derivatives.options.unusual`
 
 ## 使用示例
@@ -44,6 +50,7 @@ PY
 ```python
 from openbb import obb
 
+# 股票历史价格
 prices = obb.equity.price.historical(
     symbol="600519.XSHG",
     start_date="2026-04-01",
@@ -52,18 +59,42 @@ prices = obb.equity.price.historical(
 )
 print(prices.to_df().head())
 
+# 股票实时报价
 quote = obb.equity.price.quote(
     symbol="600519.XSHG",
     provider="finance",
 )
 print(quote.to_df().head())
 
+# 股票搜索
 search = obb.equity.search(
     query="茅台",
     provider="finance",
 )
 print(search.to_df().head())
 
+# 股票筛选器
+screener = obb.equity.screener(
+    market="china",
+    limit=50,
+    price_min=10,
+    volume_min=1000000,
+    provider="finance",
+)
+print(screener.to_df().head())
+
+# 指数列表
+indices = obb.index.available(provider="finance")
+print(indices.to_df().head())
+
+# 指数搜索
+index_search = obb.index.search(
+    query="沪深",
+    provider="finance",
+)
+print(index_search.to_df().head())
+
+# 指数历史价格
 index_prices = obb.index.price.historical(
     symbol="000001.XSHG",
     start_date="2026-04-01",
@@ -72,6 +103,14 @@ index_prices = obb.index.price.historical(
 )
 print(index_prices.to_df().head())
 
+# 指数快照
+snapshots = obb.index.snapshots(
+    region="cn",
+    provider="finance",
+)
+print(snapshots.to_df().head())
+
+# ETF 历史价格
 etf_prices = obb.etf.historical(
     symbol="510300.XSHG",
     start_date="2026-04-01",
@@ -80,6 +119,14 @@ etf_prices = obb.etf.historical(
 )
 print(etf_prices.to_df().head())
 
+# ETF 搜索
+etf_search = obb.etf.search(
+    query="沪深300",
+    provider="finance",
+)
+print(etf_search.to_df().head())
+
+# 财经日历
 calendar = obb.economy.calendar(
     start_date="2026-04-01",
     end_date="2026-04-30",
@@ -87,12 +134,23 @@ calendar = obb.economy.calendar(
 )
 print(calendar.to_df().head())
 
+# 公司新闻
 news = obb.news.company(
     symbol="AAPL",
     provider="finance",
 )
 print(news.to_df().head())
 
+# 全球新闻
+world_news = obb.news.world(
+    start_date="2026-04-01",
+    end_date="2026-04-30",
+    limit=50,
+    provider="finance",
+)
+print(world_news.to_df().head())
+
+# 异常期权流
 flows = obb.derivatives.options.unusual(
     symbol="AAPL",
     provider="finance",
@@ -128,7 +186,7 @@ BaoStock 可用性按请求时间范围判断：
 | :--- | :--- |
 | 财经日历 | 富途 → AKShare → OpenBB |
 | 新闻（港股/美股） | 富途 → OpenBB |
-| 新闻（A 股） | 富途 → AKShare |
+| 新闻（A 股） | 富途 → AKShare → OpenBB |
 | A 股基本面 | BaoStock → AKShare |
 | 美股/港股基本面 | OpenBB/Yahoo |
 | 中国宏观 | BaoStock → AKShare |
@@ -154,22 +212,31 @@ cp openbb_finance/openbb_finance.toml.example openbb_finance.toml
 [database]
 url = "${FA_DATABASE_URL}"
 
+[sources.futunn]
+enabled = true
+priority = 100
+
+[sources.sina]
+enabled = true
+priority = 98
+
+[sources.eastmoney]
+enabled = true
+priority = 95
+
 [sources.baostock]
 enabled = true
 priority = 90
-
-[sources.akshare]
-enabled = true
-priority = 70
 
 [sources.tickflow]
 enabled = true
 priority = 80
 api_key = "${TICKFLOW_API_KEY}"
+base_url = "https://api.tickflow.org"
 
-[sources.futunn]
+[sources.akshare]
 enabled = true
-priority = 100
+priority = 70
 
 [sources.yahoo]
 enabled = true
@@ -188,15 +255,18 @@ priority = 50
 | `sources.<name>.enabled` | 启用或禁用数据源 |
 | `sources.<name>.priority` | 覆盖数据源优先级 |
 | `sources.tickflow.api_key` | TickFlow API Key |
+| `sources.tickflow.base_url` | TickFlow API 地址（可选，用于覆盖默认地址） |
 
 支持的数据源名：
 
-- `baostock`
-- `akshare`
-- `tickflow`
-- `futunn`
-- `yahoo`
-- `openbb`
+- `futunn` - 富途
+- `sina` - 新浪
+- `eastmoney` - 东方财富
+- `baostock` - BaoStock
+- `tickflow` - TickFlow
+- `akshare` - AKShare
+- `yahoo` - Yahoo Finance
+- `openbb` - OpenBB 内置数据源
 
 敏感信息建议在 TOML 中使用 `${TOKEN}` 形式从环境变量注入，例如：
 
