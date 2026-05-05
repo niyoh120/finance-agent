@@ -24,6 +24,7 @@ from openbb_finance.models.index_historical import FinanceIndexHistoricalFetcher
 from openbb_finance.models.index_search import FinanceIndexSearchFetcher
 from openbb_finance.models.index_snapshots import FinanceIndexSnapshotsFetcher
 from openbb_finance.models.options_unusual import FinanceOptionsUnusualFetcher
+from openbb_finance.models.technical_indicators import FinanceTechnicalIndicatorsFetcher
 from openbb_finance.models.world_news import FinanceWorldNewsFetcher
 
 apply_runtime_environment()
@@ -51,6 +52,7 @@ provider = Provider(
         "IndexSearch": FinanceIndexSearchFetcher,
         "IndexSnapshots": FinanceIndexSnapshotsFetcher,
         "OptionsUnusual": FinanceOptionsUnusualFetcher,
+        "TechnicalIndicators": FinanceTechnicalIndicatorsFetcher,
         "WorldNews": FinanceWorldNewsFetcher,
     },
 )
@@ -379,6 +381,113 @@ def _patch_economy_macro_routes() -> None:
         return
 
 
+def _patch_technical_indicators_route() -> None:
+    """Expose finance technical indicators on the generated OpenBB technical router."""
+    try:
+        from datetime import date as dateType
+        from typing import Annotated, Any, Literal, Optional
+
+        from openbb.package.technical import ROUTER_technical
+        from openbb_core.app.model.field import OpenBBField
+        from openbb_core.app.model.obbject import OBBject
+        from openbb_core.app.static.utils.decorators import exception_handler, validate
+        from openbb_core.provider.utils.helpers import run_async
+
+        @exception_handler
+        @validate
+        def indicators(
+            self,
+            symbol: Annotated[str, OpenBBField(description="Symbol to get technical indicators for.")],
+            start_date: Annotated[
+                dateType | str | None,
+                OpenBBField(description="Start date of the historical data, in YYYY-MM-DD format."),
+            ] = None,
+            end_date: Annotated[
+                dateType | str | None,
+                OpenBBField(description="End date of the historical data, in YYYY-MM-DD format."),
+            ] = None,
+            interval: Annotated[str, OpenBBField(description="Price interval, e.g. 1d, 1w, 5m, 15m.")] = "1d",
+            adjusted: Annotated[bool, OpenBBField(description="Whether to request adjusted prices.")] = False,
+            indicators: Annotated[
+                list[Literal["rsi", "macd", "sma", "ema", "bbands", "atr", "stoch", "vwap"]] | None,
+                OpenBBField(description="Technical indicators to compute."),
+            ] = None,
+            provider: Annotated[
+                Optional[Literal["finance"]],
+                OpenBBField(description="The provider to use, by default finance."),
+            ] = None,
+            **kwargs: Any,
+        ) -> OBBject:
+            selected_provider = self._get_provider(provider, "technical.indicators", ("finance",))
+            params = {
+                "symbol": symbol,
+                "start_date": start_date,
+                "end_date": end_date,
+                "interval": interval,
+                "adjusted": adjusted,
+                **kwargs,
+            }
+            if indicators is not None:
+                params["indicators"] = indicators
+
+            results = run_async(
+                FinanceTechnicalIndicatorsFetcher.fetch_data,
+                params=params,
+                credentials=None,
+            )
+            obbject = OBBject(results=results, provider=selected_provider)
+            output_type = self._command_runner.user_settings.preferences.output_type
+            if output_type == "OBBject":
+                return obbject
+            return getattr(obbject, "to_" + output_type)()
+
+        ROUTER_technical.indicators = indicators
+    except Exception:
+        return
+
+
+def _patch_technical_indicators_coverage() -> None:
+    """Register the patched technical indicators route in OpenBB coverage metadata."""
+    try:
+        from openbb_core.app.static.coverage import Coverage
+
+        command = ".technical.indicators"
+        model = "TechnicalIndicators"
+
+        if not getattr(Coverage, "_finance_technical_indicators_coverage_patched", False):
+            original_providers = Coverage.providers.fget
+            original_commands = Coverage.commands.fget
+            original_command_model = Coverage.command_model.fget
+
+            def providers(self):
+                coverage = original_providers(self)
+                coverage.setdefault("finance", [])
+                if command not in coverage["finance"]:
+                    coverage["finance"].append(command)
+                return coverage
+
+            def commands(self):
+                coverage = original_commands(self)
+                coverage.setdefault(command, [])
+                if "finance" not in coverage[command]:
+                    coverage[command].append("finance")
+                return coverage
+
+            def command_model(self):
+                coverage = original_command_model(self)
+                coverage[command] = self._provider_interface.map[model]  # noqa: SLF001
+                return coverage
+
+            Coverage.providers = property(providers)
+            Coverage.commands = property(commands)
+            Coverage.command_model = property(command_model)
+            Coverage._finance_technical_indicators_coverage_patched = True
+    except Exception:
+        return
+
+
 _patch_etf_search_route()
 _patch_equity_screener_route()
 _patch_economy_macro_routes()
+_patch_technical_indicators_route()
+_patch_technical_indicators_coverage()
