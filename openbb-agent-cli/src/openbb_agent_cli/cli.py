@@ -67,27 +67,31 @@ def _error_code(exc: Exception) -> str:
     return name.upper()
 
 
+def _execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
+    stdout = io.StringIO()
+    stderr = io.StringIO()
+    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+        command = _resolve_route(route)
+        result = command(provider="finance", **_drop_none(params))
+    return result.model_dump(mode="json").get("results", [])
+
+
 def _run_route(route: str, **params: Any) -> None:
     try:
-        stdout = io.StringIO()
-        stderr = io.StringIO()
-        with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-            command = _resolve_route(route)
-            result = command(provider="finance", **_drop_none(params))
-        _print_json(result.model_dump(mode="json").get("results", []))
+        _print_json(_execute_route(route, **params))
     except Exception as exc:
         _print_json({"error": str(exc), "code": _error_code(exc)})
         raise SystemExit(1) from exc
 
 
-def _run_provider_model(
+def _execute_provider_model(
     model_name: str,
     standard_params: dict[str, Any] | None = None,
     extra_params: dict[str, Any] | None = None,
-) -> None:
+) -> list[dict[str, Any]]:
     import asyncio
 
-    async def _execute() -> None:
+    async def _execute() -> list[dict[str, Any]]:
         from openbb_core.app.model.command_context import CommandContext
         from openbb_core.app.provider_interface import ProviderInterface
         from openbb_core.app.query import Query
@@ -104,13 +108,221 @@ def _run_provider_model(
         with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
             result = await query_obj.execute()
 
-        _print_json([item.model_dump(mode="json") for item in result])
+        return [item.model_dump(mode="json") for item in result]
 
+    return asyncio.run(_execute())
+
+
+def _run_provider_model(
+    model_name: str,
+    standard_params: dict[str, Any] | None = None,
+    extra_params: dict[str, Any] | None = None,
+) -> None:
     try:
-        asyncio.run(_execute())
+        _print_json(_execute_provider_model(model_name, standard_params, extra_params))
     except Exception as exc:
         _print_json({"error": str(exc), "code": _error_code(exc)})
         raise SystemExit(1) from exc
+
+
+RouteExecutor = Callable[[dict[str, Any]], list[dict[str, Any]]]
+
+
+def _route_executor(route: str) -> RouteExecutor:
+    return lambda params: _execute_route(route, **params)
+
+
+def _provider_executor(model_name: str) -> RouteExecutor:
+    return lambda params: _execute_provider_model(model_name, params)
+
+
+def _index_snapshots_executor(params: dict[str, Any]) -> list[dict[str, Any]]:
+    return _execute_provider_model(
+        "IndexSnapshots",
+        {"region": params.get("region", "cn")},
+        {"symbol": _ensure_list(params.get("symbol"))},
+    )
+
+
+COMMAND_EXECUTORS: dict[str, RouteExecutor] = {
+    "equity.price.historical": _route_executor("equity.price.historical"),
+    "equity.price.quote": _route_executor("equity.price.quote"),
+    "equity.search": _route_executor("equity.search"),
+    "equity.screener": _route_executor("equity.screener"),
+    "index.available": _route_executor("index.available"),
+    "index.search": _route_executor("index.search"),
+    "index.price.historical": _route_executor("index.price.historical"),
+    "index.snapshots": _index_snapshots_executor,
+    "etf.historical": _route_executor("etf.historical"),
+    "etf.search": _provider_executor("EtfSearch"),
+    "economy.calendar": _route_executor("economy.calendar"),
+    "economy.available-indicators": _route_executor("economy.available_indicators"),
+    "economy.indicators": _route_executor("economy.indicators"),
+    "economy.gdp.nominal": _route_executor("economy.gdp.nominal"),
+    "economy.cpi": _route_executor("economy.cpi"),
+    "news.company": _route_executor("news.company"),
+    "news.world": _route_executor("news.world"),
+    "derivatives.options.unusual": _route_executor("derivatives.options.unusual"),
+}
+
+
+def _build_template_queries(template: str, params: dict[str, Any]) -> list[dict[str, Any]]:
+    symbol = params.get("symbol")
+    region = params.get("region", "cn")
+    country = params.get("country", "china")
+    start_date = params.get("start_date")
+    end_date = params.get("end_date")
+
+    if template == "equity-overview":
+        if not symbol:
+            raise ValueError("template equity-overview requires symbol")
+        return [
+            {"name": "quote", "command": "equity.price.quote", "params": {"symbol": symbol}},
+            {
+                "name": "historical",
+                "command": "equity.price.historical",
+                "params": {"symbol": symbol, "start_date": start_date, "end_date": end_date},
+            },
+            {
+                "name": "news",
+                "command": "news.company",
+                "params": {
+                    "symbol": symbol,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "limit": params.get("news_limit", 20),
+                },
+            },
+            {
+                "name": "options",
+                "command": "derivatives.options.unusual",
+                "params": {
+                    "symbol": symbol,
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "limit": params.get("options_limit", 50),
+                },
+            },
+        ]
+
+    if template == "market-overview":
+        market_by_region = {"cn": "china", "us": "america", "hk": "hongkong"}
+        return [
+            {"name": "indices", "command": "index.snapshots", "params": {"region": region}},
+            {
+                "name": "movers",
+                "command": "equity.screener",
+                "params": {"market": market_by_region.get(region, region), "limit": params.get("limit", 20)},
+            },
+            {
+                "name": "news",
+                "command": "news.world",
+                "params": {
+                    "start_date": start_date,
+                    "end_date": end_date,
+                    "limit": params.get("news_limit", 20),
+                },
+            },
+        ]
+
+    if template == "macro-overview":
+        return [
+            {
+                "name": "gdp",
+                "command": "economy.gdp.nominal",
+                "params": {"country": country, "start_date": start_date, "end_date": end_date},
+            },
+            {
+                "name": "cpi",
+                "command": "economy.cpi",
+                "params": {
+                    "country": country,
+                    "transform": "yoy",
+                    "start_date": start_date,
+                    "end_date": end_date,
+                },
+            },
+            {
+                "name": "pmi",
+                "command": "economy.indicators",
+                "params": {"symbol": "PMI", "country": country, "start_date": start_date, "end_date": end_date},
+            },
+            {
+                "name": "calendar",
+                "command": "economy.calendar",
+                "params": {"start_date": start_date, "end_date": end_date},
+            },
+        ]
+
+    if template == "index-detail":
+        if not symbol:
+            raise ValueError("template index-detail requires symbol")
+        return [
+            {"name": "snapshot", "command": "index.snapshots", "params": {"region": region, "symbol": symbol}},
+            {
+                "name": "historical",
+                "command": "index.price.historical",
+                "params": {"symbol": symbol, "start_date": start_date, "end_date": end_date},
+            },
+        ]
+
+    raise ValueError(f"Unknown batch template: {template}")
+
+
+def _parse_batch_queries(
+    queries: str | None,
+    template: str | None,
+    template_params: dict[str, Any],
+) -> list[dict[str, Any]]:
+    if template:
+        return _build_template_queries(template, template_params)
+    if queries is None:
+        raise ValueError("Either queries or template is required")
+
+    parsed = json.loads(queries)
+    if not isinstance(parsed, list):
+        raise ValueError("queries must be a JSON array")
+    return parsed
+
+
+def _execute_batch_query(
+    index: int,
+    query: dict[str, Any],
+) -> tuple[str, list[dict[str, Any]] | None, dict[str, str] | None]:
+    name = str(query.get("name") or index)
+    command = query.get("command")
+    params = query.get("params", {})
+
+    try:
+        if not isinstance(command, str):
+            raise ValueError("query command must be a string")
+        if not isinstance(params, dict):
+            raise ValueError("query params must be an object")
+        executor = COMMAND_EXECUTORS.get(command)
+        if executor is None:
+            raise ValueError(f"Unsupported batch command: {command}")
+        return name, executor(params), None
+    except Exception as exc:
+        return name, None, {"error": str(exc), "code": _error_code(exc)}
+
+
+def _run_batch_queries(queries: list[dict[str, Any]], max_workers: int) -> dict[str, Any]:
+    results: dict[str, Any] = {}
+    errors: dict[str, dict[str, str]] = {}
+    _ = max_workers
+
+    for index, query in enumerate(queries):
+        if not isinstance(query, dict):
+            errors[str(index)] = {"error": "query must be an object", "code": "VALUEERROR"}
+            continue
+
+        name, data, error = _execute_batch_query(index, query)
+        if error is None:
+            results[name] = data
+        else:
+            errors[name] = error
+
+    return {"results": results, "errors": errors}
 
 
 @app.command(name="equity.price.historical")
@@ -361,6 +573,42 @@ def derivatives_options_unusual(
         min_vol_oi=min_vol_oi,
         limit=limit,
     )
+
+
+@app.command(name="batch")
+def batch(
+    queries: str | None = None,
+    template: Literal["equity-overview", "market-overview", "macro-overview", "index-detail"] | None = None,
+    symbol: str | None = None,
+    region: Literal["cn", "us", "hk"] = "cn",
+    country: str = "china",
+    start_date: str | None = None,
+    end_date: str | None = None,
+    limit: int = 20,
+    news_limit: int = 20,
+    options_limit: int = 50,
+    max_workers: int = 4,
+) -> None:
+    """Run multiple finance queries in one JSON response."""
+    try:
+        parsed_queries = _parse_batch_queries(
+            queries,
+            template,
+            {
+                "symbol": symbol,
+                "region": region,
+                "country": country,
+                "start_date": start_date,
+                "end_date": end_date,
+                "limit": limit,
+                "news_limit": news_limit,
+                "options_limit": options_limit,
+            },
+        )
+        _print_json(_run_batch_queries(parsed_queries, max_workers))
+    except Exception as exc:
+        _print_json({"error": str(exc), "code": _error_code(exc)})
+        raise SystemExit(1) from exc
 
 
 def main() -> None:

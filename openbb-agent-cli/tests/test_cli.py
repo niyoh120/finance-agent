@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from typing import Any
 
@@ -217,4 +218,131 @@ def test_economy_cpi_uses_run_route(monkeypatch: pytest.MonkeyPatch) -> None:
             "start_date": "2025-01-01",
             "end_date": "2025-12-31",
         },
+    }
+
+
+def test_run_batch_queries_collects_results_and_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    def quote_executor(params: dict[str, Any]) -> list[dict[str, Any]]:
+        assert params == {"symbol": "AAPL"}
+        return [{"symbol": "AAPL", "price": 100}]
+
+    def failing_executor(params: dict[str, Any]) -> list[dict[str, Any]]:
+        raise RuntimeError("boom")
+
+    monkeypatch.setitem(cli.COMMAND_EXECUTORS, "test.quote", quote_executor)
+    monkeypatch.setitem(cli.COMMAND_EXECUTORS, "test.fail", failing_executor)
+
+    payload = cli._run_batch_queries(
+        [
+            {"name": "quote", "command": "test.quote", "params": {"symbol": "AAPL"}},
+            {"name": "failed", "command": "test.fail"},
+        ],
+        max_workers=2,
+    )
+
+    assert payload == {
+        "results": {"quote": [{"symbol": "AAPL", "price": 100}]},
+        "errors": {"failed": {"error": "boom", "code": "RUNTIMEERROR"}},
+    }
+
+
+def test_run_batch_queries_executes_serially(monkeypatch: pytest.MonkeyPatch) -> None:
+    events: list[str] = []
+
+    def first_executor(params: dict[str, Any]) -> list[dict[str, Any]]:
+        events.append("first")
+        return []
+
+    def second_executor(params: dict[str, Any]) -> list[dict[str, Any]]:
+        events.append("second")
+        return []
+
+    monkeypatch.setitem(cli.COMMAND_EXECUTORS, "test.first", first_executor)
+    monkeypatch.setitem(cli.COMMAND_EXECUTORS, "test.second", second_executor)
+
+    cli._run_batch_queries(
+        [
+            {"name": "first", "command": "test.first"},
+            {"name": "second", "command": "test.second"},
+        ],
+        max_workers=2,
+    )
+
+    assert events == ["first", "second"]
+
+
+def test_run_batch_queries_preserves_repeated_unnamed_commands(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setitem(
+        cli.COMMAND_EXECUTORS,
+        "test.quote",
+        lambda params: [{"symbol": params["symbol"]}],
+    )
+
+    payload = cli._run_batch_queries(
+        [
+            {"command": "test.quote", "params": {"symbol": "AAPL"}},
+            {"command": "test.quote", "params": {"symbol": "MSFT"}},
+        ],
+        max_workers=2,
+    )
+
+    assert payload == {
+        "results": {
+            "0": [{"symbol": "AAPL"}],
+            "1": [{"symbol": "MSFT"}],
+        },
+        "errors": {},
+    }
+
+
+def test_batch_outputs_json_payload(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setitem(
+        cli.COMMAND_EXECUTORS,
+        "test.quote",
+        lambda params: [{"symbol": params["symbol"]}],
+    )
+
+    cli.batch(queries='[{"name":"quote","command":"test.quote","params":{"symbol":"AAPL"}}]')
+
+    assert json.loads(capsys.readouterr().out) == {
+        "results": {"quote": [{"symbol": "AAPL"}]},
+        "errors": {},
+    }
+
+
+def test_equity_overview_template_builds_expected_queries() -> None:
+    queries = cli._build_template_queries(
+        "equity-overview",
+        {
+            "symbol": "AAPL",
+            "start_date": "2026-01-01",
+            "end_date": "2026-01-31",
+            "news_limit": 5,
+            "options_limit": 6,
+        },
+    )
+
+    assert [query["name"] for query in queries] == ["quote", "historical", "news", "options"]
+    assert queries[0] == {
+        "name": "quote",
+        "command": "equity.price.quote",
+        "params": {"symbol": "AAPL"},
+    }
+    assert queries[2]["params"] == {
+        "symbol": "AAPL",
+        "start_date": "2026-01-01",
+        "end_date": "2026-01-31",
+        "limit": 5,
+    }
+    assert queries[3]["params"]["limit"] == 6
+
+
+def test_batch_template_requires_symbol(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        cli.batch(template="equity-overview")
+
+    assert exc_info.value.code == 1
+    assert json.loads(capsys.readouterr().out) == {
+        "error": "template equity-overview requires symbol",
+        "code": "VALUEERROR",
     }
