@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any
 
 from openbb_core.provider.abstract.fetcher import Fetcher
 from openbb_core.provider.standard_models.available_indices import (
@@ -13,6 +13,7 @@ from openbb_core.provider.utils.errors import EmptyDataError
 from pydantic import Field
 
 from openbb_finance.registry import build_default_registry
+from openbb_finance.sources.tickflow import static_available_indices
 
 
 class FinanceAvailableIndicesData(AvailableIndicesData):
@@ -36,19 +37,16 @@ class FinanceAvailableIndicesFetcher(Fetcher[AvailableIndicesQueryParams, list[F
     ) -> list[dict[str, Any]]:
         del credentials, query
         registry = kwargs.get("registry") or build_default_registry()
-        # Use index_search to get available indices
-        # Search for common terms to get a list of indices
-        for source in registry.ordered_by_names(["eastmoney"]):
-            if not hasattr(source, "fetch_index_search"):
+        for source in registry.ordered_by_names(["tickflow"]):
+            if not hasattr(source, "fetch_available_indices"):
                 continue
             try:
-                # Search for common index keywords to get available indices
-                results = await source.fetch_index_search("指数", is_symbol=False)
+                results = await source.fetch_available_indices()
                 if results:
-                    return results
+                    return _merge_available_indices(results, static_available_indices())
             except Exception:
                 continue
-        return []
+        return static_available_indices()
 
     @staticmethod
     def transform_data(
@@ -60,3 +58,17 @@ class FinanceAvailableIndicesFetcher(Fetcher[AvailableIndicesQueryParams, list[F
         if not data:
             raise EmptyDataError()
         return [FinanceAvailableIndicesData.model_validate(item) for item in data]
+
+
+def _merge_available_indices(
+    primary: list[dict[str, Any]],
+    fallback: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged = list(primary)
+    seen = {str(item.get("symbol", "")).upper() for item in primary}
+    for item in fallback:
+        symbol = str(item.get("symbol", "")).upper()
+        if symbol and symbol not in seen:
+            merged.append(item)
+            seen.add(symbol)
+    return merged

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 from openbb_finance.config import SourceConfig
+from openbb_finance.models.index_available import FinanceAvailableIndicesFetcher
 from openbb_finance.sources.eastmoney import EastmoneySource
 from openbb_finance.sources.sina import SinaSource, _parse_hk
 
@@ -114,3 +115,59 @@ def test_sina_hk_index_snapshot_field_mapping():
     assert result["low"] == 25734.16
     assert result["price"] == 25776.529
     assert result["close"] == 25776.529
+
+
+@pytest.mark.anyio
+async def test_available_indices_returns_supported_symbols():
+    query = FinanceAvailableIndicesFetcher.transform_query({})
+    results = await FinanceAvailableIndicesFetcher.aextract_data(
+        query,
+        credentials=None,
+    )
+    data = FinanceAvailableIndicesFetcher.transform_data(query, results)
+
+    symbols = [item.symbol for item in data]
+    assert "000001.XSHG" in symbols
+    assert "000300.XSHG" in symbols
+    assert "000852.XSHG" in symbols
+    assert "SPX" in symbols
+    assert "NDX" in symbols
+    assert "HSI" in symbols
+    assert "HSTECH" in symbols
+    assert {item.source for item in data} == {"tickflow"}
+
+
+@pytest.mark.anyio
+async def test_available_indices_merges_tickflow_universe_api_with_static_indices():
+    query = FinanceAvailableIndicesFetcher.transform_query({})
+    results = await FinanceAvailableIndicesFetcher.aextract_data(
+        query,
+        credentials=None,
+        registry=_FakeIndexRegistry(),
+    )
+
+    symbols = [item["symbol"] for item in results]
+    assert symbols.count("NDX") == 1
+    assert "000001.XSHG" in symbols
+    assert "SPX" in symbols
+    assert "HSI" in symbols
+    assert "HSTECH" in symbols
+
+
+class _FakeIndexRegistry:
+    def ordered_by_names(self, names):
+        assert names == ["tickflow"]
+        return [_FakeTickflowIndexSource()]
+
+
+class _FakeTickflowIndexSource:
+    async def fetch_available_indices(self):
+        return [
+            {
+                "symbol": "NDX",
+                "name": "NASDAQ 100",
+                "exchange": "US",
+                "currency": "USD",
+                "source": "tickflow",
+            }
+        ]

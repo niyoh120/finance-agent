@@ -41,9 +41,14 @@ PY
 - `.etf.historical`
 - `.etf.search`
 - `.economy.calendar`
+- `.economy.available_indicators`
+- `.economy.indicators`
+- `.economy.gdp.nominal`
+- `.economy.cpi`
 - `.news.company`
 - `.news.world`
 - `.derivatives.options.unusual`
+- `.technical.indicators`
 
 ## 使用示例
 
@@ -79,6 +84,7 @@ screener = obb.equity.screener(
     limit=50,
     price_min=10,
     volume_min=1000000,
+    fields='["SYMBOL", "NAME", "PRICE", "VOLUME"]',
     provider="finance",
 )
 print(screener.to_df().head())
@@ -134,6 +140,33 @@ calendar = obb.economy.calendar(
 )
 print(calendar.to_df().head())
 
+# 可用宏观指标
+indicators = obb.economy.available_indicators(provider="finance")
+print(indicators.to_df().head())
+
+# 宏观指标
+macro = obb.economy.indicators(
+    symbol="PMI",
+    country="china",
+    provider="finance",
+)
+print(macro.to_df().head())
+
+# 名义 GDP
+gdp = obb.economy.gdp.nominal(
+    country="china",
+    provider="finance",
+)
+print(gdp.to_df().head())
+
+# CPI
+cpi = obb.economy.cpi(
+    country="china",
+    transform="yoy",
+    provider="finance",
+)
+print(cpi.to_df().head())
+
 # 公司新闻
 news = obb.news.company(
     symbol="AAPL",
@@ -156,6 +189,16 @@ flows = obb.derivatives.options.unusual(
     provider="finance",
 )
 print(flows.to_df().head())
+
+# 技术指标
+technical = obb.technical.indicators(
+    symbol="600519.XSHG",
+    start_date="2026-04-01",
+    end_date="2026-04-24",
+    indicators=["rsi", "macd", "sma"],
+    provider="finance",
+)
+print(technical.to_df().head())
 ```
 
 ## 数据源路由

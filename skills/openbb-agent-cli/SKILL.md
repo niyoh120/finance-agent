@@ -1,6 +1,6 @@
 ---
 name: openbb-agent-cli
-description: 使用 openbb-agent-cli 获取金融数据。支持股票历史价格、行情报价、搜索、筛选（支持3500+字段的高级过滤）、指数、ETF、经济日历、新闻、期权异动等。当用户需要查询股票价格、筛选股票、获取市场数据、查看期权异动时使用此 skill。
+description: 使用 openbb-agent-cli 获取金融数据。支持股票历史价格、行情报价、搜索、筛选（支持3500+字段的高级过滤和自定义返回字段）、指数、ETF、经济日历、宏观经济数据、新闻、期权异动和批量查询。当用户需要查询股票价格、筛选股票、获取市场数据、查看宏观数据、查看期权异动或一次聚合多个金融查询时使用此 skill。
 ---
 
 # OpenBB Agent CLI
@@ -11,7 +11,7 @@ Agent 友好的金融数据 CLI，所有输出均为 JSON 格式。
 
 ```bash
 # 通过 mise 运行
-mise run stock-api -- <command> [options]
+mise run openbb-agent-cli -- <command> [options]
 
 # 或直接运行
 openbb-agent-cli <command> [options]
@@ -32,9 +32,14 @@ openbb-agent-cli <command> [options]
 | `etf.historical` | ETF 历史价格 |
 | `etf.search` | ETF 搜索 |
 | `economy.calendar` | 经济日历 |
+| `economy.available-indicators` | 可用宏观指标 |
+| `economy.indicators` | 宏观经济指标 |
+| `economy.gdp.nominal` | 名义 GDP |
+| `economy.cpi` | CPI |
 | `news.company` | 公司新闻 |
 | `news.world` | 全球新闻 |
 | `derivatives.options.unusual` | 期权异动 |
+| `batch` | 批量查询和内置模板 |
 
 ---
 
@@ -124,7 +129,8 @@ openbb-agent-cli equity.screener \
   [--market-cap-min X] [--market-cap-max X] \
   [--change-percent-min X] [--change-percent-max X] \
   [--rsi-min X] [--rsi-max X] \
-  [--sector SECTOR]...
+  [--sector SECTOR]... \
+  [--fields JSON_ARRAY]
 ```
 
 **参数**:
@@ -140,6 +146,7 @@ openbb-agent-cli equity.screener \
 - `--change-percent-min/max`: 涨跌幅区间（百分比）
 - `--rsi-min/max`: RSI(14) 区间 (0-100)
 - `--sector`: 行业筛选，可多次指定
+- `--fields`: 返回字段 JSON 数组，例如 `["SYMBOL","NAME","PRICE"]`
 
 **示例**:
 ```bash
@@ -204,6 +211,11 @@ openbb-agent-cli equity.screener \
   --market america \
   --volume-min 1000000 \
   --filters '{"PE_RATIO_TTM": {"max": 20}, "DEBT_TO_EQUITY": {"max": 1}}'
+
+# 指定返回字段
+openbb-agent-cli equity.screener \
+  --market america \
+  --fields '["SYMBOL", "NAME", "PRICE", "MACD_LEVEL_12_26"]'
 ```
 
 ### 字段发现
@@ -345,6 +357,81 @@ openbb-agent-cli economy.calendar \
 
 ---
 
+## economy.available-indicators
+
+获取可用宏观经济指标列表。
+
+```bash
+openbb-agent-cli economy.available-indicators
+```
+
+---
+
+## economy.indicators
+
+获取宏观经济指标数据。
+
+```bash
+openbb-agent-cli economy.indicators SYMBOL \
+  [--country COUNTRY] \
+  [--frequency FREQUENCY] \
+  [--start-date YYYY-MM-DD] \
+  [--end-date YYYY-MM-DD]
+```
+
+**参数**:
+- `SYMBOL`: 指标代码，例如 `GDP_YOY`、`CPI_YOY`、`PPI`、`PMI`
+- `--country`: 国家或地区，默认 `china`
+- `--frequency`: 频率
+
+**示例**:
+```bash
+openbb-agent-cli economy.indicators GDP_YOY --country china
+openbb-agent-cli economy.indicators PMI --country china --start-date 2024-01-01
+```
+
+---
+
+## economy.gdp.nominal
+
+获取名义 GDP 数据。
+
+```bash
+openbb-agent-cli economy.gdp.nominal \
+  [--country COUNTRY] \
+  [--start-date YYYY-MM-DD] \
+  [--end-date YYYY-MM-DD]
+```
+
+**示例**:
+```bash
+openbb-agent-cli economy.gdp.nominal --country china
+```
+
+---
+
+## economy.cpi
+
+获取 CPI 数据。
+
+```bash
+openbb-agent-cli economy.cpi \
+  [--country COUNTRY] \
+  [--transform index|yoy|period] \
+  [--frequency annual|quarter|monthly] \
+  [--harmonized] \
+  [--start-date YYYY-MM-DD] \
+  [--end-date YYYY-MM-DD]
+```
+
+**示例**:
+```bash
+openbb-agent-cli economy.cpi --country china --transform yoy
+openbb-agent-cli economy.cpi --country china --frequency annual
+```
+
+---
+
 ## news.company
 
 获取公司新闻。
@@ -422,6 +509,55 @@ openbb-agent-cli derivatives.options.unusual \
 # 获取大额权利金异动
 openbb-agent-cli derivatives.options.unusual \
   --min-premium 100000
+```
+
+---
+
+## batch
+
+一次执行多个金融查询，输出结构为 `{"results": {...}, "errors": {...}}`。
+
+```bash
+openbb-agent-cli batch \
+  [--queries JSON_ARRAY] \
+  [--template equity-overview|market-overview|macro-overview|index-detail] \
+  [--symbol SYMBOL] \
+  [--region cn|us|hk] \
+  [--country COUNTRY] \
+  [--start-date YYYY-MM-DD] \
+  [--end-date YYYY-MM-DD] \
+  [--limit N] \
+  [--news-limit N] \
+  [--options-limit N] \
+  [--max-workers N]
+```
+
+**内置模板**:
+- `equity-overview`: 个股报价、历史价格、公司新闻、期权异动，需要 `--symbol`
+- `market-overview`: 指数快照、股票筛选、全球新闻，常用 `--region`
+- `macro-overview`: GDP、CPI、PMI、经济日历，常用 `--country`
+- `index-detail`: 指数快照、指数历史价格，需要 `--symbol`
+
+**示例**:
+```bash
+# 个股概览
+openbb-agent-cli batch \
+  --template equity-overview \
+  --symbol AAPL \
+  --start-date 2024-01-01 \
+  --end-date 2024-01-31
+
+# 市场概览
+openbb-agent-cli batch --template market-overview --region cn --limit 20
+
+# 宏观概览
+openbb-agent-cli batch --template macro-overview --country china --start-date 2024-01-01
+
+# 自定义查询
+openbb-agent-cli batch --queries '[
+  {"name":"quote","command":"equity.price.quote","params":{"symbol":"AAPL"}},
+  {"name":"news","command":"news.company","params":{"symbol":"AAPL","limit":10}}
+]'
 ```
 
 ---

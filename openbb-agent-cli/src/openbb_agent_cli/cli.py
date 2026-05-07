@@ -374,6 +374,7 @@ def equity_screener(
     sector: list[str] | None = None,
     # Advanced filters (JSON string)
     filters: str | None = None,
+    fields: str | None = None,
 ) -> None:
     """Screen equities with custom filters.
 
@@ -381,6 +382,9 @@ def equity_screener(
 
     Advanced filters: Use --filters with JSON string for arbitrary StockField filtering.
     Example: --filters '{"MACD_LEVEL_12_26": {"min": 0}, "YEAR_BETA_1": {"max": 1.5}}'
+
+    Custom fields: Use --fields with JSON array string to control returned StockFields.
+    Example: --fields '["SYMBOL", "NAME", "PRICE", "MACD_LEVEL_12_26"]'
 
     Available StockFields (3526 total): PRICE, VOLUME, MARKET_CAPITALIZATION, CHANGE_PERCENT,
     RELATIVE_STRENGTH_INDEX_14, MACD_LEVEL_12_26, YEAR_BETA_1, EMA_20, SMA_50, PE_RATIO_TTM,
@@ -404,6 +408,7 @@ def equity_screener(
         rsi_max=rsi_max,
         sector=_ensure_list(sector),
         filters=filters,
+        fields=fields,
     )
 
 

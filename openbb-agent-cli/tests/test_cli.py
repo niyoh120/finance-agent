@@ -98,6 +98,7 @@ def test_equity_screener_uses_run_route(monkeypatch: pytest.MonkeyPatch) -> None
         change_percent_min=5.0,
         volume_min=1000000,
         sector=["Technology"],
+        fields='["SYMBOL","NAME","PRICE"]',
     )
 
     assert captured["route"] == "equity.screener"
@@ -108,6 +109,7 @@ def test_equity_screener_uses_run_route(monkeypatch: pytest.MonkeyPatch) -> None
     assert captured["params"]["change_percent_min"] == 5.0
     assert captured["params"]["volume_min"] == 1000000
     assert captured["params"]["sector"] == ["Technology"]
+    assert captured["params"]["fields"] == '["SYMBOL","NAME","PRICE"]'
 
 
 def test_equity_screener_with_rsi_filter(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -31,6 +31,9 @@ openbb-agent-cli equity.screener --market china --price-min 10 --volume-min 1000
 
 # 筛选器（高级过滤）
 openbb-agent-cli equity.screener --market america --filters '{"MACD_LEVEL_12_26": {"min": 0}, "YEAR_BETA_1": {"max": 1.5}}'
+
+# 筛选器（指定返回字段）
+openbb-agent-cli equity.screener --market america --fields '["SYMBOL", "NAME", "PRICE", "MACD_LEVEL_12_26"]'
 ```
 
 ### 指数
@@ -111,6 +114,22 @@ openbb-agent-cli derivatives.options.unusual \
   --limit 100
 ```
 
+### 批量查询
+
+```bash
+# 使用内置模板
+openbb-agent-cli batch --template equity-overview --symbol AAPL --start-date 2026-04-01 --end-date 2026-04-30
+openbb-agent-cli batch --template market-overview --region cn --limit 20
+openbb-agent-cli batch --template macro-overview --country china --start-date 2026-01-01
+openbb-agent-cli batch --template index-detail --symbol 000001.XSHG --region cn
+
+# 自定义查询数组
+openbb-agent-cli batch --queries '[
+  {"name":"quote","command":"equity.price.quote","params":{"symbol":"AAPL"}},
+  {"name":"news","command":"news.company","params":{"symbol":"AAPL","limit":10}}
+]'
+```
+
 ## 命令参考
 
 | 命令 | 必需参数 | 可选参数 |
@@ -118,7 +137,7 @@ openbb-agent-cli derivatives.options.unusual \
 | `equity.price.historical` | `symbol` | `start-date`, `end-date`, `interval`, `adjusted` |
 | `equity.price.quote` | `symbol` | - |
 | `equity.search` | `query` | `is-symbol` |
-| `equity.screener` | - | `market`, `limit`, `price-min`, `price-max`, `change-percent-min`, `change-percent-max`, `volume-min`, `volume-max`, `market-cap-min`, `market-cap-max`, `rsi-min`, `rsi-max`, `sector`, `filters` |
+| `equity.screener` | - | `market`, `limit`, `price-min`, `price-max`, `change-percent-min`, `change-percent-max`, `volume-min`, `volume-max`, `market-cap-min`, `market-cap-max`, `rsi-min`, `rsi-max`, `sector`, `filters`, `fields` |
 | `index.available` | - | - |
 | `index.search` | `query` | `is-symbol` |
 | `index.price.historical` | `symbol` | `start-date`, `end-date` |
@@ -133,6 +152,16 @@ openbb-agent-cli derivatives.options.unusual \
 | `news.company` | `symbol` | `start-date`, `end-date`, `limit` |
 | `news.world` | - | `start-date`, `end-date`, `limit` |
 | `derivatives.options.unusual` | - | `symbol`, `start-date`, `end-date`, `side`, `option-type`, `min-premium`, `min-vol-oi`, `limit` |
+| `batch` | `queries` 或 `template` | `symbol`, `region`, `country`, `start-date`, `end-date`, `limit`, `news-limit`, `options-limit`, `max-workers` |
+
+## 批量模板
+
+| 模板 | 用途 | 主要参数 |
+| :--- | :--- | :--- |
+| `equity-overview` | 个股概览：报价、历史价格、公司新闻、期权异动 | `symbol`, `start-date`, `end-date`, `news-limit`, `options-limit` |
+| `market-overview` | 市场概览：指数快照、股票筛选、全球新闻 | `region`, `limit`, `start-date`, `end-date`, `news-limit` |
+| `macro-overview` | 宏观概览：GDP、CPI、PMI、财经日历 | `country`, `start-date`, `end-date` |
+| `index-detail` | 指数详情：快照和历史价格 | `symbol`, `region`, `start-date`, `end-date` |
 
 ## 错误处理
 
