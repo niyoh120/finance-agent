@@ -35,7 +35,7 @@ class FinanceEquityQuoteFetcher(Fetcher[EquityQuoteQueryParams, list[FinanceEqui
         del credentials
         registry = kwargs.get("registry") or build_default_registry()
         market = infer_market(query.symbol)
-        names = ["akshare", "tickflow", "yahoo"] if market == "cn" else ["tickflow", "yahoo"]
+        names = ["tdx", "akshare", "tickflow", "yahoo"] if market == "cn" else ["tickflow", "yahoo"]
         for source in registry.ordered_by_names(names):
             if not hasattr(source, "fetch_quote"):
                 continue

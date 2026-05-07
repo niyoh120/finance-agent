@@ -20,6 +20,7 @@ class SourceConfig:
 
 
 DEFAULT_PRIORITIES = {
+    "tdx": 110,
     "futunn": 100,
     "sina": 98,
     "eastmoney": 95,

@@ -63,7 +63,14 @@ def _to_sina_symbol(symbol: str, region: str) -> tuple[str, str]:
     if region == "hk":
         aliases = {"HSI": "rt_hkHSI", "HSCEI": "rt_hkHSCEI", "HSTECH": "rt_hkHSTECH"}
         return aliases.get(value, f"rt_hk{value}"), value
-    aliases = {"SPX": "gb_$inx", "$INX": "gb_$inx", "INX": "gb_$inx", "DJI": "gb_dji", "IXIC": "gb_ixic", "NDX": "gb_ndx"}
+    aliases = {
+        "SPX": "gb_$inx",
+        "$INX": "gb_$inx",
+        "INX": "gb_$inx",
+        "DJI": "gb_dji",
+        "IXIC": "gb_ixic",
+        "NDX": "gb_ndx",
+    }
     output = "SPX" if value in {"$INX", "INX"} else value
     return aliases.get(value, f"gb_{value.lower()}"), output
 

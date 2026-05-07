@@ -21,6 +21,7 @@ api_key = "${TICKFLOW_TOKEN}"
     assert config["sources"]["tickflow"]["enabled"] is False
     assert config["sources"]["tickflow"]["priority"] == 88
     assert config["sources"]["tickflow"]["api_key"] == "secret-token"
+    assert config["sources"]["tdx"]["priority"] == 110
     assert config["sources"]["baostock"]["priority"] == 90
 
 
@@ -39,6 +40,23 @@ priority = 11
 
     assert config.enabled is False
     assert config.priority == 11
+
+
+def test_get_source_config_reads_tdx_base_url(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    (tmp_path / "openbb_finance.toml").write_text(
+        """
+[sources.tdx]
+base_url = "https://tdx.example.com"
+""",
+        encoding="utf-8",
+    )
+
+    config = get_source_config("tdx")
+
+    assert config.enabled is True
+    assert config.priority == 110
+    assert config.base_url == "https://tdx.example.com"
 
 
 def test_apply_runtime_environment_sets_database_url(tmp_path, monkeypatch):

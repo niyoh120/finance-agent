@@ -1,5 +1,5 @@
-from openbb_finance.sources.base import infer_market
 from openbb_finance.sources.baostock import _to_baostock_symbol
+from openbb_finance.sources.base import infer_market
 from openbb_finance.sources.symbols import cn_plain_symbol, to_openbb_symbol, to_yfinance_symbol
 
 

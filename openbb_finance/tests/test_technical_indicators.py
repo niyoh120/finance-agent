@@ -13,10 +13,10 @@ from openbb_finance import provider
 
 class FakeRegistry:
     def ordered_by_names(self, names):
-        assert names == ["baostock", "eastmoney", "tickflow", "akshare"]
+        assert names == ["tdx", "baostock", "eastmoney", "tickflow", "akshare"]
         return [
             SimpleNamespace(
-                name="baostock",
+                name="tdx",
                 fetch_price=self.fetch_price,
             )
         ]
@@ -32,7 +32,7 @@ class FakeRegistry:
                 "low": 99 + index,
                 "close": 100 + index,
                 "volume": 1000 + index,
-                "source": "baostock",
+                "source": "tdx",
             }
             for index in range(60)
         ]
@@ -58,7 +58,7 @@ async def test_technical_indicators_are_computed_from_routed_prices():
     row = result[-1]
     assert isinstance(row, FinanceTechnicalIndicatorsData)
     assert row.symbol == "600519.XSHG"
-    assert row.source == "baostock"
+    assert row.source == "tdx"
     assert row.rsi == pytest.approx(100)
     assert row.macd is not None
     assert row.macd_signal is not None

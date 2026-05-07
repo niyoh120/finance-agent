@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Any, Literal
 
 import httpx
 
 from openbb_finance.config import SourceConfig
-from openbb_finance.sources.base import DataType, Market, SourceError
+from openbb_finance.sources.base import DataType, Market, PriceQuery, SourceError, normalize_interval
 from openbb_finance.sources.symbols import cn_exchange, cn_plain_symbol, to_openbb_symbol
 
 
@@ -339,15 +340,11 @@ class EastmoneySource:
         return False
 
 
-    async def fetch_price(self, query: "PriceQuery") -> list[dict[str, Any]]:
+    async def fetch_price(self, query: PriceQuery) -> list[dict[str, Any]]:
         """Fetch ETF price data via Eastmoney API.
         
         Supports A-share ETFs only.
         """
-        from openbb_finance.sources.base import PriceQuery, normalize_interval
-        from openbb_finance.sources.symbols import cn_plain_symbol
-        from datetime import datetime
-        
         symbol = query.symbol
         plain = cn_plain_symbol(symbol)
         

@@ -12,10 +12,10 @@ from openbb_finance.models.equity_historical import (
 class FakeRegistry:
     def ordered_by_names(self, names):
         # Eastmoney is now included in the routing
-        assert names == ["baostock", "eastmoney", "tickflow", "akshare"]
+        assert names == ["tdx", "baostock", "eastmoney", "tickflow", "akshare"]
         return [
             SimpleNamespace(
-                name="baostock",
+                name="tdx",
                 fetch_price=self.fetch_price,
             )
         ]
@@ -30,7 +30,7 @@ class FakeRegistry:
                 "low": 0.5,
                 "close": 1.5,
                 "volume": 100,
-                "source": "baostock",
+                "source": "tdx",
             }
         ]
 
@@ -55,4 +55,4 @@ async def test_equity_historical_uses_routed_source():
     assert len(result) == 1
     assert isinstance(result[0], FinanceEquityHistoricalData)
     assert result[0].symbol == "600519.XSHG"
-    assert result[0].source == "baostock"
+    assert result[0].source == "tdx"

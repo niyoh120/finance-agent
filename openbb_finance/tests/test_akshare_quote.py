@@ -66,7 +66,7 @@ async def test_equity_quote_cn_falls_back_to_yahoo():
 
     class FakeRegistry:
         def ordered_by_names(self, names):
-            assert names == ["akshare", "tickflow", "yahoo"]
+            assert names == ["tdx", "akshare", "tickflow", "yahoo"]
             return [FakeSource(name) for name in names]
 
     query = FinanceEquityQuoteFetcher.transform_query({"symbol": "600000.SH"})

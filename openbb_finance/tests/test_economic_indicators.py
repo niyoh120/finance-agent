@@ -3,8 +3,6 @@
 import inspect
 
 import pytest
-
-import openbb_finance  # noqa: F401
 from openbb import obb
 from openbb_finance.models.available_indicators import (
     FinanceAvailableIndicatorsFetcher,
@@ -18,8 +16,13 @@ from openbb_finance.models.economic_indicators import (
     FinanceEconomicIndicatorsFetcher,
     FinanceEconomicIndicatorsQueryParams,
 )
-from openbb_finance.models.gdp_nominal import FinanceGdpNominalFetcher, FinanceGdpNominalQueryParams
+from openbb_finance.models.gdp_nominal import (
+    FinanceGdpNominalFetcher,
+    FinanceGdpNominalQueryParams,
+)
 from openbb_finance.sources.akshare import AkshareSource, _normalize_macro_date
+
+import openbb_finance  # noqa: F401
 
 
 class MockAkshareSource:
