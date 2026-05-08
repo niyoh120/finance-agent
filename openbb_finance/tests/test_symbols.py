@@ -1,4 +1,6 @@
-from openbb_finance.sources.baostock import _to_baostock_symbol
+from datetime import datetime
+
+from openbb_finance.sources.baostock import _normalize_price_row, _to_baostock_symbol
 from openbb_finance.sources.base import infer_market
 from openbb_finance.sources.symbols import cn_plain_symbol, to_openbb_symbol, to_yfinance_symbol
 
@@ -25,3 +27,21 @@ def test_baostock_symbol_conversion_preserves_exchange_suffix():
     assert _to_baostock_symbol("000001.XSHE") == "sz.000001"
     assert _to_baostock_symbol("000001.XSHG") == "sh.000001"
     assert _to_baostock_symbol("399001.XSHE") == "sz.399001"
+
+
+def test_baostock_intraday_row_preserves_time():
+    result = _normalize_price_row(
+        {
+            "date": "2026-05-06",
+            "time": "20260506093500000",
+            "open": "1",
+            "high": "2",
+            "low": "0.5",
+            "close": "1.5",
+            "volume": "100",
+            "amount": "200",
+        },
+        "000001.XSHE",
+    )
+
+    assert result["date"] == datetime(2026, 5, 6, 9, 35)

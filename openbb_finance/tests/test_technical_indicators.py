@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -80,3 +80,25 @@ async def test_technical_indicators_are_computed_from_routed_prices():
 
 def test_technical_indicators_fetcher_registered():
     assert provider.fetcher_dict["TechnicalIndicators"] is FinanceTechnicalIndicatorsFetcher
+
+
+def test_technical_indicators_preserve_intraday_datetime():
+    moment = datetime(2026, 5, 6, 9, 35)
+    result = FinanceTechnicalIndicatorsFetcher.transform_data(
+        FinanceTechnicalIndicatorsQueryParams(symbol="600519.XSHG", interval="5m"),
+        [
+            {
+                "date": moment,
+                "open": 1.0,
+                "high": 2.0,
+                "low": 0.5,
+                "close": 1.5,
+                "volume": 100,
+                "symbol": "600519.XSHG",
+                "source": "tdx",
+                "rsi": 55.0,
+            }
+        ],
+    )
+
+    assert result[0].date == moment

@@ -106,9 +106,12 @@ def _to_frequency(interval: str) -> str:
 
 
 def _normalize_price_row(row: dict[str, str], symbol: str) -> dict[str, Any]:
-    raw_date = row.get("date") or (row.get("time") or "")[:8]
-    if raw_date and "-" not in raw_date:
-        parsed_date: date = datetime.strptime(raw_date, "%Y%m%d").date()
+    raw_time = row.get("time") or ""
+    raw_date = row.get("date") or raw_time[:8]
+    if raw_time:
+        parsed_date: date | datetime = datetime.strptime(raw_time[:14], "%Y%m%d%H%M%S")
+    elif raw_date and "-" not in raw_date:
+        parsed_date = datetime.strptime(raw_date, "%Y%m%d").date()
     else:
         parsed_date = datetime.strptime(raw_date, "%Y-%m-%d").date()
     return {

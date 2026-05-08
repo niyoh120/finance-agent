@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 
 import pytest
 from openbb_finance.config import SourceConfig
@@ -105,7 +105,7 @@ async def test_tdx_price_normalizes_kline_history():
     assert result == [
         {
             "symbol": "000001.XSHE",
-            "date": date(2026, 5, 6),
+            "date": datetime.fromisoformat("2026-05-06T15:00:00+08:00"),
             "open": 11.5,
             "high": 11.5,
             "low": 11.3,

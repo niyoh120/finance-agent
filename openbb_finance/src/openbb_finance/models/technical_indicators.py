@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import date as dateType
+from datetime import datetime
 from typing import Any, Literal
 
 import pandas as pd
@@ -57,7 +58,7 @@ class FinanceTechnicalIndicatorsQueryParams(QueryParams):
 class FinanceTechnicalIndicatorsData(Data):
     """Finance technical indicators data."""
 
-    date: dateType = Field(description="Date of the observation.")
+    date: dateType | datetime = Field(description="Date of the observation.")
     open: float = Field(description="Open price.")
     high: float = Field(description="High price.")
     low: float = Field(description="Low price.")

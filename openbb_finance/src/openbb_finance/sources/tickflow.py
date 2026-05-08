@@ -357,7 +357,7 @@ def _normalize_record(item: dict[str, Any], symbol: str) -> dict[str, Any]:
         parsed = datetime.fromisoformat(str(date_value).replace("Z", "+00:00"))
     return {
         "symbol": symbol,
-        "date": parsed.date(),
+        "date": parsed,
         "open": float(item["open"]),
         "high": float(item["high"]),
         "low": float(item["low"]),

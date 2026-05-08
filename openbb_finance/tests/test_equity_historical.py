@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from types import SimpleNamespace
 
 import pytest
@@ -56,3 +56,24 @@ async def test_equity_historical_uses_routed_source():
     assert isinstance(result[0], FinanceEquityHistoricalData)
     assert result[0].symbol == "600519.XSHG"
     assert result[0].source == "tdx"
+
+
+def test_equity_historical_preserves_intraday_datetime():
+    moment = datetime(2026, 5, 6, 9, 35)
+    result = FinanceEquityHistoricalFetcher.transform_data(
+        FinanceEquityHistoricalQueryParams(symbol="600519.XSHG", interval="5m"),
+        [
+            {
+                "symbol": "600519.XSHG",
+                "date": moment,
+                "open": 1.0,
+                "high": 2.0,
+                "low": 0.5,
+                "close": 1.5,
+                "volume": 100,
+                "source": "tdx",
+            }
+        ],
+    )
+
+    assert result[0].date == moment

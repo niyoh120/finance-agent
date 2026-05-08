@@ -60,8 +60,8 @@ class TdxSource:
         return [
             record
             for record in records
-            if (query.start_date is None or record["date"] >= query.start_date)
-            and (query.end_date is None or record["date"] <= query.end_date)
+            if (query.start_date is None or _as_date(record["date"]) >= query.start_date)
+            and (query.end_date is None or _as_date(record["date"]) <= query.end_date)
         ]
 
     async def fetch_equity_search(self, query: str, is_symbol: bool | None = None) -> list[dict[str, Any]]:
@@ -193,11 +193,15 @@ def _normalize_price_row(row: dict[str, Any], symbol: str) -> dict[str, Any]:
     }
 
 
-def _parse_date(value: Any) -> date:
+def _parse_date(value: Any) -> datetime:
     text = str(value or "")
     if not text:
         raise SourceError("TDX returned price row without Time")
-    return datetime.fromisoformat(text.replace("Z", "+00:00")).date()
+    return datetime.fromisoformat(text.replace("Z", "+00:00"))
+
+
+def _as_date(value: date | datetime) -> date:
+    return value.date() if isinstance(value, datetime) else value
 
 
 def _price(value: Any) -> float | None:
