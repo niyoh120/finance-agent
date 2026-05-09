@@ -150,11 +150,56 @@ async def test_tdx_adjusted_price_uses_ths_kline_source():
     assert result[0]["close"] == 11.36
 
 
-async def test_tdx_adjusted_intraday_falls_back_to_other_sources():
-    source = TdxSource(SourceConfig(name="tdx", enabled=True, priority=110))
+async def test_tdx_adjusted_intraday_applies_baostock_forward_factor():
+    class FakeTdxSource(TdxSource):
+        async def _get(self, path, params=None):
+            assert path == "/api/kline-all/tdx"
+            assert params == {"code": "000001", "type": "minute5"}
+            return {
+                "code": 0,
+                "message": "success",
+                "data": {
+                    "List": [
+                        {
+                            "Open": 10000,
+                            "High": 11000,
+                            "Low": 9000,
+                            "Close": 10500,
+                            "Volume": 100,
+                            "Amount": 1000000,
+                            "Time": "2026-05-06T09:35:00+08:00",
+                        },
+                        {
+                            "Open": 12000,
+                            "High": 13000,
+                            "Low": 11000,
+                            "Close": 12500,
+                            "Volume": 200,
+                            "Amount": 2000000,
+                            "Time": "2026-05-07T09:35:00+08:00",
+                        },
+                    ],
+                },
+            }
 
-    with pytest.raises(SourceError):
-        await source.fetch_price(PriceQuery(symbol="000001.XSHE", market="cn", interval="5m", adjusted=True))
+        async def _fetch_adjust_factors(self, symbol, start_date, end_date):
+            assert symbol == "000001.XSHE"
+            assert start_date == date(2026, 5, 6)
+            assert end_date == date(2026, 5, 7)
+            return [(date(2026, 5, 6), 0.8), (date(2026, 5, 7), 0.9)]
+
+    source = FakeTdxSource(SourceConfig(name="tdx", enabled=True, priority=110))
+    result = await source.fetch_price(
+        PriceQuery(symbol="000001.XSHE", market="cn", interval="5m", adjusted=True)
+    )
+
+    assert result[0]["open"] == 8
+    assert result[0]["high"] == 8.8
+    assert result[0]["low"] == 7.2
+    assert result[0]["close"] == 8.4
+    assert result[0]["volume"] == 10000
+    assert result[1]["open"] == 10.8
+    assert result[1]["close"] == 11.25
 
 
 def test_tdx_search_keyword_only_handles_a_share_queries():

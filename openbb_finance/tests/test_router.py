@@ -30,10 +30,8 @@ def test_cn_daily_routes_tickflow_before_baostock_update():
         interval="1d",
     )
 
-    # Eastmoney is now included for A-share ETF price data
     assert route_price_sources(query, now=datetime(2026, 4, 27, 16, 0)) == [
         "tdx",
-        "eastmoney",
         "tickflow",
         "akshare",
         "baostock",
@@ -48,11 +46,9 @@ def test_cn_daily_routes_baostock_after_update():
         interval="1d",
     )
 
-    # Eastmoney is now included for A-share ETF price data
     assert route_price_sources(query, now=datetime(2026, 4, 27, 18, 0)) == [
         "tdx",
-        "baostock",
-        "eastmoney",
         "tickflow",
+        "baostock",
         "akshare",
     ]

@@ -96,7 +96,12 @@ class AkshareSource:
             raise SourceError(f"AKShare price only supports China A-share symbols: {query.symbol}")
         if is_intraday_interval(interval):
             period = interval.removesuffix("m").replace("1h", "60")
-            df = await asyncio.to_thread(ak.stock_zh_a_hist_min_em, symbol=symbol, period=period, adjust="")
+            df = await asyncio.to_thread(
+                ak.stock_zh_a_hist_min_em,
+                symbol=symbol,
+                period=period,
+                adjust="qfq" if query.adjusted else "",
+            )
         else:
             period = {"1d": "daily", "1w": "weekly", "1M": "monthly"}.get(interval, "daily")
             df = await asyncio.to_thread(
@@ -107,7 +112,7 @@ class AkshareSource:
                 end_date=query.end_date.strftime("%Y%m%d") if query.end_date else "20500101",
                 adjust="qfq" if query.adjusted else "",
             )
-        return _normalize_dataframe(df, query.symbol)
+        return _normalize_dataframe(df, query.symbol, preserve_datetime=is_intraday_interval(interval))
 
     async def fetch_macro_gdp(self) -> list[dict[str, Any]]:
         """Fetch China GDP quarterly data from AKShare."""
@@ -316,7 +321,7 @@ def _fetch_individual_quote(ak: Any, symbol: str) -> dict[str, Any]:
     }
 
 
-def _normalize_dataframe(df: pd.DataFrame, symbol: str) -> list[dict[str, Any]]:
+def _normalize_dataframe(df: pd.DataFrame, symbol: str, *, preserve_datetime: bool = False) -> list[dict[str, Any]]:
     if df.empty:
         raise SourceError("AKShare returned empty data")
     rename = {
@@ -337,7 +342,7 @@ def _normalize_dataframe(df: pd.DataFrame, symbol: str) -> list[dict[str, Any]]:
         rows.append(
             {
                 "symbol": symbol,
-                "date": parsed.date() if isinstance(parsed, datetime) else parsed,
+                "date": parsed if preserve_datetime else parsed.date() if isinstance(parsed, datetime) else parsed,
                 "open": float(row["open"]),
                 "high": float(row["high"]),
                 "low": float(row["low"]),

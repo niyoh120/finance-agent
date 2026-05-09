@@ -45,11 +45,9 @@ class FinanceIndexSnapshotsFetcher(Fetcher[FinanceIndexSnapshotsQueryParams, lis
     ) -> list[dict[str, Any]]:
         del credentials
         registry = kwargs.get("registry") or build_default_registry()
-        
-        # Determine region
         region = query.region or "cn"
-        
-        for source in registry.ordered_by_names(["tickflow", "sina", "eastmoney"]):
+
+        for source in registry.ordered_by_names(["tickflow"]):
             if not hasattr(source, "fetch_index_snapshots"):
                 continue
             try:

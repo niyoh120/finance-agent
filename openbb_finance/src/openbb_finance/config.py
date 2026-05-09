@@ -21,11 +21,11 @@ class SourceConfig:
 
 DEFAULT_PRIORITIES = {
     "tdx": 110,
+    "tickflow": 105,
     "futunn": 100,
     "sina": 98,
     "eastmoney": 95,
     "baostock": 90,
-    "tickflow": 80,
     "akshare": 70,
     "yahoo": 60,
     "openbb": 50,

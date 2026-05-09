@@ -45,6 +45,42 @@ async def test_tickflow_quote_uses_v1_quotes_payload():
     assert result["change_percent"] == -1.16902303
 
 
+async def test_tickflow_equity_search_uses_search_api():
+    class FakeTickflowSource(TickflowSource):
+        async def _search_instruments(self, query, *, is_symbol=None):
+            assert query == "茅台"
+            assert is_symbol is False
+            return [
+                {
+                    "symbol": "600519.SH",
+                    "name": "贵州茅台",
+                    "exchange": "SH",
+                    "region": "CN",
+                    "type": "stock",
+                },
+                {
+                    "symbol": "000001.SH",
+                    "name": "上证指数",
+                    "exchange": "SH",
+                    "region": "CN",
+                    "type": "index",
+                },
+            ]
+
+    source = FakeTickflowSource(SourceConfig(name="tickflow", enabled=True, priority=105, api_key="token"))
+    result = await source.fetch_equity_search("茅台", is_symbol=False)
+
+    assert result == [
+        {
+            "symbol": "600519.XSHG",
+            "name": "贵州茅台",
+            "exchange": "XSHG",
+            "currency": "CNY",
+            "source": "tickflow",
+        }
+    ]
+
+
 async def test_tickflow_index_snapshots_outputs_openbb_symbols():
     class FakeTickflowSource(TickflowSource):
         async def _fetch_quotes(self, symbols):

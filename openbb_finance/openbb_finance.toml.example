@@ -13,7 +13,7 @@ priority = 70
 
 [sources.tickflow]
 enabled = true
-priority = 80
+priority = 105
 api_key = "${TICKFLOW_API_KEY}"
 # Optional: override the default API base URL
 # base_url = "https://api.tickflow.org"

@@ -53,7 +53,7 @@ class TickflowSource:
         del kwargs
         if data_type == "index_snapshots":
             return market in {"cn", "us", "hk", "global"}
-        return market in {"cn", "us", "hk"} and data_type == "price"
+        return market in {"cn", "us", "hk"} and data_type in {"price", "search"}
 
     async def fetch_quote(self, symbol: str) -> dict[str, Any]:
         if not self.api_key:
@@ -62,6 +62,12 @@ class TickflowSource:
         if not items:
             raise SourceError(f"TickFlow quote returned no data for {symbol}")
         return _normalize_quote(items[0], symbol)
+
+    async def fetch_equity_search(self, query: str, is_symbol: bool | None = None) -> list[dict[str, Any]]:
+        if not self.api_key:
+            raise SourceError("TickFlow API key is required")
+        instruments = await self._search_instruments(query, is_symbol=is_symbol)
+        return [_normalize_equity_search(item) for item in instruments if _is_equity_instrument(item)]
 
     async def fetch_index_snapshots(
         self,
@@ -130,6 +136,32 @@ class TickflowSource:
             if isinstance(data, list):
                 instruments.extend(item for item in data if isinstance(item, dict))
         return instruments
+
+    async def _search_instruments(self, query: str, *, is_symbol: bool | None = None) -> list[dict[str, Any]]:
+        if is_symbol:
+            return await self._fetch_instruments([_to_tickflow_symbol(query)])
+
+        universes = await self._fetch_universes()
+        equity_universe_ids = [
+            str(item["id"])
+            for item in universes
+            if isinstance(item, dict)
+            and str(item.get("category", "")).lower() in {"stock", "equity", "etf"}
+            and item.get("id")
+        ]
+        if not equity_universe_ids:
+            return []
+        universe_details = await self._fetch_universe_details(equity_universe_ids)
+        symbols = _unique_symbols(
+            symbol
+            for detail in universe_details
+            for symbol in detail.get("symbols", [])
+            if isinstance(symbol, str)
+        )
+        if not symbols:
+            return []
+        instruments = await self._fetch_instruments(symbols)
+        return [item for item in instruments if _matches_instrument(item, query)]
 
     async def _fetch_quotes(self, symbols: list[str]) -> list[dict[str, Any]]:
         headers = {"x-api-key": self.api_key or ""}
@@ -294,6 +326,47 @@ def _normalize_available_index(item: dict[str, Any]) -> dict[str, Any]:
         "currency": _currency(region),
         "source": "tickflow",
     }
+
+
+def _is_equity_instrument(item: dict[str, Any]) -> bool:
+    instrument_type = str(item.get("type", "")).lower()
+    return instrument_type in {"", "stock", "equity", "etf"}
+
+
+def _matches_instrument(item: dict[str, Any], query: str) -> bool:
+    needle = query.strip().lower()
+    if not needle:
+        return True
+    fields = (
+        item.get("symbol"),
+        item.get("name"),
+        item.get("display_name"),
+    )
+    return any(needle in str(value).lower() for value in fields if value is not None)
+
+
+def _normalize_equity_search(item: dict[str, Any]) -> dict[str, Any]:
+    symbol = str(item.get("symbol", "")).strip().upper()
+    region = str(item.get("region", "")).upper()
+    exchange = str(item.get("exchange", "")).upper()
+    return {
+        "symbol": _normalize_equity_symbol(symbol, region, exchange),
+        "name": item.get("name") or item.get("display_name"),
+        "exchange": _openbb_exchange(exchange) or None,
+        "currency": _currency(region),
+        "source": "tickflow",
+    }
+
+
+def _normalize_equity_symbol(symbol: str, region: str, exchange: str) -> str:
+    if region == "CN" or exchange in {"SH", "SZ"}:
+        return to_openbb_symbol(symbol)
+    code, suffix = split_symbol(symbol)
+    if region == "HK" and suffix == "HK" and code.isdigit():
+        return f"{code.lstrip('0') or '0'}.HK"
+    if region == "US" and suffix == "US":
+        return code
+    return symbol
 
 
 def _normalize_available_index_symbol(symbol: str, region: str) -> str:

@@ -13,7 +13,7 @@ from openbb_finance import provider
 
 class FakeRegistry:
     def ordered_by_names(self, names):
-        assert names == ["tdx", "baostock", "eastmoney", "tickflow", "akshare"]
+        assert names == ["tdx", "tickflow", "baostock", "akshare"]
         return [
             SimpleNamespace(
                 name="tdx",

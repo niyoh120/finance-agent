@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import date, datetime
 from typing import Any
 
@@ -17,6 +18,8 @@ from openbb_finance.sources.base import (
     normalize_interval,
 )
 from openbb_finance.sources.symbols import cn_exchange, cn_plain_symbol, split_symbol, to_openbb_symbol
+
+ADJUST_FACTOR_START_DATE = date(1990, 1, 1)
 
 
 class TdxSource:
@@ -57,12 +60,15 @@ class TdxSource:
         if not isinstance(rows, list):
             return []
         records = [_normalize_price_row(row, query.symbol) for row in rows if isinstance(row, dict)]
-        return [
+        filtered = [
             record
             for record in records
             if (query.start_date is None or _as_date(record["date"]) >= query.start_date)
             and (query.end_date is None or _as_date(record["date"]) <= query.end_date)
         ]
+        if query.adjusted and is_intraday_interval(interval):
+            return await self._adjust_intraday_prices(query.symbol, filtered)
+        return filtered
 
     async def fetch_equity_search(self, query: str, is_symbol: bool | None = None) -> list[dict[str, Any]]:
         keyword = _to_tdx_search_keyword(query, is_symbol)
@@ -100,6 +106,22 @@ class TdxSource:
             raise SourceError("TDX returned invalid JSON")
         return data
 
+    async def _adjust_intraday_prices(self, symbol: str, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        if not records:
+            return records
+        factors = await self._fetch_adjust_factors(symbol, _as_date(records[0]["date"]), _as_date(records[-1]["date"]))
+        if not factors:
+            raise SourceError(f"TDX adjusted intraday prices require adjustment factors for {symbol}")
+        return [_apply_adjust_factor(record, _factor_for_date(factors, _as_date(record["date"]))) for record in records]
+
+    async def _fetch_adjust_factors(
+        self,
+        symbol: str,
+        start_date: date,
+        end_date: date,
+    ) -> list[tuple[date, float]]:
+        return await asyncio.to_thread(_fetch_baostock_adjust_factors, symbol, start_date, end_date)
+
 
 def _response_data(payload: dict[str, Any]) -> Any:
     if payload.get("code") not in {0, None}:
@@ -136,7 +158,7 @@ def _to_tdx_kline_path(interval: str, adjusted: bool) -> str:
     if not adjusted:
         return "/api/kline-all/tdx"
     if is_intraday_interval(interval):
-        raise SourceError(f"TDX adjusted prices do not support intraday interval: {interval}")
+        return "/api/kline-all/tdx"
     return "/api/kline-all/ths"
 
 
@@ -191,6 +213,58 @@ def _normalize_price_row(row: dict[str, Any], symbol: str) -> dict[str, Any]:
         "amount": _price(row.get("Amount")),
         "source": "tdx",
     }
+
+
+def _fetch_baostock_adjust_factors(
+    symbol: str,
+    start_date: date,
+    end_date: date,
+) -> list[tuple[date, float]]:
+    import baostock as bs
+
+    from openbb_finance.sources.baostock import _baostock_session, _to_baostock_symbol
+
+    with _baostock_session(bs):
+        rs = bs.query_adjust_factor(
+            _to_baostock_symbol(symbol),
+            start_date=ADJUST_FACTOR_START_DATE.isoformat(),
+            end_date=end_date.isoformat(),
+        )
+        if rs.error_code != "0":
+            raise SourceError(rs.error_msg)
+        rows = []
+        while rs.next():
+            rows.append(dict(zip(rs.fields, rs.get_row_data(), strict=True)))
+    return _normalize_adjust_factors(rows)
+
+
+def _normalize_adjust_factors(rows: list[dict[str, str]]) -> list[tuple[date, float]]:
+    factors: list[tuple[date, float]] = []
+    for row in rows:
+        raw_date = row.get("dividOperateDate") or row.get("date")
+        raw_factor = row.get("foreAdjustFactor") or row.get("adjustFactor")
+        if not raw_date or raw_factor in {None, ""}:
+            continue
+        factors.append((date.fromisoformat(raw_date), float(raw_factor)))
+    return sorted(factors, key=lambda item: item[0])
+
+
+def _factor_for_date(factors: list[tuple[date, float]], value: date) -> float:
+    selected = factors[0][1]
+    for factor_date, factor in factors:
+        if factor_date > value:
+            break
+        selected = factor
+    return selected
+
+
+def _apply_adjust_factor(record: dict[str, Any], factor: float) -> dict[str, Any]:
+    adjusted = dict(record)
+    for field in ("open", "high", "low", "close"):
+        value = adjusted.get(field)
+        if value is not None:
+            adjusted[field] = round(float(value) * factor, 6)
+    return adjusted
 
 
 def _parse_date(value: Any) -> datetime:

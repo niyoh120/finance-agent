@@ -70,10 +70,10 @@ def route_price_sources(query: PriceQuery, *, now: datetime | None = None) -> li
         )
         if interval_type == "minute":
             fallback = ["baostock", "akshare"] if baostock_ready else ["akshare", "baostock"]
-            return ["tdx", *fallback]
+            return ["tdx", "tickflow", *fallback]
         if baostock_ready:
-            return ["tdx", "baostock", "eastmoney", "tickflow", "akshare"]
-        return ["tdx", "eastmoney", "tickflow", "akshare", "baostock"]
+            return ["tdx", "tickflow", "baostock", "akshare"]
+        return ["tdx", "tickflow", "akshare", "baostock"]
 
     if market in {"us", "hk"}:
         if interval_type == "minute":

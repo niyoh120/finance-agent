@@ -33,7 +33,7 @@ class FinanceEquitySearchFetcher(Fetcher[EquitySearchQueryParams, list[FinanceEq
     ) -> list[dict[str, Any]]:
         del credentials
         registry = kwargs.get("registry") or build_default_registry()
-        for source in registry.ordered_by_names(["tdx", "eastmoney", "akshare"]):
+        for source in registry.ordered_by_names(["tdx", "tickflow", "eastmoney", "akshare"]):
             if not hasattr(source, "fetch_equity_search"):
                 continue
             try:

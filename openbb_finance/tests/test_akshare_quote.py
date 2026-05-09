@@ -1,4 +1,5 @@
 import sys
+from datetime import datetime
 from types import SimpleNamespace
 
 import pandas as pd
@@ -6,6 +7,7 @@ import pytest
 from openbb_finance.config import SourceConfig
 from openbb_finance.models.equity_quote import FinanceEquityQuoteFetcher
 from openbb_finance.sources.akshare import AkshareSource
+from openbb_finance.sources.base import PriceQuery
 from openbb_finance.sources.yahoo import YahooSource
 
 
@@ -53,26 +55,58 @@ async def test_akshare_search_matches_a_share_suffix_symbol(monkeypatch):
 
 
 @pytest.mark.anyio
-async def test_equity_quote_cn_falls_back_to_yahoo():
+async def test_akshare_adjusted_intraday_uses_qfq(monkeypatch):
+    captured = {}
+
+    def stock_zh_a_hist_min_em(symbol, period, adjust):
+        captured.update({"symbol": symbol, "period": period, "adjust": adjust})
+        return pd.DataFrame(
+            [
+                {
+                    "时间": "2026-05-08 09:35:00",
+                    "开盘": 10.0,
+                    "最高": 11.0,
+                    "最低": 9.0,
+                    "收盘": 10.5,
+                    "成交量": 100,
+                    "成交额": 1000.0,
+                }
+            ]
+        )
+
+    monkeypatch.setitem(sys.modules, "akshare", SimpleNamespace(stock_zh_a_hist_min_em=stock_zh_a_hist_min_em))
+
+    source = AkshareSource(SourceConfig(name="akshare", enabled=True, priority=70))
+    result = await source.fetch_price(
+        PriceQuery(symbol="600000.XSHG", market="cn", interval="5m", adjusted=True)
+    )
+
+    assert captured == {"symbol": "600000", "period": "5", "adjust": "qfq"}
+    assert result[0]["date"] == datetime(2026, 5, 8, 9, 35)
+    assert result[0]["close"] == 10.5
+
+
+@pytest.mark.anyio
+async def test_equity_quote_cn_falls_back_to_akshare():
     class FakeSource:
         def __init__(self, name):
             self.name = name
             self.enabled = True
 
         async def fetch_quote(self, symbol):
-            if self.name == "yahoo":
+            if self.name == "akshare":
                 return {"symbol": symbol, "last_price": 9.37, "source": self.name}
             raise RuntimeError("source unavailable")
 
     class FakeRegistry:
         def ordered_by_names(self, names):
-            assert names == ["tdx", "akshare", "tickflow", "yahoo"]
+            assert names == ["tdx", "tickflow", "akshare"]
             return [FakeSource(name) for name in names]
 
     query = FinanceEquityQuoteFetcher.transform_query({"symbol": "600000.SH"})
     result = await FinanceEquityQuoteFetcher.aextract_data(query, credentials=None, registry=FakeRegistry())
 
-    assert result == [{"symbol": "600000.SH", "last_price": 9.37, "source": "yahoo"}]
+    assert result == [{"symbol": "600000.SH", "last_price": 9.37, "source": "akshare"}]
 
 
 @pytest.mark.anyio
