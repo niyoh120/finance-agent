@@ -348,3 +348,172 @@ def test_batch_template_requires_symbol(capsys: pytest.CaptureFixture[str]) -> N
         "error": "template equity-overview requires symbol",
         "code": "VALUEERROR",
     }
+
+
+def test_apply_limit_returns_last_n_items() -> None:
+    data = [{"i": 1}, {"i": 2}, {"i": 3}, {"i": 4}, {"i": 5}]
+    assert cli._apply_limit(data, 3) == [{"i": 3}, {"i": 4}, {"i": 5}]
+
+
+def test_apply_limit_none_returns_all() -> None:
+    data = [{"i": 1}, {"i": 2}, {"i": 3}]
+    assert cli._apply_limit(data, None) is data
+
+
+def test_apply_limit_zero_raises() -> None:
+    with pytest.raises(ValueError, match="limit must be >= 1"):
+        cli._apply_limit([{"i": 1}], 0)
+
+
+def test_apply_limit_negative_raises() -> None:
+    with pytest.raises(ValueError, match="limit must be >= 1"):
+        cli._apply_limit([{"i": 1}], -1)
+
+
+def test_apply_limit_larger_than_data_returns_all() -> None:
+    data = [{"i": 1}, {"i": 2}]
+    assert cli._apply_limit(data, 100) == data
+
+
+def test_historical_executor_applies_limit() -> None:
+    called_with: dict[str, Any] = {}
+
+    def fake_execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
+        called_with.update({"route": route, **params})
+        return [{"symbol": "AAPL", "i": i} for i in range(10)]
+
+    monkeypatch_local = pytest.MonkeyPatch()
+    monkeypatch_local.setattr(cli, "_execute_route", fake_execute_route)
+
+    executor = cli._historical_executor("index.price.historical")
+    params = {"symbol": "000001.XSHG", "start_date": "2026-01-01", "end_date": "2026-01-31", "__cli_limit__": 3}
+    result = executor(params)
+
+    assert len(result) == 3
+    assert result[0]["i"] == 7
+    assert result[1]["i"] == 8
+    assert result[2]["i"] == 9
+    assert called_with["symbol"] == "000001.XSHG"
+    assert "__cli_limit__" not in called_with
+
+    monkeypatch_local.undo()
+
+
+def test_historical_executor_no_limit_returns_all() -> None:
+    def fake_execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
+        return [{"symbol": "AAPL", "i": i} for i in range(5)]
+
+    monkeypatch_local = pytest.MonkeyPatch()
+    monkeypatch_local.setattr(cli, "_execute_route", fake_execute_route)
+
+    executor = cli._historical_executor("etf.historical")
+    result = executor({"symbol": "510300.XSHG"})
+
+    assert len(result) == 5
+
+    monkeypatch_local.undo()
+
+
+def test_equity_price_historical_passes_limit(capsys: pytest.CaptureFixture[str]) -> None:
+    called_with: dict[str, Any] = {}
+
+    def fake_execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
+        called_with.update({"route": route, **params})
+        return [{"symbol": "AAPL", "i": i} for i in range(10)]
+
+    monkeypatch_local = pytest.MonkeyPatch()
+    monkeypatch_local.setattr(cli, "_execute_route", fake_execute_route)
+
+    cli.equity_price_historical(symbol="AAPL", start_date="2026-01-01", end_date="2026-01-31", limit=5)
+
+    output = json.loads(capsys.readouterr().out)
+    assert len(output) == 5
+    assert called_with["route"] == "equity.price.historical"
+    assert called_with.get("limit") is None
+
+    monkeypatch_local.undo()
+
+
+def test_index_price_historical_passes_limit(capsys: pytest.CaptureFixture[str]) -> None:
+    def fake_execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
+        return [{"symbol": "000001.XSHG", "i": i} for i in range(8)]
+
+    monkeypatch_local = pytest.MonkeyPatch()
+    monkeypatch_local.setattr(cli, "_execute_route", fake_execute_route)
+
+    cli.index_price_historical(symbol="000001.XSHG", limit=3)
+
+    output = json.loads(capsys.readouterr().out)
+    assert len(output) == 3
+    assert output[0]["i"] == 5
+
+    monkeypatch_local.undo()
+
+
+def test_etf_historical_passes_limit(capsys: pytest.CaptureFixture[str]) -> None:
+    def fake_execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
+        return [{"symbol": "510300.XSHG", "i": i} for i in range(6)]
+
+    monkeypatch_local = pytest.MonkeyPatch()
+    monkeypatch_local.setattr(cli, "_execute_route", fake_execute_route)
+
+    cli.etf_historical(symbol="510300.XSHG", limit=2)
+
+    output = json.loads(capsys.readouterr().out)
+    assert len(output) == 2
+
+    monkeypatch_local.undo()
+
+
+def test_historical_limit_not_forwarded_to_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    called_params: dict[str, Any] = {}
+
+    def fake_execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
+        called_params.update(params)
+        return [{"symbol": "AAPL"}]
+
+    monkeypatch.setattr(cli, "_execute_route", fake_execute_route)
+    monkeypatch.setitem(
+        cli.COMMAND_EXECUTORS,
+        "equity.price.historical",
+        cli._historical_executor("equity.price.historical"),
+    )
+
+    result = cli.COMMAND_EXECUTORS["equity.price.historical"](
+        {"symbol": "AAPL", "__cli_limit__": 5},
+    )
+
+    assert "__cli_limit__" not in called_params
+    assert len(result) == 1
+
+
+def test_equity_overview_template_includes_historical_limit() -> None:
+    queries = cli._build_template_queries(
+        "equity-overview",
+        {
+            "symbol": "AAPL",
+            "start_date": "2026-01-01",
+            "end_date": "2026-01-31",
+            "limit": 30,
+            "news_limit": 5,
+            "options_limit": 6,
+        },
+    )
+
+    historical_params = queries[1]["params"]
+    assert historical_params["__cli_limit__"] == 30
+
+
+def test_index_detail_template_includes_historical_limit() -> None:
+    queries = cli._build_template_queries(
+        "index-detail",
+        {
+            "symbol": "000001.XSHG",
+            "start_date": "2026-01-01",
+            "end_date": "2026-01-31",
+            "limit": 50,
+        },
+    )
+
+    historical_params = queries[1]["params"]
+    assert historical_params["__cli_limit__"] == 50

@@ -28,6 +28,15 @@ def _drop_none(params: dict[str, Any]) -> dict[str, Any]:
     return {key: value for key, value in params.items() if value is not None}
 
 
+def _apply_limit(results: list[dict[str, Any]], limit: int | None) -> list[dict[str, Any]]:
+    """Return the last *limit* items preserving order; pass through when limit is None."""
+    if limit is None:
+        return results
+    if limit < 1:
+        raise ValueError(f"limit must be >= 1, got {limit}")
+    return results[-limit:]
+
+
 def _ensure_list(value: Any) -> list[str] | None:
     if value is None:
         return None
@@ -136,6 +145,28 @@ def _provider_executor(model_name: str) -> RouteExecutor:
     return lambda params: _execute_provider_model(model_name, params)
 
 
+_HISTORICAL_ROUTES = {
+    "equity.price.historical": {"interval": "1d", "adjusted": False},
+    "index.price.historical": {},
+    "etf.historical": {},
+}
+
+_ROUTE_LIMIT_KEY = "__cli_limit__"
+
+
+def _historical_executor(route: str) -> RouteExecutor:
+    """Execute a historical route, applying CLI-side limit if provided in params."""
+    defaults = _HISTORICAL_ROUTES[route]
+
+    def _exec(params: dict[str, Any]) -> list[dict[str, Any]]:
+        limit = params.pop(_ROUTE_LIMIT_KEY, None)
+        route_params = {**defaults, **params}
+        results = _execute_route(route, **route_params)
+        return _apply_limit(results, limit)
+
+    return _exec
+
+
 def _index_snapshots_executor(params: dict[str, Any]) -> list[dict[str, Any]]:
     return _execute_provider_model(
         "IndexSnapshots",
@@ -145,15 +176,15 @@ def _index_snapshots_executor(params: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 COMMAND_EXECUTORS: dict[str, RouteExecutor] = {
-    "equity.price.historical": _route_executor("equity.price.historical"),
+    "equity.price.historical": _historical_executor("equity.price.historical"),
     "equity.price.quote": _route_executor("equity.price.quote"),
     "equity.search": _route_executor("equity.search"),
     "equity.screener": _route_executor("equity.screener"),
     "index.available": _route_executor("index.available"),
     "index.search": _route_executor("index.search"),
-    "index.price.historical": _route_executor("index.price.historical"),
+    "index.price.historical": _historical_executor("index.price.historical"),
     "index.snapshots": _index_snapshots_executor,
-    "etf.historical": _route_executor("etf.historical"),
+    "etf.historical": _historical_executor("etf.historical"),
     "etf.search": _provider_executor("EtfSearch"),
     "economy.calendar": _route_executor("economy.calendar"),
     "economy.available-indicators": _route_executor("economy.available_indicators"),
@@ -181,7 +212,7 @@ def _build_template_queries(template: str, params: dict[str, Any]) -> list[dict[
             {
                 "name": "historical",
                 "command": "equity.price.historical",
-                "params": {"symbol": symbol, "start_date": start_date, "end_date": end_date},
+                "params": {"symbol": symbol, "start_date": start_date, "end_date": end_date, "__cli_limit__": params.get("limit")},
             },
             {
                 "name": "news",
@@ -262,7 +293,7 @@ def _build_template_queries(template: str, params: dict[str, Any]) -> list[dict[
             {
                 "name": "historical",
                 "command": "index.price.historical",
-                "params": {"symbol": symbol, "start_date": start_date, "end_date": end_date},
+                "params": {"symbol": symbol, "start_date": start_date, "end_date": end_date, "__cli_limit__": params.get("limit")},
             },
         ]
 
@@ -332,16 +363,22 @@ def equity_price_historical(
     end_date: str | None = None,
     interval: str = "1d",
     adjusted: bool = False,
+    limit: int | None = None,
 ) -> None:
     """Get equity historical price data."""
-    _run_route(
-        "equity.price.historical",
-        symbol=symbol,
-        start_date=start_date,
-        end_date=end_date,
-        interval=interval,
-        adjusted=adjusted,
-    )
+    try:
+        results = _execute_route(
+            "equity.price.historical",
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            interval=interval,
+            adjusted=adjusted,
+        )
+        _print_json(_apply_limit(results, limit))
+    except Exception as exc:
+        _print_json({"error": str(exc), "code": _error_code(exc)})
+        raise SystemExit(1) from exc
 
 
 @app.command(name="equity.price.quote")
@@ -429,9 +466,15 @@ def index_price_historical(
     symbol: str,
     start_date: str | None = None,
     end_date: str | None = None,
+    limit: int | None = None,
 ) -> None:
     """Get index historical price data."""
-    _run_route("index.price.historical", symbol=symbol, start_date=start_date, end_date=end_date)
+    try:
+        results = _execute_route("index.price.historical", symbol=symbol, start_date=start_date, end_date=end_date)
+        _print_json(_apply_limit(results, limit))
+    except Exception as exc:
+        _print_json({"error": str(exc), "code": _error_code(exc)})
+        raise SystemExit(1) from exc
 
 
 @app.command(name="index.snapshots")
@@ -453,9 +496,15 @@ def etf_historical(
     symbol: str,
     start_date: str | None = None,
     end_date: str | None = None,
+    limit: int | None = None,
 ) -> None:
     """Get ETF historical price data."""
-    _run_route("etf.historical", symbol=symbol, start_date=start_date, end_date=end_date)
+    try:
+        results = _execute_route("etf.historical", symbol=symbol, start_date=start_date, end_date=end_date)
+        _print_json(_apply_limit(results, limit))
+    except Exception as exc:
+        _print_json({"error": str(exc), "code": _error_code(exc)})
+        raise SystemExit(1) from exc
 
 
 @app.command(name="etf.search")
