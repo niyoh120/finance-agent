@@ -52,20 +52,25 @@ openbb-agent-cli equity.price.historical SYMBOL \
   [--start-date YYYY-MM-DD] \
   [--end-date YYYY-MM-DD] \
   [--interval INTERVAL] \
-  [--adjusted]
+  [--adjusted] \
+  [--limit N]
 ```
 
 **参数**:
-- `SYMBOL`: 股票代码（必需）
+- `SYMBOL`: 股票代码（必需）。该必需参数支持位置参数与 `--symbol SYMBOL` 两种写法。
 - `--start-date`: 开始日期 (YYYY-MM-DD)
 - `--end-date`: 结束日期 (YYYY-MM-DD)
 - `--interval`: 时间间隔 (1m, 5m, 15m, 30m, 1h, 4h, 1d, 1w, 1M)，默认 1d
 - `--adjusted`: 是否复权
+- `--limit`: 只保留最近的 N 条记录（在 CLI 侧裁剪，不下传到底层接口）
 
 **示例**:
 ```bash
 # 获取 AAPL 最近日线数据
 openbb-agent-cli equity.price.historical AAPL
+
+# 获取 AAPL 最近 20 条日线数据
+openbb-agent-cli equity.price.historical AAPL --limit 20
 
 # 获取指定日期范围的 1 小时 K 线
 openbb-agent-cli equity.price.historical AAPL \
@@ -268,14 +273,24 @@ openbb-agent-cli index.search "S&P"
 ```bash
 openbb-agent-cli index.price.historical SYMBOL \
   [--start-date YYYY-MM-DD] \
-  [--end-date YYYY-MM-DD]
+  [--end-date YYYY-MM-DD] \
+  [--limit N]
 ```
+
+**参数**:
+- `SYMBOL`: 指数代码（必需）。该必需参数支持位置参数与 `--symbol SYMBOL` 两种写法。
+- `--start-date`: 开始日期 (YYYY-MM-DD)
+- `--end-date`: 结束日期 (YYYY-MM-DD)
+- `--limit`: 只保留最近的 N 条记录（在 CLI 侧裁剪，不下传到底层接口）
 
 **示例**:
 ```bash
 openbb-agent-cli index.price.historical SPX \
   --start-date 2024-01-01 \
   --end-date 2024-12-31
+
+# 只取最近 10 条结果
+openbb-agent-cli index.price.historical SPX --limit 10
 ```
 
 ---
@@ -313,12 +328,22 @@ openbb-agent-cli index.snapshots --symbol SPX --symbol DJI
 ```bash
 openbb-agent-cli etf.historical SYMBOL \
   [--start-date YYYY-MM-DD] \
-  [--end-date YYYY-MM-DD]
+  [--end-date YYYY-MM-DD] \
+  [--limit N]
 ```
+
+**参数**:
+- `SYMBOL`: ETF 代码（必需）。该必需参数支持位置参数与 `--symbol SYMBOL` 两种写法。
+- `--start-date`: 开始日期 (YYYY-MM-DD)
+- `--end-date`: 结束日期 (YYYY-MM-DD)
+- `--limit`: 只保留最近的 N 条记录（在 CLI 侧裁剪，不下传到底层接口）
 
 **示例**:
 ```bash
 openbb-agent-cli etf.historical SPY
+
+# 只取最近 5 条结果
+openbb-agent-cli etf.historical SPY --limit 5
 ```
 
 ---
@@ -532,11 +557,23 @@ openbb-agent-cli batch \
   [--max-workers N]
 ```
 
+**参数**:
+- `--queries`: 自定义查询 JSON 数组
+- `--template`: 内置模板名称
+- `--symbol`: 股票/指数代码（equity-overview、index-detail 需要）
+- `--region`: 市场区域 (cn/us/hk)，默认 cn
+- `--country`: 国家，默认 china
+- `--start-date` / `--end-date`: 日期范围
+- `--limit`: 返回数量。在 `market-overview` 模板中控制筛选股票数量；在 `equity-overview` 和 `index-detail` 模板中控制历史价格返回条数（CLI 侧裁剪）
+- `--news-limit`: 新闻返回数量（equity-overview、market-overview），默认 20
+- `--options-limit`: 期权异动返回数量（equity-overview），默认 50
+- `--max-workers`: 并发数，默认 4（当前实际串行执行）
+
 **内置模板**:
-- `equity-overview`: 个股报价、历史价格、公司新闻、期权异动，需要 `--symbol`
-- `market-overview`: 指数快照、股票筛选、全球新闻，常用 `--region`
-- `macro-overview`: GDP、CPI、PMI、经济日历，常用 `--country`
-- `index-detail`: 指数快照、指数历史价格，需要 `--symbol`
+- `equity-overview`: 个股报价、历史价格、公司新闻、期权异动。需要 `--symbol`，建议搭配 `--limit` 控制历史价格返回条数
+- `market-overview`: 指数快照、股票筛选、全球新闻。常用 `--region`，`--limit` 控制筛选股票数量
+- `macro-overview`: GDP、CPI、PMI、经济日历。常用 `--country`
+- `index-detail`: 指数快照、指数历史价格。需要 `--symbol`，建议搭配 `--limit` 控制历史价格返回条数
 
 **示例**:
 ```bash
@@ -546,6 +583,14 @@ openbb-agent-cli batch \
   --symbol AAPL \
   --start-date 2024-01-01 \
   --end-date 2024-01-31
+
+# 个股概览，限制历史价格为最近 30 条
+openbb-agent-cli batch \
+  --template equity-overview \
+  --symbol AAPL \
+  --start-date 2024-01-01 \
+  --end-date 2024-01-31 \
+  --limit 30
 
 # 市场概览
 openbb-agent-cli batch --template market-overview --region cn --limit 20
@@ -583,3 +628,29 @@ openbb-agent-cli batch --queries '[
 - `EMPTY_DATA`: 无数据
 - `CLI_ERROR`: CLI 参数错误
 - 其他错误码为异常类名
+
+---
+
+## 命令参考
+
+| 命令 | 必需参数 | 可选参数 |
+| :--- | :--- | :--- |
+| `equity.price.historical` | `symbol` | `start-date`, `end-date`, `interval`, `adjusted`, `limit` |
+| `equity.price.quote` | `symbol` | - |
+| `equity.search` | `query` | `is-symbol` |
+| `equity.screener` | - | `market`, `limit`, `price-min`, `price-max`, `change-percent-min`, `change-percent-max`, `volume-min`, `volume-max`, `market-cap-min`, `market-cap-max`, `rsi-min`, `rsi-max`, `sector`, `filters`, `fields` |
+| `index.available` | - | - |
+| `index.search` | `query` | `is-symbol` |
+| `index.price.historical` | `symbol` | `start-date`, `end-date`, `limit` |
+| `index.snapshots` | - | `region` (cn/us/hk), `symbol` |
+| `etf.historical` | `symbol` | `start-date`, `end-date`, `limit` |
+| `etf.search` | `query` | - |
+| `economy.calendar` | - | `start-date`, `end-date` |
+| `economy.available-indicators` | - | - |
+| `economy.indicators` | `symbol` | `country`, `frequency`, `start-date`, `end-date` |
+| `economy.gdp.nominal` | - | `country`, `start-date`, `end-date` |
+| `economy.cpi` | - | `country`, `transform`, `frequency`, `harmonized`, `start-date`, `end-date` |
+| `news.company` | `symbol` | `start-date`, `end-date`, `limit` |
+| `news.world` | - | `start-date`, `end-date`, `limit` |
+| `derivatives.options.unusual` | - | `symbol`, `start-date`, `end-date`, `side`, `option-type`, `min-premium`, `min-vol-oi`, `limit` |
+| `batch` | `queries` 或 `template` | `symbol`, `region`, `country`, `start-date`, `end-date`, `limit`, `news-limit`, `options-limit`, `max-workers` |
