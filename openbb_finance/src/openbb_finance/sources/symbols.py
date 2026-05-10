@@ -7,6 +7,27 @@ from openbb_finance.sources.base import Market
 SH_SUFFIXES = {"SH", "SS", "XSHG"}
 SZ_SUFFIXES = {"SZ", "XSHE"}
 
+# Non-CN index symbols whose yfinance ticker differs from the OpenBB symbol.
+# Maps OpenBB symbol -> yfinance ticker.
+# Symbols NOT in this map have no yfinance historical data source;
+# they will fall through to the empty-list path and produce EMPTY_DATA.
+YFINANCE_INDEX_SYMBOL_MAP: dict[str, str] = {
+    # US indices: OpenBB name -> ^SYMBOL
+    "SPX": "^SPX",
+    "DJI": "^DJI",
+    "IXIC": "^IXIC",
+    "NDX": "^NDX",
+    "RUT": "^RUT",
+    "VIX": "^VIX",
+    # HK indices
+    "HSI": "^HSI",
+    "HSCEI": "^HSCE",
+    # HSTECH has no yfinance historical data source; deliberately omitted.
+}
+
+# Known HK index symbols (pure alphabetic, no .HK suffix).
+HK_INDEX_SYMBOLS: frozenset[str] = frozenset({"HSI", "HSCEI", "HSTECH"})
+
 
 def split_symbol(symbol: str) -> tuple[str, str | None]:
     value = symbol.strip().upper()
@@ -57,13 +78,19 @@ def to_yfinance_symbol(symbol: str) -> str:
         return f"{code}.SS"
     if code and exchange == "sz":
         return f"{code}.SZ"
-    return symbol.strip().upper()
+    value = symbol.strip().upper()
+    if value in YFINANCE_INDEX_SYMBOL_MAP:
+        return YFINANCE_INDEX_SYMBOL_MAP[value]
+    return value
 
 
 def infer_market_from_symbol(symbol: str) -> Market:
     value = symbol.strip().upper()
     if is_cn_symbol(value):
         return "cn"
-    if value.endswith(".HK") or (value.isdigit() and len(value) == 5):
+    code, suffix = split_symbol(value)
+    if suffix == "HK" or (code.isdigit() and len(code) == 5):
+        return "hk"
+    if code in HK_INDEX_SYMBOLS:
         return "hk"
     return "us"

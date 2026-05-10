@@ -1,6 +1,6 @@
 from datetime import date, datetime
 
-from openbb_finance.router import baostock_available_for_range, route_price_sources
+from openbb_finance.router import baostock_available_for_range, route_index_price_sources, route_price_sources
 from openbb_finance.sources.base import PriceQuery
 
 
@@ -52,3 +52,37 @@ def test_cn_daily_routes_baostock_after_update():
         "baostock",
         "akshare",
     ]
+
+
+def test_index_price_routes_cn_through_standard():
+    query = PriceQuery(
+        symbol="000001.XSHG",
+        market="cn",
+        end_date=date(2026, 4, 27),
+        interval="1d",
+    )
+    sources = route_index_price_sources(query, now=datetime(2026, 4, 27, 16, 0))
+    assert "tdx" in sources
+    assert "tickflow" in sources
+
+
+def test_index_price_routes_us_only_yahoo():
+    query = PriceQuery(
+        symbol="SPX",
+        market="us",
+        end_date=date(2026, 4, 27),
+        interval="1d",
+    )
+    sources = route_index_price_sources(query, now=datetime(2026, 4, 27, 16, 0))
+    assert sources == ["yahoo"]
+
+
+def test_index_price_routes_hk_only_yahoo():
+    query = PriceQuery(
+        symbol="HSI",
+        market="hk",
+        end_date=date(2026, 4, 27),
+        interval="1d",
+    )
+    sources = route_index_price_sources(query, now=datetime(2026, 4, 27, 16, 0))
+    assert sources == ["yahoo"]

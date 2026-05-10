@@ -81,3 +81,16 @@ def route_price_sources(query: PriceQuery, *, now: datetime | None = None) -> li
         return ["tickflow", "yahoo"]
 
     return ["openbb"]
+
+
+def route_index_price_sources(query: PriceQuery, *, now: datetime | None = None) -> list[str]:
+    """Route index historical price sources.
+
+    TickFlow klines do not cover US/HK index prices, so only Yahoo is used
+    for non-CN index K-line data. CN indices route through the standard
+    price sources that include TDX and TickFlow.
+    """
+    market: Market = query.market
+    if market == "cn":
+        return route_price_sources(query, now=now)
+    return ["yahoo"]

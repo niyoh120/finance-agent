@@ -13,7 +13,7 @@ from openbb_core.provider.standard_models.index_historical import (
 from openbb_core.provider.utils.errors import EmptyDataError
 
 from openbb_finance.registry import build_default_registry
-from openbb_finance.router import route_price_sources
+from openbb_finance.router import route_index_price_sources
 from openbb_finance.sources.base import PriceQuery, infer_market
 
 
@@ -39,7 +39,7 @@ class FinanceIndexHistoricalFetcher(Fetcher[IndexHistoricalQueryParams, list[Ind
             end_date=query.end_date,
             interval="1d",
         )
-        for source in registry.ordered_by_names(route_price_sources(price_query)):
+        for source in registry.ordered_by_names(route_index_price_sources(price_query)):
             if not hasattr(source, "fetch_price"):
                 continue
             try:
