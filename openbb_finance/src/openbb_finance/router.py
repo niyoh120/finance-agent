@@ -77,8 +77,8 @@ def route_price_sources(query: PriceQuery, *, now: datetime | None = None) -> li
 
     if market in {"us", "hk"}:
         if interval_type == "minute":
-            return ["yahoo"]
-        return ["tickflow", "yahoo"]
+            return ["tdx", "yahoo"]
+        return ["tdx", "tickflow", "yahoo"]
 
     return ["openbb"]
 

@@ -6,6 +6,7 @@ requires-python = ">=3.11"
 dependencies = [
   "alembic>=1.13.0",
   "asyncpg>=0.29.0",
+  "easy-tdx>=1.14.1",
   "finance-shared",
   "openlit>=1.26.0",
   "setuptools<80",

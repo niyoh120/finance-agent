@@ -54,6 +54,24 @@ def test_cn_daily_routes_baostock_after_update():
     ]
 
 
+def test_us_minute_routes_tdx_before_yahoo():
+    query = PriceQuery(symbol="AAPL", market="us", interval="1m")
+
+    assert route_price_sources(query) == ["tdx", "yahoo"]
+
+
+def test_hk_daily_routes_tdx_before_tickflow_and_yahoo():
+    query = PriceQuery(symbol="00700.HK", market="hk", interval="1d")
+
+    assert route_price_sources(query) == ["tdx", "tickflow", "yahoo"]
+
+
+def test_us_daily_routes_tdx_before_tickflow_and_yahoo():
+    query = PriceQuery(symbol="AAPL", market="us", interval="1d")
+
+    assert route_price_sources(query) == ["tdx", "tickflow", "yahoo"]
+
+
 def test_index_price_routes_cn_through_standard():
     query = PriceQuery(
         symbol="000001.XSHG",

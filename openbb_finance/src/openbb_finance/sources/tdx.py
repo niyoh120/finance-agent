@@ -1,132 +1,147 @@
-"""TDX API data source."""
+"""TDX data source backed by the local easy-tdx SDK."""
 
 from __future__ import annotations
 
 import asyncio
+import logging
 from datetime import date, datetime
 from typing import Any
 
-import httpx
+from easy_tdx import Adjust, ExMarket, MacClient, MacExClient, Period
 
 from openbb_finance.config import SourceConfig
-from openbb_finance.sources.base import (
-    DataType,
-    Market,
-    PriceQuery,
-    SourceError,
-    is_intraday_interval,
-    normalize_interval,
-)
+from openbb_finance.sources.base import DataType, Market, PriceQuery, SourceError, is_intraday_interval, normalize_interval
 from openbb_finance.sources.symbols import cn_exchange, cn_plain_symbol, split_symbol, to_openbb_symbol
 
-ADJUST_FACTOR_START_DATE = date(1990, 1, 1)
+CN_MARKET_SZ = 0
+CN_MARKET_SH = 1
+TDX_COUNT_LIMIT = 700
+DEFAULT_TIMEOUT = 15.0
+logger = logging.getLogger(__name__)
 
 
 class TdxSource:
+    """TDX market data source using easy-tdx local SDK clients."""
+
     name = "tdx"
 
     def __init__(self, config: SourceConfig) -> None:
         self.enabled = config.enabled
         self.priority = config.priority
-        self.base_url = (config.base_url or "https://tdx-api.niyoh.top").rstrip("/")
+        self.timeout = DEFAULT_TIMEOUT
 
     def supports(self, market: Market, data_type: DataType, **kwargs: Any) -> bool:
         del kwargs
-        return market == "cn" and data_type in {"price", "search"}
-
-    async def fetch_quote(self, symbol: str) -> dict[str, Any]:
-        code = _to_tdx_code(symbol)
-        payload = await self._get("/api/quote", {"code": code})
-        items = _response_data(payload)
-        if not isinstance(items, list) or not items:
-            raise SourceError(f"TDX quote returned no data for {symbol}")
-        item = next((value for value in items if isinstance(value, dict) and str(value.get("Code")) == code), items[0])
-        if not isinstance(item, dict):
-            raise SourceError(f"TDX quote returned invalid data for {symbol}")
-        return _normalize_quote(item, symbol)
+        return market in {"cn", "hk", "us"} and data_type in {"price", "search"}
 
     async def fetch_price(self, query: PriceQuery) -> list[dict[str, Any]]:
-        interval = normalize_interval(query.interval)
-        params: dict[str, Any] = {
-            "code": _to_tdx_code(query.symbol),
-            "type": _to_tdx_interval(interval),
-        }
+        return await asyncio.to_thread(self._fetch_price_sync, query)
 
-        payload = await self._get(_to_tdx_kline_path(interval, query.adjusted), params)
-        data = _response_data(payload)
-        if not isinstance(data, dict):
+    async def fetch_quote(self, symbol: str) -> dict[str, Any]:
+        return await asyncio.to_thread(self._fetch_quote_sync, symbol)
+
+    async def fetch_equity_search(self, query: str, is_symbol: bool | None = None) -> list[dict[str, Any]]:
+        """Return exact-symbol metadata when easy-tdx can resolve it.
+
+        easy-tdx does not expose the broad keyword search API previously used by
+        the HTTP TDX service. Keep this method lightweight so existing search
+        routing can still fall through to richer sources for name searches.
+        """
+
+        if not is_symbol:
             return []
-        rows = data.get("List") or data.get("list") or []
-        if not isinstance(rows, list):
+        try:
+            return await asyncio.to_thread(self._fetch_exact_symbol_sync, query)
+        except SourceError:
             return []
-        records = [_normalize_price_row(row, query.symbol) for row in rows if isinstance(row, dict)]
-        filtered = [
+        except Exception:
+            logger.warning("TDX exact symbol lookup failed for %r", query, exc_info=True)
+            return []
+
+    def _fetch_price_sync(self, query: PriceQuery) -> list[dict[str, Any]]:
+        period = _to_tdx_period(query.interval)
+        adjust = _to_tdx_adjust(query.adjusted)
+        market = query.market
+
+        if market == "cn":
+            easy_market, code = _to_cn_market_code(query.symbol)
+            with MacClient.from_best_host(timeout=self.timeout) as client:
+                frame = client.get_stock_kline(easy_market, code, period, 0, TDX_COUNT_LIMIT, adjust=adjust)
+        elif market in {"hk", "us"}:
+            easy_market, code = _to_ex_market_code(query.symbol, market)
+            with MacExClient.from_best_host(timeout=self.timeout) as client:
+                frame = client.goods_kline(easy_market, code, period, 0, TDX_COUNT_LIMIT, adjust=adjust)
+        else:
+            raise SourceError(f"TDX unsupported market: {market}")
+
+        records = [_normalize_price_row(row, query) for row in _iter_frame_rows(frame)]
+        return [
             record
             for record in records
             if (query.start_date is None or _as_date(record["date"]) >= query.start_date)
             and (query.end_date is None or _as_date(record["date"]) <= query.end_date)
         ]
-        if query.adjusted and is_intraday_interval(interval):
-            return await self._adjust_intraday_prices(query.symbol, filtered)
-        return filtered
 
-    async def fetch_equity_search(self, query: str, is_symbol: bool | None = None) -> list[dict[str, Any]]:
-        keyword = _to_tdx_search_keyword(query, is_symbol)
-        if keyword is None:
+    def _fetch_quote_sync(self, symbol: str) -> dict[str, Any]:
+        market = _infer_tdx_market(symbol)
+        if market == "cn":
+            easy_market, code = _to_cn_market_code(symbol)
+            with MacClient.from_best_host(timeout=self.timeout) as client:
+                frame = client.get_stock_quotes([(easy_market, code)])
+        elif market in {"hk", "us"}:
+            easy_market, code = _to_ex_market_code(symbol, market)
+            with MacExClient.from_best_host(timeout=self.timeout) as client:
+                frame = client.goods_quotes([(easy_market, code)])
+        else:
+            raise SourceError(f"TDX unsupported market: {market}")
+
+        rows = list(_iter_frame_rows(frame))
+        if not rows:
+            raise SourceError(f"TDX quote returned no data for {symbol}")
+        return _normalize_quote(rows[0], symbol)
+
+    def _fetch_exact_symbol_sync(self, query: str) -> list[dict[str, Any]]:
+        market = _infer_tdx_market(query)
+        if market != "cn":
             return []
-        payload = await self._get("/api/search", {"keyword": keyword})
-        items = _response_data(payload)
-        if not isinstance(items, list):
+        easy_market, code = _to_cn_market_code(query)
+        with MacClient.from_best_host(timeout=self.timeout) as client:
+            frame = client.get_symbol_info(easy_market, code)
+        rows = list(_iter_frame_rows(frame))
+        if not rows:
             return []
-
-        query_text = query.strip().upper()
-        plain_query = cn_plain_symbol(query_text)
-        results: list[dict[str, Any]] = []
-        for item in items:
-            if not isinstance(item, dict):
-                continue
-            code = str(item.get("code", "")).strip()
-            name = str(item.get("name", "")).strip()
-            exchange = str(item.get("exchange", "")).strip().lower() or None
-            if not code:
-                continue
-            symbol = to_openbb_symbol(f"{code}.{exchange}" if exchange else code)
-            if is_symbol and not _symbol_matches(query_text, plain_query, code, symbol, exchange):
-                continue
-            results.append({"symbol": symbol, "name": name, "source": "tdx"})
-        return results
-
-    async def _get(self, path: str, params: dict[str, Any] | None = None) -> dict[str, Any]:
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.get(f"{self.base_url}{path}", params=params)
-        if response.is_error:
-            raise SourceError(f"TDX request failed: {response.status_code}")
-        data = response.json()
-        if not isinstance(data, dict):
-            raise SourceError("TDX returned invalid JSON")
-        return data
-
-    async def _adjust_intraday_prices(self, symbol: str, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        if not records:
-            return records
-        factors = await self._fetch_adjust_factors(symbol, _as_date(records[0]["date"]), _as_date(records[-1]["date"]))
-        if not factors:
-            raise SourceError(f"TDX adjusted intraday prices require adjustment factors for {symbol}")
-        return [_apply_adjust_factor(record, _factor_for_date(factors, _as_date(record["date"]))) for record in records]
-
-    async def _fetch_adjust_factors(
-        self,
-        symbol: str,
-        start_date: date,
-        end_date: date,
-    ) -> list[tuple[date, float]]:
-        return await asyncio.to_thread(_fetch_baostock_adjust_factors, symbol, start_date, end_date)
+        name = str(rows[0].get("name") or "").strip()
+        return [{"symbol": to_openbb_symbol(query), "name": name, "source": "tdx"}]
 
 
-def _response_data(payload: dict[str, Any]) -> Any:
-    if payload.get("code") not in {0, None}:
-        raise SourceError(str(payload.get("message") or "TDX request failed"))
-    return payload.get("data")
+def _infer_tdx_market(symbol: str) -> Market:
+    from openbb_finance.sources.base import infer_market
+
+    return infer_market(symbol)
+
+
+def _to_cn_market_code(symbol: str) -> tuple[int, str]:
+    code = _to_tdx_code(symbol)
+    exchange = cn_exchange(symbol)
+    return (CN_MARKET_SH if exchange == "sh" else CN_MARKET_SZ), code
+
+
+def _to_ex_market_code(symbol: str, market: Market) -> tuple[int, str]:
+    code, suffix = split_symbol(symbol)
+    del suffix
+    if market == "hk":
+        if not code.isdigit():
+            raise SourceError(f"TDX invalid Hong Kong symbol: {symbol}")
+        padded = code.zfill(5)
+        if padded.startswith("08"):
+            return ExMarket.HK_GEM, padded
+        return ExMarket.HK_MAIN_BOARD, padded
+    if market == "us":
+        value = code.strip().upper()
+        if not value:
+            raise SourceError(f"TDX invalid US symbol: {symbol}")
+        return ExMarket.US_STOCK, value
+    raise SourceError(f"TDX unsupported extended market: {market}")
 
 
 def _to_tdx_code(symbol: str) -> str:
@@ -136,141 +151,91 @@ def _to_tdx_code(symbol: str) -> str:
     return code
 
 
-def _to_tdx_interval(interval: str) -> str:
-    mapping = {
-        "1m": "minute1",
-        "5m": "minute5",
-        "15m": "minute15",
-        "30m": "minute30",
-        "60m": "hour",
-        "1h": "hour",
-        "1d": "day",
-        "1w": "week",
-        "1M": "month",
-    }
+def _to_tdx_period(interval: str) -> Period:
     normalized = normalize_interval(interval)
+    mapping = {
+        "1m": Period.MIN_1,
+        "5m": Period.MIN_5,
+        "15m": Period.MIN_15,
+        "30m": Period.MIN_30,
+        "60m": Period.MIN_60,
+        "1h": Period.MIN_60,
+        "1d": Period.DAILY,
+        "1w": Period.WEEKLY,
+        "1M": Period.MONTHLY,
+    }
     if normalized not in mapping:
         raise SourceError(f"TDX unsupported interval: {interval}")
     return mapping[normalized]
 
 
-def _to_tdx_kline_path(interval: str, adjusted: bool) -> str:
-    if not adjusted:
-        return "/api/kline-all/tdx"
-    if is_intraday_interval(interval):
-        return "/api/kline-all/tdx"
-    return "/api/kline-all/ths"
+def _to_tdx_adjust(adjusted: bool) -> Adjust:
+    return Adjust.QFQ if adjusted else Adjust.NONE
 
 
-def _to_tdx_search_keyword(query: str, is_symbol: bool | None) -> str | None:
-    text = query.strip()
-    upper = text.upper()
-    plain = cn_plain_symbol(upper)
-    if plain is not None:
-        return plain if is_symbol else text
-    code, suffix = split_symbol(upper)
-    if suffix is not None:
-        return None
-    if code.isdigit() and len(code) != 6:
-        return None
-    if code.isascii() and code.isalpha():
-        return None
-    return text
+def _iter_frame_rows(frame: Any) -> list[dict[str, Any]]:
+    if frame is None:
+        return []
+    if hasattr(frame, "empty") and frame.empty:
+        return []
+    if hasattr(frame, "to_dict"):
+        rows = frame.to_dict("records")
+        return [dict(row) for row in rows]
+    if isinstance(frame, list):
+        return [dict(row) for row in frame if isinstance(row, dict)]
+    return []
 
 
-def _normalize_quote(item: dict[str, Any], symbol: str) -> dict[str, Any]:
-    kline = item.get("K") if isinstance(item.get("K"), dict) else {}
-    prev_close = _price(kline.get("Last"))
-    last_price = _price(kline.get("Close"))
-    change = (
-        last_price - prev_close
-        if last_price is not None and prev_close not in {None, 0}
-        else None
-    )
+def _normalize_price_row(row: dict[str, Any], query: PriceQuery) -> dict[str, Any]:
+    date_value = _parse_date(row.get("datetime") or row.get("date") or row.get("time"))
+    if not is_intraday_interval(normalize_interval(query.interval)):
+        date_value = _as_date(date_value)
     return {
-        "symbol": to_openbb_symbol(symbol),
+        "symbol": _normalize_symbol(query.symbol),
+        "date": date_value,
+        "open": _optional_float(row.get("open")),
+        "high": _optional_float(row.get("high")),
+        "low": _optional_float(row.get("low")),
+        "close": _optional_float(row.get("close")),
+        "volume": _normalize_price_volume(row.get("vol") or row.get("volume"), query.market),
+        "amount": _optional_float(row.get("amount")),
+        "source": "tdx",
+    }
+
+
+def _normalize_quote(row: dict[str, Any], symbol: str) -> dict[str, Any]:
+    last_price = _optional_float(row.get("close") or row.get("price") or row.get("last_price"))
+    prev_close = _optional_float(row.get("pre_close") or row.get("prev_close"))
+    market = _infer_tdx_market(symbol)
+    change = last_price - prev_close if last_price is not None and prev_close not in {None, 0} else None
+    return {
+        "symbol": _normalize_symbol(symbol),
         "last_price": last_price,
-        "open": _price(kline.get("Open")),
-        "high": _price(kline.get("High")),
-        "low": _price(kline.get("Low")),
+        "open": _optional_float(row.get("open")),
+        "high": _optional_float(row.get("high")),
+        "low": _optional_float(row.get("low")),
         "prev_close": prev_close,
-        "volume": _optional_float(item.get("TotalHand"), multiplier=100),
+        "volume": _normalize_quote_volume(row.get("vol") or row.get("volume"), market),
         "change": change,
         "change_percent": (change / prev_close * 100) if change is not None and prev_close else None,
         "source": "tdx",
     }
 
 
-def _normalize_price_row(row: dict[str, Any], symbol: str) -> dict[str, Any]:
-    return {
-        "symbol": to_openbb_symbol(symbol),
-        "date": _parse_date(row.get("Time")),
-        "open": _price(row.get("Open")),
-        "high": _price(row.get("High")),
-        "low": _price(row.get("Low")),
-        "close": _price(row.get("Close")),
-        "volume": _optional_float(row.get("Volume"), multiplier=100),
-        "amount": _price(row.get("Amount")),
-        "source": "tdx",
-    }
-
-
-def _fetch_baostock_adjust_factors(
-    symbol: str,
-    start_date: date,
-    end_date: date,
-) -> list[tuple[date, float]]:
-    import baostock as bs
-
-    from openbb_finance.sources.baostock import _baostock_session, _to_baostock_symbol
-
-    with _baostock_session(bs):
-        rs = bs.query_adjust_factor(
-            _to_baostock_symbol(symbol),
-            start_date=ADJUST_FACTOR_START_DATE.isoformat(),
-            end_date=end_date.isoformat(),
-        )
-        if rs.error_code != "0":
-            raise SourceError(rs.error_msg)
-        rows = []
-        while rs.next():
-            rows.append(dict(zip(rs.fields, rs.get_row_data(), strict=True)))
-    return _normalize_adjust_factors(rows)
-
-
-def _normalize_adjust_factors(rows: list[dict[str, str]]) -> list[tuple[date, float]]:
-    factors: list[tuple[date, float]] = []
-    for row in rows:
-        raw_date = row.get("dividOperateDate") or row.get("date")
-        raw_factor = row.get("foreAdjustFactor") or row.get("adjustFactor")
-        if not raw_date or raw_factor in {None, ""}:
-            continue
-        factors.append((date.fromisoformat(raw_date), float(raw_factor)))
-    return sorted(factors, key=lambda item: item[0])
-
-
-def _factor_for_date(factors: list[tuple[date, float]], value: date) -> float:
-    selected = factors[0][1]
-    for factor_date, factor in factors:
-        if factor_date > value:
-            break
-        selected = factor
-    return selected
-
-
-def _apply_adjust_factor(record: dict[str, Any], factor: float) -> dict[str, Any]:
-    adjusted = dict(record)
-    for field in ("open", "high", "low", "close"):
-        value = adjusted.get(field)
-        if value is not None:
-            adjusted[field] = round(float(value) * factor, 6)
-    return adjusted
+def _normalize_symbol(symbol: str) -> str:
+    if cn_plain_symbol(symbol) is not None:
+        return to_openbb_symbol(symbol)
+    return symbol.strip().upper()
 
 
 def _parse_date(value: Any) -> datetime:
-    text = str(value or "")
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
+    text = str(value or "").strip()
     if not text:
-        raise SourceError("TDX returned price row without Time")
+        raise SourceError("TDX returned price row without datetime")
     return datetime.fromisoformat(text.replace("Z", "+00:00"))
 
 
@@ -278,25 +243,19 @@ def _as_date(value: date | datetime) -> date:
     return value.date() if isinstance(value, datetime) else value
 
 
-def _price(value: Any) -> float | None:
-    result = _optional_float(value, multiplier=0.001)
-    return round(result, 6) if result is not None else None
+def _normalize_price_volume(value: Any, market: Market) -> float | None:
+    # easy-tdx MacEx HK kline volume is in board lots; other tested markets already return shares.
+    multiplier = 100.0 if market == "hk" else 1.0
+    return _optional_float(value, multiplier=multiplier)
+
+
+def _normalize_quote_volume(value: Any, market: Market) -> float | None:
+    # easy-tdx MacClient CN quote volume is in lots; HK/US quotes return shares.
+    multiplier = 100.0 if market == "cn" else 1.0
+    return _optional_float(value, multiplier=multiplier)
 
 
 def _optional_float(value: Any, *, multiplier: float = 1.0) -> float | None:
     if value in {None, ""}:
         return None
     return float(value) * multiplier
-
-
-def _symbol_matches(
-    query: str,
-    plain_query: str | None,
-    code: str,
-    symbol: str,
-    exchange: str | None,
-) -> bool:
-    requested_exchange = cn_exchange(query)
-    if requested_exchange is not None and exchange is not None and exchange != requested_exchange:
-        return False
-    return query in code.upper() or query in symbol.upper() or (plain_query is not None and plain_query in code)

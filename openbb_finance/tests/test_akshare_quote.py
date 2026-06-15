@@ -110,6 +110,27 @@ async def test_equity_quote_cn_falls_back_to_akshare():
 
 
 @pytest.mark.anyio
+async def test_equity_quote_us_routes_tdx_before_fallbacks():
+    class FakeSource:
+        def __init__(self, name):
+            self.name = name
+            self.enabled = True
+
+        async def fetch_quote(self, symbol):
+            return {"symbol": symbol, "last_price": 297.28, "source": self.name}
+
+    class FakeRegistry:
+        def ordered_by_names(self, names):
+            assert names == ["tdx", "tickflow", "yahoo"]
+            return [FakeSource(name) for name in names]
+
+    query = FinanceEquityQuoteFetcher.transform_query({"symbol": "AAPL"})
+    result = await FinanceEquityQuoteFetcher.aextract_data(query, credentials=None, registry=FakeRegistry())
+
+    assert result == [{"symbol": "AAPL", "last_price": 297.28, "source": "tdx"}]
+
+
+@pytest.mark.anyio
 async def test_yahoo_quote_maps_china_symbol_for_yfinance(monkeypatch):
     captured = {}
 
