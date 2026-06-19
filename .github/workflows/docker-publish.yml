@@ -15,13 +15,7 @@ on:
           - all
           - migrate
           - macro-scraper
-          - bubbleseek-scraper
           - options-scraper
-          - futunn-scraper
-          - mcp-server
-          - trade-agent
-          - trade-agent-discord-bot
-          - stock-api
       push:
         description: Push images to DockerHub
         required: true
@@ -52,46 +46,12 @@ jobs:
             build_args: |
               MODULE_NAME=macro-scraper
               MODULE_ENTRY=macro_scraper.main
-          - service: bubbleseek-scraper
-            image: finance-bubbleseek-scraper
-            dockerfile: services/Dockerfile
-            build_args: |
-              MODULE_NAME=bubbleseek-scraper
-              MODULE_ENTRY=bubbleseek_scraper.main
           - service: options-scraper
             image: finance-options-scraper
             dockerfile: services/Dockerfile
             build_args: |
               MODULE_NAME=options-scraper
               MODULE_ENTRY=options_scraper.main
-          - service: futunn-scraper
-            image: finance-futunn-scraper
-            dockerfile: services/Dockerfile
-            build_args: |
-              MODULE_NAME=futunn-scraper
-              MODULE_ENTRY=futunn_scraper.main
-          - service: mcp-server
-            image: finance-mcp-server
-            dockerfile: services/Dockerfile
-            build_args: |
-              MODULE_NAME=mcp-server
-              MODULE_ENTRY=mcp_server.http
-          - service: trade-agent
-            image: finance-trade-agent
-            dockerfile: services/Dockerfile
-            build_args: |
-              MODULE_NAME=trade-agent
-              MODULE_ENTRY=trade_agent.app
-          - service: trade-agent-discord-bot
-            image: finance-trade-agent-discord-bot
-            dockerfile: services/Dockerfile
-            build_args: |
-              MODULE_NAME=trade-agent
-              MODULE_ENTRY=trade_agent.discord_bot
-          - service: stock-api
-            image: finance-stock-api
-            dockerfile: services/stock-api/Dockerfile
-            build_args: ""
     steps:
       - name: Checkout
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.service == 'all' || inputs.service == matrix.service }}

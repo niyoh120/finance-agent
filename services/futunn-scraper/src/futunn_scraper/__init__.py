@@ -1,1 +1,0 @@
-# futunn-scraper

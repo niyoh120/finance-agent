@@ -11,12 +11,8 @@ __pycache__/
 .mypy_cache/
 .pytest_cache/
 
-# Node
-**/node_modules/
-
 # Local build artifacts
 dist/
-services/stock-api/dist/
 
 # Local data
 data/

@@ -1,5 +1,4 @@
 [tools]
-node = "lts"
 python = "3.12.12"
 uv = "latest"
 
@@ -16,43 +15,17 @@ run = "uvx pre-commit install --hook-type pre-commit --hook-type commit-msg"
 depends = ["install"]
 run = "uvx pre-commit run --all-files"
 
-[tasks.bubbleseek-scraper]
-depends = ["install"]
-run = "uv run python -m bubbleseek_scraper.main"
-
 [tasks.options-scraper]
 depends = ["install"]
 run = "uv run python -m options_scraper.main"
-
-[tasks.futunn-scraper]
-depends = ["install"]
-run = "uv run python -m futunn_scraper.main"
 
 [tasks.macro-scraper]
 depends = ["install"]
 run = "uv run python -m macro_scraper.main"
 
-[tasks.mcp-server]
-depends = ["install"]
-run = "uv run python -m mcp_server.http"
-
-[tasks.trade-agent]
-depends = ["install"]
-dir = "services/trade-agent"
-run = "uv run python -m trade_agent.app"
-
-[tasks.trade-agent-discord-bot]
-depends = ["install"]
-dir = "services/trade-agent"
-run = "uv run python -m trade_agent.discord_bot"
-
 [tasks.openbb-agent-cli]
 depends = ["install"]
 run = "uv run --package openbb-agent-cli openbb-agent-cli"
-
-[tasks.stock-api]
-dir = "services/stock-api"
-run = "npm run dev"
 
 [tasks.docker-build-migrate]
 run = "docker build -f migrate/Dockerfile -t {{vars.image_repo}}finance-migrate:latest -t {{vars.image_repo}}finance-migrate:{{exec(command='git rev-parse --short HEAD')}} ."
@@ -60,39 +33,15 @@ run = "docker build -f migrate/Dockerfile -t {{vars.image_repo}}finance-migrate:
 [tasks.docker-build-macro-scraper]
 run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=macro-scraper --build-arg MODULE_ENTRY=macro_scraper.main -t {{vars.image_repo}}finance-macro-scraper:latest -t {{vars.image_repo}}finance-macro-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
 
-[tasks.docker-build-bubbleseek-scraper]
-run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=bubbleseek-scraper --build-arg MODULE_ENTRY=bubbleseek_scraper.main -t {{vars.image_repo}}finance-bubbleseek-scraper:latest -t {{vars.image_repo}}finance-bubbleseek-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
-
 [tasks.docker-build-options-scraper]
 run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=options-scraper --build-arg MODULE_ENTRY=options_scraper.main -t {{vars.image_repo}}finance-options-scraper:latest -t {{vars.image_repo}}finance-options-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
-
-[tasks.docker-build-futunn-scraper]
-run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=futunn-scraper --build-arg MODULE_ENTRY=futunn_scraper.main -t {{vars.image_repo}}finance-futunn-scraper:latest -t {{vars.image_repo}}finance-futunn-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
-
-[tasks.docker-build-mcp-server]
-run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=mcp-server --build-arg MODULE_ENTRY=mcp_server.http -t {{vars.image_repo}}finance-mcp-server:latest -t {{vars.image_repo}}finance-mcp-server:{{exec(command='git rev-parse --short HEAD')}} ."
-
-[tasks.docker-build-trade-agent]
-run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=trade-agent --build-arg MODULE_ENTRY=trade_agent.app -t {{vars.image_repo}}finance-trade-agent:latest -t {{vars.image_repo}}finance-trade-agent:{{exec(command='git rev-parse --short HEAD')}} ."
-
-[tasks.docker-build-trade-agent-discord-bot]
-run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=trade-agent --build-arg MODULE_ENTRY=trade_agent.discord_bot -t {{vars.image_repo}}finance-trade-agent-discord-bot:latest -t {{vars.image_repo}}finance-trade-agent-discord-bot:{{exec(command='git rev-parse --short HEAD')}} ."
-
-[tasks.docker-build-stock-api]
-run = "docker build -f services/stock-api/Dockerfile -t {{vars.image_repo}}finance-stock-api:latest -t {{vars.image_repo}}finance-stock-api:{{exec(command='git rev-parse --short HEAD')}} ."
 
 [tasks.docker-build-all]
 run = [
   { tasks = [
     "docker-build-migrate",
     "docker-build-macro-scraper",
-    "docker-build-bubbleseek-scraper",
     "docker-build-options-scraper",
-    "docker-build-futunn-scraper",
-    "docker-build-mcp-server",
-    "docker-build-trade-agent",
-    "docker-build-trade-agent-discord-bot",
-    "docker-build-stock-api",
   ] },
 ]
 
@@ -108,47 +57,10 @@ run = [
   "docker push {{vars.image_repo}}finance-macro-scraper:{{exec(command='git rev-parse --short HEAD')}}",
 ]
 
-[tasks.docker-push-bubbleseek-scraper]
-run = [
-  "docker push {{vars.image_repo}}finance-bubbleseek-scraper:latest",
-  "docker push {{vars.image_repo}}finance-bubbleseek-scraper:{{exec(command='git rev-parse --short HEAD')}}",
-]
-
 [tasks.docker-push-options-scraper]
 run = [
   "docker push {{vars.image_repo}}finance-options-scraper:latest",
   "docker push {{vars.image_repo}}finance-options-scraper:{{exec(command='git rev-parse --short HEAD')}}",
-]
-
-[tasks.docker-push-futunn-scraper]
-run = [
-  "docker push {{vars.image_repo}}finance-futunn-scraper:latest",
-  "docker push {{vars.image_repo}}finance-futunn-scraper:{{exec(command='git rev-parse --short HEAD')}}",
-]
-
-[tasks.docker-push-mcp-server]
-run = [
-  "docker push {{vars.image_repo}}finance-mcp-server:latest",
-  "docker push {{vars.image_repo}}finance-mcp-server:{{exec(command='git rev-parse --short HEAD')}}",
-]
-
-[tasks.docker-push-trade-agent]
-run = [
-  "docker push {{vars.image_repo}}finance-trade-agent:latest",
-  "docker push {{vars.image_repo}}finance-trade-agent:{{exec(command='git rev-parse --short HEAD')}}",
-]
-
-
-[tasks.docker-push-trade-agent-discord-bot]
-run = [
-  "docker push {{vars.image_repo}}finance-trade-agent-discord-bot:latest",
-  "docker push {{vars.image_repo}}finance-trade-agent-discord-bot:{{exec(command='git rev-parse --short HEAD')}}",
-]
-
-[tasks.docker-push-stock-api]
-run = [
-  "docker push {{vars.image_repo}}finance-stock-api:latest",
-  "docker push {{vars.image_repo}}finance-stock-api:{{exec(command='git rev-parse --short HEAD')}}",
 ]
 
 [tasks.docker-push-all]
@@ -156,13 +68,7 @@ run = [
   { tasks = [
     "docker-push-migrate",
     "docker-push-macro-scraper",
-    "docker-push-bubbleseek-scraper",
     "docker-push-options-scraper",
-    "docker-push-futunn-scraper",
-    "docker-push-mcp-server",
-    "docker-push-trade-agent",
-    "docker-push-trade-agent-discord-bot",
-    "docker-push-stock-api",
   ] },
 ]
 
@@ -178,47 +84,10 @@ run = [
   { tasks = ["docker-push-macro-scraper"] },
 ]
 
-[tasks.docker-build-push-bubbleseek-scraper]
-run = [
-  { tasks = ["docker-build-bubbleseek-scraper"] },
-  { tasks = ["docker-push-bubbleseek-scraper"] },
-]
-
 [tasks.docker-build-push-options-scraper]
 run = [
   { tasks = ["docker-build-options-scraper"] },
   { tasks = ["docker-push-options-scraper"] },
-]
-
-[tasks.docker-build-push-futunn-scraper]
-run = [
-  { tasks = ["docker-build-futunn-scraper"] },
-  { tasks = ["docker-push-futunn-scraper"] },
-]
-
-[tasks.docker-build-push-mcp-server]
-run = [
-  { tasks = ["docker-build-mcp-server"] },
-  { tasks = ["docker-push-mcp-server"] },
-]
-
-[tasks.docker-build-push-trade-agent]
-run = [
-  { tasks = ["docker-build-trade-agent"] },
-  { tasks = ["docker-push-trade-agent"] },
-]
-
-
-[tasks.docker-build-push-trade-agent-discord-bot]
-run = [
-  { tasks = ["docker-build-trade-agent-discord-bot"] },
-  { tasks = ["docker-push-trade-agent-discord-bot"] },
-]
-
-[tasks.docker-build-push-stock-api]
-run = [
-  { tasks = ["docker-build-stock-api"] },
-  { tasks = ["docker-push-stock-api"] },
 ]
 
 [tasks.docker-build-push-all]

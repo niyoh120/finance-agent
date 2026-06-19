@@ -48,7 +48,7 @@ def configure_logging(*, service: str | None = None) -> None:
     """配置全局 logging/structlog。
 
     Args:
-        service: 服务标识（例如: "mcp-server" / "macro-scraper"），用于读取
+        service: 服务标识（例如: "macro-scraper" / "options-scraper"），用于读取
             `FA_{SERVICE}_LOG_LEVEL` 覆盖 `FA_LOG_LEVEL`。
     """
 
