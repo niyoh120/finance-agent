@@ -47,6 +47,10 @@ def _ensure_list(value: Any) -> list[str] | None:
     return [str(value)]
 
 
+def _coalesce(value: Any, default: Any) -> Any:
+    return default if value is None else value
+
+
 def _inject_obbject_types() -> None:
     """Inject OBBject_* types into provider_interface module for openbb compatibility."""
     import openbb_core.app.provider_interface as pi_module
@@ -135,6 +139,8 @@ def _run_provider_model(
 
 
 RouteExecutor = Callable[[dict[str, Any]], list[dict[str, Any]]]
+TechnicalIndicator = Literal["rsi", "macd", "sma", "ema", "bbands", "atr", "stoch", "vwap"]
+_TECHNICAL_INDICATORS = ["rsi", "macd", "sma", "ema", "bbands", "atr", "stoch", "vwap"]
 
 
 def _route_executor(route: str) -> RouteExecutor:
@@ -175,6 +181,80 @@ def _index_snapshots_executor(params: dict[str, Any]) -> list[dict[str, Any]]:
     )
 
 
+def _technical_indicators_params(
+    *,
+    symbol: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    interval: str | None = None,
+    adjusted: bool | None = None,
+    indicators: list[str] | None = None,
+    rsi_length: int | None = None,
+    macd_fast: int | None = None,
+    macd_slow: int | None = None,
+    macd_signal: int | None = None,
+    sma_lengths: list[int] | None = None,
+    ema_lengths: list[int] | None = None,
+    bbands_length: int | None = None,
+    bbands_std: float | None = None,
+    atr_length: int | None = None,
+    stoch_k: int | None = None,
+    stoch_d: int | None = None,
+) -> dict[str, Any]:
+    return {
+        "symbol": symbol,
+        "start_date": start_date,
+        "end_date": end_date,
+        "interval": _coalesce(interval, "1d"),
+        "adjusted": _coalesce(adjusted, False),
+        "indicators": _coalesce(_ensure_list(indicators) or None, list(_TECHNICAL_INDICATORS)),
+        "rsi_length": _coalesce(rsi_length, 14),
+        "macd_fast": _coalesce(macd_fast, 12),
+        "macd_slow": _coalesce(macd_slow, 26),
+        "macd_signal": _coalesce(macd_signal, 9),
+        "sma_lengths": _coalesce(sma_lengths or None, [20, 50]),
+        "ema_lengths": _coalesce(ema_lengths or None, [20]),
+        "bbands_length": _coalesce(bbands_length, 20),
+        "bbands_std": _coalesce(bbands_std, 2.0),
+        "atr_length": _coalesce(atr_length, 14),
+        "stoch_k": _coalesce(stoch_k, 14),
+        "stoch_d": _coalesce(stoch_d, 3),
+    }
+
+
+def _technical_indicators_executor(params: dict[str, Any]) -> list[dict[str, Any]]:
+    route_params = dict(params)
+    batch_limit = route_params.pop("limit", None)
+    limit = route_params.pop(_ROUTE_LIMIT_KEY, batch_limit)
+    symbol = route_params.get("symbol")
+    if not symbol:
+        raise ValueError("technical.indicators requires symbol")
+    results = _execute_provider_model(
+        "TechnicalIndicators",
+        {},
+        _technical_indicators_params(
+            symbol=symbol,
+            start_date=route_params.get("start_date"),
+            end_date=route_params.get("end_date"),
+            interval=route_params.get("interval"),
+            adjusted=route_params.get("adjusted"),
+            indicators=route_params.get("indicators"),
+            rsi_length=route_params.get("rsi_length"),
+            macd_fast=route_params.get("macd_fast"),
+            macd_slow=route_params.get("macd_slow"),
+            macd_signal=route_params.get("macd_signal"),
+            sma_lengths=route_params.get("sma_lengths"),
+            ema_lengths=route_params.get("ema_lengths"),
+            bbands_length=route_params.get("bbands_length"),
+            bbands_std=route_params.get("bbands_std"),
+            atr_length=route_params.get("atr_length"),
+            stoch_k=route_params.get("stoch_k"),
+            stoch_d=route_params.get("stoch_d"),
+        ),
+    )
+    return _apply_limit(results, limit)
+
+
 COMMAND_EXECUTORS: dict[str, RouteExecutor] = {
     "equity.price.historical": _historical_executor("equity.price.historical"),
     "equity.price.quote": _route_executor("equity.price.quote"),
@@ -191,6 +271,7 @@ COMMAND_EXECUTORS: dict[str, RouteExecutor] = {
     "economy.indicators": _route_executor("economy.indicators"),
     "economy.gdp.nominal": _route_executor("economy.gdp.nominal"),
     "economy.cpi": _route_executor("economy.cpi"),
+    "technical.indicators": _technical_indicators_executor,
     "news.company": _route_executor("news.company"),
     "news.world": _route_executor("news.world"),
     "derivatives.options.unusual": _route_executor("derivatives.options.unusual"),
@@ -833,6 +914,58 @@ def economy_cpi(
         start_date=start_date,
         end_date=end_date,
     )
+
+
+@app.command(name="technical.indicators")
+def technical_indicators(
+    symbol: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    interval: str = "1d",
+    adjusted: bool = False,
+    indicators: list[TechnicalIndicator] | None = None,
+    rsi_length: int | None = None,
+    macd_fast: int | None = None,
+    macd_slow: int | None = None,
+    macd_signal: int | None = None,
+    sma_lengths: list[int] | None = None,
+    ema_lengths: list[int] | None = None,
+    bbands_length: int | None = None,
+    bbands_std: float | None = None,
+    atr_length: int | None = None,
+    stoch_k: int | None = None,
+    stoch_d: int | None = None,
+    limit: int | None = None,
+) -> None:
+    """Compute technical indicators from routed historical prices."""
+    try:
+        results = _execute_provider_model(
+            "TechnicalIndicators",
+            {},
+            _technical_indicators_params(
+                symbol=symbol,
+                start_date=start_date,
+                end_date=end_date,
+                interval=interval,
+                adjusted=adjusted,
+                indicators=indicators,
+                rsi_length=rsi_length,
+                macd_fast=macd_fast,
+                macd_slow=macd_slow,
+                macd_signal=macd_signal,
+                sma_lengths=sma_lengths,
+                ema_lengths=ema_lengths,
+                bbands_length=bbands_length,
+                bbands_std=bbands_std,
+                atr_length=atr_length,
+                stoch_k=stoch_k,
+                stoch_d=stoch_d,
+            ),
+        )
+        _print_json(_apply_limit(results, limit))
+    except Exception as exc:
+        _print_json({"error": str(exc), "code": _error_code(exc)})
+        raise SystemExit(1) from exc
 
 
 @app.command(name="news.company")

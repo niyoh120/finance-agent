@@ -81,6 +81,99 @@ def test_index_snapshots_coerces_single_symbol(monkeypatch: pytest.MonkeyPatch) 
     }
 
 
+def test_technical_indicators_uses_extra_params_and_limit(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def execute_provider_model(
+        model_name: str,
+        standard_params: dict[str, Any] | None = None,
+        extra_params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        captured["model_name"] = model_name
+        captured["standard_params"] = standard_params
+        captured["extra_params"] = extra_params
+        return [{"i": 1}, {"i": 2}, {"i": 3}]
+
+    monkeypatch.setattr(cli, "_execute_provider_model", execute_provider_model)
+
+    cli.technical_indicators(
+        symbol="600519.XSHG",
+        start_date="2026-04-01",
+        indicators=["rsi", "macd"],
+        rsi_length=7,
+        macd_fast=5,
+        macd_slow=15,
+        limit=2,
+    )
+
+    assert captured["model_name"] == "TechnicalIndicators"
+    assert captured["standard_params"] == {}
+    for key, value in {
+        "symbol": "600519.XSHG",
+        "start_date": "2026-04-01",
+        "interval": "1d",
+        "adjusted": False,
+        "indicators": ["rsi", "macd"],
+        "rsi_length": 7,
+        "macd_fast": 5,
+        "macd_slow": 15,
+    }.items():
+        assert captured["extra_params"][key] == value
+    assert "limit" not in captured["extra_params"]
+    assert captured["extra_params"]["sma_lengths"] == [20, 50]
+    assert captured["extra_params"]["ema_lengths"] == [20]
+    assert json.loads(capsys.readouterr().out) == [{"i": 2}, {"i": 3}]
+
+
+def test_technical_indicators_executor_supports_batch_limit(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def execute_provider_model(
+        model_name: str,
+        standard_params: dict[str, Any] | None = None,
+        extra_params: dict[str, Any] | None = None,
+    ) -> list[dict[str, Any]]:
+        captured["model_name"] = model_name
+        captured["standard_params"] = standard_params
+        captured["extra_params"] = extra_params
+        return [{"i": 1}, {"i": 2}, {"i": 3}]
+
+    monkeypatch.setattr(cli, "_execute_provider_model", execute_provider_model)
+
+    result = cli.COMMAND_EXECUTORS["technical.indicators"](
+        {"symbol": "AAPL", "indicators": "rsi", "limit": 1},
+    )
+
+    assert result == [{"i": 3}]
+    assert captured["model_name"] == "TechnicalIndicators"
+    assert captured["standard_params"] == {}
+    assert "limit" not in captured["extra_params"]
+    assert captured["extra_params"]["symbol"] == "AAPL"
+    assert captured["extra_params"]["indicators"] == ["rsi"]
+    assert captured["extra_params"]["interval"] == "1d"
+
+
+def test_technical_indicators_executor_rejects_missing_symbol() -> None:
+    with pytest.raises(ValueError, match="technical.indicators requires symbol"):
+        cli.COMMAND_EXECUTORS["technical.indicators"]({})
+
+
+def test_technical_indicators_empty_lists_use_defaults() -> None:
+    params = cli._technical_indicators_params(
+        symbol="AAPL",
+        indicators=[],
+        sma_lengths=[],
+        ema_lengths=[],
+    )
+
+    assert params["indicators"] == ["rsi", "macd", "sma", "ema", "bbands", "atr", "stoch", "vwap"]
+    assert params["sma_lengths"] == [20, 50]
+    assert params["ema_lengths"] == [20]
+
+
 def test_equity_screener_uses_run_route(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, Any] = {}
 

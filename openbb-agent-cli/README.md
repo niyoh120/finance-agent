@@ -92,6 +92,20 @@ openbb-agent-cli economy.cpi --country china --transform yoy
 openbb-agent-cli economy.cpi --country china --frequency annual
 ```
 
+### 技术指标
+
+```bash
+# 默认计算 RSI、MACD、SMA、EMA、BBands、ATR、Stoch、VWAP
+openbb-agent-cli technical.indicators --symbol 600519.XSHG --start-date 2026-04-01 --limit 30
+
+# 指定指标与参数
+openbb-agent-cli technical.indicators \
+  --symbol 600519.XSHG \
+  --start-date 2026-04-01 \
+  --indicators rsi --indicators macd \
+  --rsi-length 7 --macd-fast 5 --macd-slow 15
+```
+
 ### 新闻
 
 ```bash
@@ -152,6 +166,7 @@ openbb-agent-cli batch --queries '[
 | `economy.indicators` | `symbol` | `country`, `frequency`, `start-date`, `end-date` |
 | `economy.gdp.nominal` | - | `country`, `start-date`, `end-date` |
 | `economy.cpi` | - | `country`, `transform`, `frequency`, `harmonized`, `start-date`, `end-date` |
+| `technical.indicators` | `symbol` | `start-date`, `end-date`, `interval`, `adjusted`, `indicators`, `rsi-length`, `macd-fast`, `macd-slow`, `macd-signal`, `sma-lengths`, `ema-lengths`, `bbands-length`, `bbands-std`, `atr-length`, `stoch-k`, `stoch-d`, `limit` |
 | `news.company` | `symbol` | `start-date`, `end-date`, `limit` |
 | `news.world` | - | `start-date`, `end-date`, `limit` |
 | `derivatives.options.unusual` | - | `symbol`, `start-date`, `end-date`, `side`, `option-type`, `min-premium`, `min-vol-oi`, `limit` |
