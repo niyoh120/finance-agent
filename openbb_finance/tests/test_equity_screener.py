@@ -148,6 +148,19 @@ def test_equity_screener_query_params_accepts_sector_string():
     assert params.sector == "Technology"
 
 
+def test_tradingview_symbol_normalization():
+    from openbb_finance.sources.tradingview import _normalize_tradingview_symbol
+
+    assert _normalize_tradingview_symbol("NASDAQ:AAPL") == "AAPL"
+    assert _normalize_tradingview_symbol("NYSE:BRK.B") == "BRK.B"
+    assert _normalize_tradingview_symbol("HKEX:700") == "0700.HK"
+    assert _normalize_tradingview_symbol("HKEX:00700") == "0700.HK"
+    assert _normalize_tradingview_symbol("HKEX:HSI") == "HSI"
+    assert _normalize_tradingview_symbol("SSE:600519") == "600519.XSHG"
+    assert _normalize_tradingview_symbol("SZSE:000001") == "000001.XSHE"
+    assert _normalize_tradingview_symbol("600519.SH") == "600519.XSHG"
+
+
 def test_equity_screener_data_validation():
     data = FinanceEquityScreenerData(
         symbol="AAPL",
@@ -211,7 +224,7 @@ def test_tradingview_custom_fields_keep_symbol(monkeypatch):
     screener = FakeStockScreener.last_instance
     assert screener is not None
     assert FakeStockField.EXPECTED_ANNUAL_DIVIDENDS in screener.selected
-    assert result == [{"symbol": "NASDAQ:AAPL", "Expected Annual Dividends": 1.23}]
+    assert result == [{"symbol": "AAPL", "Expected Annual Dividends": 1.23, "source_symbol": "NASDAQ:AAPL"}]
 
 
 @pytest.mark.anyio

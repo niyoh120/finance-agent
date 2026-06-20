@@ -124,7 +124,7 @@ openbb-agent-cli equity.search AAPL --is-symbol
 
 股票筛选器，支持简单过滤和高级过滤。
 
-> **未提供真实过滤条件时返回结构化帮助（JSON），不返回数据。** `--market` 只限定市场范围，`--limit`/`--fields` 只控制输出，不能单独触发查询；必须搭配价格/成交量/涨跌幅/RSI/行业/`--filters` 等真实过滤条件。需要发现可用过滤字段名时，先运行 `equity.screener.fields --search <关键词>`；需穷举全部字段用 `equity.screener.fields --all`。
+> **未提供真实过滤条件时返回结构化帮助（JSON），不返回数据。** `--market` 只限定市场范围，`--limit`/`--fields` 只控制输出，不能单独触发查询；必须搭配价格/成交量/涨跌幅/RSI/行业/`--filters` 等真实过滤条件。筛选结果中的 `symbol` 已归一化为股票查询可直接使用的格式（例如 `NASDAQ:AAPL` → `AAPL`、`HKEX:700` → `0700.HK`、`SSE:600519` → `600519.XSHG`），原始 TradingView 代码保留在 `source_symbol`。需要发现可用过滤字段名时，先运行 `equity.screener.fields --search <关键词>`；需穷举全部字段用 `equity.screener.fields --all`。
 
 ### 简单过滤器
 

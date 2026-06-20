@@ -7,6 +7,8 @@ from typing import Any, Literal
 
 import pandas as pd
 
+from openbb_finance.sources.symbols import to_openbb_symbol
+
 ScreenerMarket = Literal["america", "hongkong", "china", "global"]
 
 # Default fields to return
@@ -32,6 +34,36 @@ COLUMN_MAPPING = {
     "Sector": "sector",
     "Relative Strength Index (14)": "rsi",
 }
+
+_TV_CN_SH_PREFIXES = {"SSE", "SHSE", "XSHG"}
+_TV_CN_SZ_PREFIXES = {"SZSE", "XSHE"}
+_TV_HK_PREFIXES = {"HKEX", "SEHK"}
+
+
+def _normalize_hk_symbol(code: str) -> str:
+    normalized_code = code.strip().upper()
+    if not normalized_code.isdigit():
+        return normalized_code
+    stripped = normalized_code.lstrip("0") or "0"
+    return f"{stripped.zfill(4)}.HK"
+
+
+def _normalize_tradingview_symbol(symbol: Any) -> str:
+    """Normalize TradingView screener symbols to this provider's public format."""
+    value = str(symbol).strip().upper()
+    exchange, sep, code = value.partition(":")
+    if not sep:
+        return to_openbb_symbol(value)
+
+    normalized_code = code.strip().upper()
+    normalized_exchange = exchange.strip().upper()
+    if normalized_exchange in _TV_CN_SH_PREFIXES:
+        return f"{normalized_code}.XSHG"
+    if normalized_exchange in _TV_CN_SZ_PREFIXES:
+        return f"{normalized_code}.XSHE"
+    if normalized_exchange in _TV_HK_PREFIXES:
+        return _normalize_hk_symbol(normalized_code)
+    return normalized_code
 
 
 def _stock_fields(field_names: list[str]) -> list[Any]:
@@ -215,6 +247,11 @@ def _normalize_dataframe(
                 record[col] = val
             else:
                 record[col] = str(val)
+        if "symbol" in record and record["symbol"] is not None:
+            source_symbol = str(record["symbol"])
+            record["symbol"] = _normalize_tradingview_symbol(source_symbol)
+            if record["symbol"] != source_symbol:
+                record["source_symbol"] = source_symbol
         results.append(record)
 
     return results

@@ -32,8 +32,11 @@ openbb-agent-cli equity.screener --market china --price-min 10 --volume-min 1000
 # 筛选器（高级过滤）
 openbb-agent-cli equity.screener --market america --filters '{"MACD_LEVEL_12_26": {"min": 0}, "YEAR_BETA_1": {"max": 1.5}}'
 
-# 筛选器（指定返回字段）
-openbb-agent-cli equity.screener --market america --fields '["SYMBOL", "NAME", "PRICE", "MACD_LEVEL_12_26"]'
+# 筛选器（指定返回字段，fields 只控制输出，仍需真实过滤条件）
+openbb-agent-cli equity.screener --market america --change-percent-min 5 --fields '["SYMBOL", "NAME", "PRICE", "MACD_LEVEL_12_26"]'
+
+# screener 返回的 symbol 已归一化为股票查询可直接使用的格式；
+# 如 TradingView 原始值 NASDAQ:AAPL 会返回 symbol=AAPL，并保留 source_symbol=NASDAQ:AAPL。
 ```
 
 ### 指数

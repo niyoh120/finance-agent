@@ -88,6 +88,7 @@ screener = obb.equity.screener(
     provider="finance",
 )
 print(screener.to_df().head())
+# screener 的 symbol 已归一化为可直接用于 quote/historical 的格式，原始 TradingView 代码保留在 source_symbol。
 
 # 指数列表
 indices = obb.index.available(provider="finance")
