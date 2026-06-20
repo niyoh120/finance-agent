@@ -243,7 +243,11 @@ def _build_template_queries(template: str, params: dict[str, Any]) -> list[dict[
             {
                 "name": "movers",
                 "command": "equity.screener",
-                "params": {"market": market_by_region.get(region, region), "limit": params.get("limit", 20)},
+                "params": {
+                    "market": market_by_region.get(region, region),
+                    "volume_min": 1,
+                    "limit": params.get("limit", 20),
+                },
             },
             {
                 "name": "news",
@@ -393,6 +397,214 @@ def equity_search(query: str, is_symbol: bool = False) -> None:
     _run_route("equity.search", query=query, is_symbol=is_symbol)
 
 
+# Params that are real screening predicates. ``market`` only scopes the search;
+# ``limit`` and ``fields`` only shape output. When no predicate is provided, the
+# command returns structured help instead of dumping a broad default result set.
+_SCREENER_REQUIRED_FILTER_PARAMS = (
+    # Keep in sync with equity_screener() predicate parameters.
+    "price_min",
+    "price_max",
+    "change_percent_min",
+    "change_percent_max",
+    "volume_min",
+    "volume_max",
+    "market_cap_min",
+    "market_cap_max",
+    "rsi_min",
+    "rsi_max",
+    "sector",
+    "filters",
+)
+
+_SCREENER_HELP: dict[str, Any] = {
+    "usage": "openbb-agent-cli equity.screener [OPTIONS]",
+    "description": "股票筛选，支持简单过滤与高级 StockField 过滤。未提供真实过滤条件时返回本帮助，不返回数据。market/limit/fields 只控制范围或输出，不能单独触发查询。",
+    "simple_filters": [
+        {"param": "--market", "choices": ["america", "hongkong", "china", "global"], "desc": "市场区域（仅限定范围，不能单独触发查询）"},
+        {"param": "--limit", "desc": "返回数量，默认 150（仅控制输出，不能单独触发查询）"},
+        {"param": "--price-min/--price-max", "desc": "价格区间"},
+        {"param": "--volume-min/--volume-max", "desc": "成交量区间"},
+        {"param": "--market-cap-min/--market-cap-max", "desc": "市值区间"},
+        {"param": "--change-percent-min/--change-percent-max", "desc": "涨跌幅区间 (%)"},
+        {"param": "--rsi-min/--rsi-max", "desc": "RSI(14) 区间 (0-100)"},
+        {"param": "--sector", "desc": "行业筛选，可多次指定"},
+    ],
+    "advanced": {
+        "filters": "JSON 字符串，任意 StockField 过滤，如 {\"PE_RATIO_TTM\":{\"min\":10,\"max\":25},\"SECTOR\":{\"in\":[\"Technology\"]}}",
+        "fields": "JSON 数组字符串，指定返回字段，如 [\"SYMBOL\",\"NAME\",\"PRICE\"]",
+    },
+    "field_discovery": "字段名未知时先运行: openbb-agent-cli equity.screener.fields --search <关键词>; 需穷举全部字段用 --all",
+    "examples": [
+        "equity.screener --market america --change-percent-min 5",
+        "equity.screener --filters '{\"PE_RATIO_TTM\":{\"max\":20}}'",
+        "equity.screener --market america --change-percent-min 5 --fields '[\"SYMBOL\",\"NAME\",\"PRICE\"]'",
+    ],
+}
+
+# Curated search-hint directory for StockField discovery. Topics are suggestions
+# (not a complete taxonomy): ~83% of fields match at least one hint. Overlap is
+# intentional. The remaining fields are described in ``unclassified`` below;
+# use ``--all`` for exhaustive coverage. Hints are keyword substrings matched
+# against StockField name and label by ``equity.screener.fields --search``.
+_FIELDS_HELP: dict[str, Any] = {
+    "usage": "openbb-agent-cli equity.screener.fields [OPTIONS]",
+    "description": "发现 equity.screener 可用的 StockField 过滤字段名。三种互斥模式：无参=帮助，--search=模糊匹配，--all=全量。",
+    "modes": {
+        "no_args": "返回本帮助（含搜索提示目录与未归类字段说明）",
+        "search": "--search <关键词>  模糊匹配字段 name 与 label（子串匹配，可能有少量噪音，建议加字段类型词缩小范围）",
+        "all": "--all  返回全部字段（约 3500+，唯一保证完整覆盖的入口）",
+    },
+    "output_format": [{"name": "字段枚举名", "label": "字段显示名"}],
+    "search_hints": [
+        {"topic": "价格", "search": "price"},
+        {"topic": "涨跌幅", "search": "change"},
+        {"topic": "成交量", "search": "volume"},
+        {"topic": "市值", "search": "market cap"},
+        {"topic": "企业价值", "search": "enterprise value"},
+        {"topic": "52周/历史高低", "search": "high"},
+        {"topic": "52周/历史高低", "search": "low"},
+        {"topic": "开盘/收盘", "search": "open"},
+        {"topic": "开盘/收盘", "search": "close"},
+        {"topic": "盘前盘后", "search": "premarket"},
+        {"topic": "盘前盘后", "search": "postmarket"},
+        {"topic": "盘前盘后", "search": "post-market"},
+        {"topic": "缺口", "search": "gap"},
+        {"topic": "均线 SMA", "search": "SMA"},
+        {"topic": "均线 EMA", "search": "EMA"},
+        {"topic": "Hull MA", "search": "Hull"},
+        {"topic": "均线评级", "search": "Moving Average"},
+        {"topic": "RSI", "search": "RSI"},
+        {"topic": "MACD", "search": "MACD"},
+        {"topic": "布林带", "search": "Bollinger"},
+        {"topic": "随机指标", "search": "Stochastic"},
+        {"topic": "CCI", "search": "CCI"},
+        {"topic": "ATR", "search": "ATR"},
+        {"topic": "ADX/DMI", "search": "ADX"},
+        {"topic": "方向指标 DMI", "search": "Directional"},
+        {"topic": "Aroon", "search": "Aroon"},
+        {"topic": "Ichimoku", "search": "Ichimoku"},
+        {"topic": "Pivot 支撑阻力", "search": "Pivot"},
+        {"topic": "蜡烛形态", "search": "Candle"},
+        {"topic": "图形 Pattern", "search": "Pattern"},
+        {"topic": "看涨", "search": "Bullish"},
+        {"topic": "看跌", "search": "Bearish"},
+        {"topic": "多空力量", "search": "Bull Bear"},
+        {"topic": "震荡指标", "search": "Oscillator"},
+        {"topic": "动量/MOM", "search": "MOM"},
+        {"topic": "ROC", "search": "ROC"},
+        {"topic": "Williams", "search": "Williams"},
+        {"topic": "Chaikin", "search": "Chaikin"},
+        {"topic": "资金流", "search": "Money Flow"},
+        {"topic": "波动率", "search": "Volatility"},
+        {"topic": "Donchian 通道", "search": "Donchian"},
+        {"topic": "Keltner 通道", "search": "Keltner"},
+        {"topic": "Parabolic SAR", "search": "Parabolic"},
+        {"topic": "技术评级", "search": "Technical Rating"},
+        {"topic": "Beta 风险", "search": "Beta"},
+        {"topic": "负债/债务", "search": "Debt"},
+        {"topic": "资产", "search": "Assets"},
+        {"topic": "权益 Equity", "search": "Equity"},
+        {"topic": "流动比率", "search": "Current Ratio"},
+        {"topic": "利息保障", "search": "Interest Coverage"},
+        {"topic": "估值比率", "search": "Ratio"},
+        {"topic": "收益率 Yield", "search": "Yield"},
+        {"topic": "股息", "search": "Dividend"},
+        {"topic": "DPS 每股股息", "search": "DPS"},
+        {"topic": "EPS", "search": "EPS"},
+        {"topic": "营收", "search": "Revenue"},
+        {"topic": "利润率", "search": "Margin"},
+        {"topic": "盈利能力/ROE/ROA", "search": "Return"},
+        {"topic": "EBITDA", "search": "EBITDA"},
+        {"topic": "EBIT", "search": "EBIT"},
+        {"topic": "现金流", "search": "Cash"},
+        {"topic": "成长率", "search": "Growth"},
+        {"topic": "毛利", "search": "Gross"},
+        {"topic": "净利润", "search": "Net Income"},
+        {"topic": "营业收入", "search": "Operating Income"},
+        {"topic": "研发", "search": "Research"},
+        {"topic": "资本支出", "search": "Capital Expend"},
+        {"topic": "周转率", "search": "Turnover"},
+        {"topic": "Z-Score/F-Score 评分", "search": "Score"},
+        {"topic": "Graham", "search": "Graham"},
+        {"topic": "每股", "search": "per Share"},
+        {"topic": "分析师评级", "search": "Recommend"},
+        {"topic": "目标价", "search": "Target"},
+        {"topic": "做空", "search": "Short"},
+        {"topic": "流通股/股数", "search": "Shares"},
+        {"topic": "板块", "search": "Sector"},
+        {"topic": "行业", "search": "Industry"},
+        {"topic": "交易所", "search": "Exchange"},
+        {"topic": "货币", "search": "Currency"},
+        {"topic": "国家", "search": "Country"},
+        {"topic": "标识符 ISIN/CUSIP", "search": "ISIN"},
+        {"topic": "标识符 ISIN/CUSIP", "search": "CUSIP"},
+        {"topic": "元数据 名称/描述/类型", "search": "Name"},
+        {"topic": "元数据", "search": "Description"},
+        {"topic": "元数据", "search": "Type"},
+        {"topic": "财政周期", "search": "Fiscal"},
+        {"topic": "财报日期", "search": "Earnings Release"},
+        {"topic": "财报日期", "search": "Earnings Date"},
+        {"topic": "员工/股东数", "search": "Number of"},
+        {"topic": "指数成分", "search": "Index"},
+        {"topic": "表现 performance", "search": "Performance"},
+        {"topic": "商誉", "search": "Goodwill"},
+        {"topic": "回购", "search": "Buyback"},
+        {"topic": "利率", "search": "Rate"},
+    ],
+    "unclassified": {
+        "note": "以下类型字段未纳入上方搜索提示目录，因归不进常用财务/技术分析类；可用 --all 浏览或自行尝试 --search 关键词。",
+        "categories": [
+            {
+                "category": "平台内部/技术元数据",
+                "reason": "TradingView 平台绘图/数据更新机制字段，与金融分析无关",
+                "examples": ["Logoid", "Update-time", "Minmov", "Bars Count", "Provider-id"],
+            },
+            {
+                "category": "ETF/基金结构属性",
+                "reason": "ETF/基金特有元数据，非个股筛选维度",
+                "examples": ["Aum", "Nav", "Issuer", "Weighting Scheme", "Ucits Compliant Flag"],
+            },
+            {
+                "category": "IPO/债券/衍生品属性",
+                "reason": "证券发行/债券/杠杆产品属性",
+                "examples": ["IPO Offer Date", "Maturity Date", "Coupon", "Leveraged Flag", "Inverse Flag"],
+            },
+            {
+                "category": "缩写/内部代码财务项",
+                "reason": "TV 内部缩写命名的财务科目，含义需查 TV 文档，难以稳定归类",
+                "examples": ["Rtc", "Oper Income Fh", "DPS Common Stock Prim Issue"],
+            },
+        ],
+    },
+}
+
+
+def _has_screener_required_filters(**params: Any) -> bool:
+    """True when a real screener predicate was explicitly provided."""
+    for name in _SCREENER_REQUIRED_FILTER_PARAMS:
+        value = params.get(name)
+        if value is None:
+            continue
+        if isinstance(value, str):
+            if not value.strip():
+                continue
+        elif isinstance(value, list):
+            if not value or all(not str(item).strip() for item in value):
+                continue
+        return True
+    return False
+
+
+def _stock_fields_payload(search: str | None = None) -> list[dict[str, str]]:
+    """Return StockField name/label payloads, optionally filtered by search."""
+    # Local import keeps tvscreener (an openbb-finance transitive dependency)
+    # out of CLI startup; only this discovery command pays for it.
+    from tvscreener import StockField
+
+    fields = StockField.search(search) if search is not None else StockField
+    return [{"name": field.name, "label": field.label} for field in fields]
+
+
 @app.command(name="equity.screener")
 def equity_screener(
     market: Literal["america", "hongkong", "china", "global"] | None = None,
@@ -413,22 +625,27 @@ def equity_screener(
     filters: str | None = None,
     fields: str | None = None,
 ) -> None:
-    """Screen equities with custom filters.
+    """Screen equities with simple or advanced StockField filters.
 
-    Simple filters: Use individual parameters like --price-min, --volume-min.
-
-    Advanced filters: Use --filters with JSON string for arbitrary StockField filtering.
-    Example: --filters '{"MACD_LEVEL_12_26": {"min": 0}, "YEAR_BETA_1": {"max": 1.5}}'
-
-    Custom fields: Use --fields with JSON array string to control returned StockFields.
-    Example: --fields '["SYMBOL", "NAME", "PRICE", "MACD_LEVEL_12_26"]'
-
-    Available StockFields (3526 total): PRICE, VOLUME, MARKET_CAPITALIZATION, CHANGE_PERCENT,
-    RELATIVE_STRENGTH_INDEX_14, MACD_LEVEL_12_26, YEAR_BETA_1, EMA_20, SMA_50, PE_RATIO_TTM,
-    EPS_DILUTED_TTM, DIVIDEND_YIELD, DEBT_TO_EQUITY, etc.
-
-    Use tvscreener.StockField.search("keyword") to find specific fields.
+    market/limit/fields 不能单独触发查询，必须提供价格、成交量、行业、filters
+    等真实过滤条件。字段名未知时先运行 equity.screener.fields --search <关键词>。
     """
+    if not _has_screener_required_filters(
+        price_min=price_min,
+        price_max=price_max,
+        change_percent_min=change_percent_min,
+        change_percent_max=change_percent_max,
+        volume_min=volume_min,
+        volume_max=volume_max,
+        market_cap_min=market_cap_min,
+        market_cap_max=market_cap_max,
+        rsi_min=rsi_min,
+        rsi_max=rsi_max,
+        sector=sector,
+        filters=filters,
+    ):
+        _print_json(_SCREENER_HELP)
+        return
     _run_route(
         "equity.screener",
         market=market,
@@ -447,6 +664,41 @@ def equity_screener(
         filters=filters,
         fields=fields,
     )
+
+
+@app.command(name="equity.screener.fields")
+def equity_screener_fields(
+    search: str | None = None,
+    all_: bool = False,
+) -> None:
+    """发现 equity.screener 可用的 StockField 过滤字段名。
+
+    无参返回结构化帮助（含搜索提示目录与未归类字段说明）。--search 关键词
+    模糊匹配字段 name/label。--all 返回全部字段（约 3500+）。两者互斥。
+    详细说明请无参运行查看。
+    """
+    if search is not None and all_:
+        _print_json({"error": "--search and --all are mutually exclusive", "code": "CLI_ERROR"})
+        raise SystemExit(1)
+    if search is not None:
+        keyword = search.strip()
+        if not keyword:
+            _print_json({"error": "--search keyword must not be empty", "code": "CLI_ERROR"})
+            raise SystemExit(1)
+        try:
+            _print_json(_stock_fields_payload(keyword))
+        except Exception as exc:
+            _print_json({"error": str(exc), "code": _error_code(exc)})
+            raise SystemExit(1) from exc
+        return
+    if all_:
+        try:
+            _print_json(_stock_fields_payload())
+        except Exception as exc:
+            _print_json({"error": str(exc), "code": _error_code(exc)})
+            raise SystemExit(1) from exc
+        return
+    _print_json(_FIELDS_HELP)
 
 
 @app.command(name="index.available")

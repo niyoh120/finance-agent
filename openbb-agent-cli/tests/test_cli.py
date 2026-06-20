@@ -128,6 +128,171 @@ def test_equity_screener_with_rsi_filter(monkeypatch: pytest.MonkeyPatch) -> Non
     assert captured["params"]["rsi_max"] == 30
 
 
+def test_equity_screener_no_args_returns_help(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def run_route(route: str, **params: Any) -> None:
+        pytest.fail("equity.screener without filters should return help, not call the provider")
+
+    monkeypatch.setattr(cli, "_run_route", run_route)
+
+    cli.equity_screener()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["usage"] == "openbb-agent-cli equity.screener [OPTIONS]"
+    assert "simple_filters" in payload
+    assert "advanced" in payload
+    assert "field_discovery" in payload
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected"),
+    [
+        ({"filters": '{"PE_RATIO_TTM":{"max":20}}'}, {"filters": '{"PE_RATIO_TTM":{"max":20}}'}),
+        ({"sector": ["Technology"]}, {"sector": ["Technology"]}),
+        ({"market": "america", "change_percent_min": 5.0, "fields": '["SYMBOL","PRICE"]'}, {"market": "america", "change_percent_min": 5.0, "fields": '["SYMBOL","PRICE"]'}),
+        ({"market": "america", "volume_min": 1}, {"market": "america", "volume_min": 1}),
+    ],
+)
+def test_equity_screener_with_required_filters_not_help(
+    monkeypatch: pytest.MonkeyPatch,
+    kwargs: dict[str, Any],
+    expected: dict[str, Any],
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def run_route(route: str, **params: Any) -> None:
+        captured["route"] = route
+        captured["params"] = params
+
+    monkeypatch.setattr(cli, "_run_route", run_route)
+
+    cli.equity_screener(**kwargs)
+
+    assert captured["route"] == "equity.screener"
+    for key, value in expected.items():
+        assert captured["params"][key] == value
+
+
+@pytest.mark.parametrize(
+    "kwargs",
+    [
+        {"market": "america"},
+        {"limit": 10},
+        {"fields": '["SYMBOL","PRICE"]'},
+        {"market": "america", "limit": 10, "fields": '["SYMBOL","PRICE"]'},
+        {"sector": []},
+        {"filters": ""},
+        {"filters": "   "},
+        {"sector": [""]},
+        {"sector": ["   "]},
+    ],
+)
+def test_equity_screener_scope_or_output_only_returns_help(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    kwargs: dict[str, Any],
+) -> None:
+    def run_route(route: str, **params: Any) -> None:
+        pytest.fail("scope/output options without required filters should return help")
+
+    monkeypatch.setattr(cli, "_run_route", run_route)
+
+    cli.equity_screener(**kwargs)
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["usage"] == "openbb-agent-cli equity.screener [OPTIONS]"
+    assert "simple_filters" in payload
+    assert "advanced" in payload
+    assert "field_discovery" in payload
+
+
+def test_equity_screener_required_filter_tuple_matches_signature() -> None:
+    expected = {
+        "price_min",
+        "price_max",
+        "change_percent_min",
+        "change_percent_max",
+        "volume_min",
+        "volume_max",
+        "market_cap_min",
+        "market_cap_max",
+        "rsi_min",
+        "rsi_max",
+        "sector",
+        "filters",
+    }
+
+    assert set(cli._SCREENER_REQUIRED_FILTER_PARAMS) == expected
+
+
+def test_equity_screener_fields_no_args_returns_help(capsys: pytest.CaptureFixture[str]) -> None:
+    cli.equity_screener_fields()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["usage"] == "openbb-agent-cli equity.screener.fields [OPTIONS]"
+    assert "search_hints" in payload
+    assert "unclassified" in payload
+
+
+def test_equity_screener_fields_search(capsys: pytest.CaptureFixture[str]) -> None:
+    pytest.importorskip("tvscreener")
+
+    cli.equity_screener_fields(search="RSI")
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload
+    assert all({"name", "label"} <= item.keys() for item in payload)
+    assert any("RSI" in (item["name"] + item["label"]).upper() for item in payload)
+
+
+def test_equity_screener_fields_search_dividend(capsys: pytest.CaptureFixture[str]) -> None:
+    pytest.importorskip("tvscreener")
+
+    cli.equity_screener_fields(search="dividend")
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload
+    assert any("DIVIDEND" in (item["name"] + item["label"]).upper() for item in payload)
+
+
+def test_equity_screener_fields_all(capsys: pytest.CaptureFixture[str]) -> None:
+    pytest.importorskip("tvscreener")
+    from tvscreener import StockField
+
+    cli.equity_screener_fields(all_=True)
+
+    payload = json.loads(capsys.readouterr().out)
+    names = {item["name"] for item in payload}
+    assert len(payload) == len(list(StockField))
+    assert {"PRICE", "VOLUME"} <= names
+
+
+def test_equity_screener_fields_search_and_all_mutually_exclusive(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        cli.equity_screener_fields(search="RSI", all_=True)
+
+    assert exc_info.value.code == 1
+    assert json.loads(capsys.readouterr().out) == {
+        "error": "--search and --all are mutually exclusive",
+        "code": "CLI_ERROR",
+    }
+
+
+def test_equity_screener_fields_empty_search(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit) as exc_info:
+        cli.equity_screener_fields(search="   ")
+
+    assert exc_info.value.code == 1
+    assert json.loads(capsys.readouterr().out) == {
+        "error": "--search keyword must not be empty",
+        "code": "CLI_ERROR",
+    }
+
+
 def test_economy_available_indicators_uses_run_route(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, Any] = {}
 
@@ -337,6 +502,17 @@ def test_equity_overview_template_builds_expected_queries() -> None:
         "limit": 5,
     }
     assert queries[3]["params"]["limit"] == 6
+
+
+def test_market_overview_template_includes_required_screener_filter() -> None:
+    queries = cli._build_template_queries("market-overview", {"region": "us", "limit": 20})
+
+    movers = next(query for query in queries if query["name"] == "movers")
+    assert movers == {
+        "name": "movers",
+        "command": "equity.screener",
+        "params": {"market": "america", "volume_min": 1, "limit": 20},
+    }
 
 
 def test_batch_template_requires_symbol(capsys: pytest.CaptureFixture[str]) -> None:

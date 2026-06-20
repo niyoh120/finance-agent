@@ -25,6 +25,7 @@ openbb-agent-cli <command> [options]
 | `equity.price.quote` | 股票行情报价 |
 | `equity.search` | 股票搜索 |
 | `equity.screener` | 股票筛选器 |
+| `equity.screener.fields` | 筛选字段发现（查询可用 StockField 字段名） |
 | `index.available` | 可用指数列表 |
 | `index.search` | 指数搜索 |
 | `index.price.historical` | 指数历史价格 |
@@ -123,6 +124,8 @@ openbb-agent-cli equity.search AAPL --is-symbol
 
 股票筛选器，支持简单过滤和高级过滤。
 
+> **未提供真实过滤条件时返回结构化帮助（JSON），不返回数据。** `--market` 只限定市场范围，`--limit`/`--fields` 只控制输出，不能单独触发查询；必须搭配价格/成交量/涨跌幅/RSI/行业/`--filters` 等真实过滤条件。需要发现可用过滤字段名时，先运行 `equity.screener.fields --search <关键词>`；需穷举全部字段用 `equity.screener.fields --all`。
+
 ### 简单过滤器
 
 ```bash
@@ -217,15 +220,33 @@ openbb-agent-cli equity.screener \
   --volume-min 1000000 \
   --filters '{"PE_RATIO_TTM": {"max": 20}, "DEBT_TO_EQUITY": {"max": 1}}'
 
-# 指定返回字段
+# 指定返回字段（fields 只控制输出，仍需真实过滤条件）
 openbb-agent-cli equity.screener \
   --market america \
+  --change-percent-min 5 \
   --fields '["SYMBOL", "NAME", "PRICE", "MACD_LEVEL_12_26"]'
 ```
 
 ### 字段发现
 
-使用 Python 查找特定字段：
+**字段名未知时，先用 `equity.screener.fields` 发现可用字段名，再拼 `--filters`/`--fields`：**
+
+```bash
+# 模糊搜索字段名/标签（子串匹配）
+openbb-agent-cli equity.screener.fields --search dividend
+
+# 返回全部字段（约 3500+，穷尽性场景）
+openbb-agent-cli equity.screener.fields --all
+
+# 无参返回结构化帮助（含搜索提示目录与未归类字段说明）
+openbb-agent-cli equity.screener.fields
+```
+
+无参帮助内置搜索提示目录（覆盖约 83% 常用字段，如均线/RSI/MACD/蜡烛形态/估值/股息等），
+以及未归类字段说明（平台元数据/ETF 结构/IPO 债券/缩写财务项四类成因举例）。日常用 `--search`，
+需穷举全部字段用 `--all`。常用字段速查另见 [references/fields.md](references/fields.md)。
+
+也可在 Python 中查找特定字段：
 
 ```python
 from tvscreener import StockField
@@ -234,9 +255,38 @@ from tvscreener import StockField
 rsi_fields = StockField.search("rsi")
 for f in rsi_fields:
     print(f.name, f.label)
+```
 
-# 获取所有技术指标字段
-technicals = StockField.technicals()
+---
+
+## equity.screener.fields
+
+发现 `equity.screener` 可用的 `StockField` 过滤字段名。三种互斥模式：
+
+```bash
+openbb-agent-cli equity.screener.fields [--search 关键词] [--all]
+```
+
+**模式**:
+- 无参：返回结构化帮助（含搜索提示目录与未归类字段说明）
+- `--search 关键词`：模糊匹配字段 name 与 label（子串匹配，可能有少量噪音，建议加字段类型词缩小范围）
+- `--all`：返回全部字段（约 3500+，唯一保证完整覆盖的入口）
+
+`--search` 与 `--all` 互斥，同时传报错。`--search` 空字符串报错。
+
+**输出格式**: `[{"name": "字段枚举名", "label": "字段显示名"}, ...]`
+
+**示例**:
+```bash
+# 搜索 RSI 相关字段
+openbb-agent-cli equity.screener.fields --search RSI
+# [{"name":"RELATIVE_STRENGTH_INDEX_14","label":"RSI (14)"}, ...]
+
+# 穷举全部字段
+openbb-agent-cli equity.screener.fields --all
+
+# 查看帮助与搜索提示目录
+openbb-agent-cli equity.screener.fields
 ```
 
 ---
@@ -571,7 +621,7 @@ openbb-agent-cli batch \
 
 **内置模板**:
 - `equity-overview`: 个股报价、历史价格、公司新闻、期权异动。需要 `--symbol`，建议搭配 `--limit` 控制历史价格返回条数
-- `market-overview`: 指数快照、股票筛选、全球新闻。常用 `--region`，`--limit` 控制筛选股票数量
+- `market-overview`: 指数快照、有成交股票筛选（内置 `volume_min=1` 作为真实过滤条件）、全球新闻。常用 `--region`，`--limit` 控制筛选股票数量
 - `macro-overview`: GDP、CPI、PMI、经济日历。常用 `--country`
 - `index-detail`: 指数快照、指数历史价格。需要 `--symbol`，建议搭配 `--limit` 控制历史价格返回条数
 
@@ -639,6 +689,7 @@ openbb-agent-cli batch --queries '[
 | `equity.price.quote` | `symbol` | - |
 | `equity.search` | `query` | `is-symbol` |
 | `equity.screener` | - | `market`, `limit`, `price-min`, `price-max`, `change-percent-min`, `change-percent-max`, `volume-min`, `volume-max`, `market-cap-min`, `market-cap-max`, `rsi-min`, `rsi-max`, `sector`, `filters`, `fields` |
+| `equity.screener.fields` | - | `search`, `all` |
 | `index.available` | - | - |
 | `index.search` | `query` | `is-symbol` |
 | `index.price.historical` | `symbol` | `start-date`, `end-date`, `limit` |
