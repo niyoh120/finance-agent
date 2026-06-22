@@ -1,6 +1,6 @@
 ---
 name: openbb-agent-cli
-description: 使用 openbb-agent-cli 获取金融数据。支持股票历史价格、行情报价、搜索、筛选（支持3500+字段的高级过滤和自定义返回字段）、指数、ETF、经济日历、宏观经济数据、新闻、期权异动和批量查询。当用户需要查询股票价格、筛选股票、获取市场数据、查看宏观数据、查看期权异动或一次聚合多个金融查询时使用此 skill。
+description: 使用 openbb-agent-cli 获取金融数据。支持股票历史价格、行情报价、搜索、筛选（支持3500+字段的高级过滤和自定义返回字段）、指数、ETF、经济日历、宏观经济数据、技术指标、新闻、期权异动和批量查询。当用户需要查询股票价格、筛选股票、获取市场数据、查看宏观数据、计算技术指标、查看期权异动或一次聚合多个金融查询时使用此 skill。
 ---
 
 # OpenBB Agent CLI
@@ -37,6 +37,7 @@ openbb-agent-cli <command> [options]
 | `economy.indicators` | 宏观经济指标 |
 | `economy.gdp.nominal` | 名义 GDP |
 | `economy.cpi` | CPI |
+| `technical.indicators` | 技术指标 |
 | `news.company` | 公司新闻 |
 | `news.world` | 全球新闻 |
 | `derivatives.options.unusual` | 期权异动 |
@@ -507,6 +508,63 @@ openbb-agent-cli economy.cpi --country china --frequency annual
 
 ---
 
+## technical.indicators
+
+基于历史价格计算技术指标。默认计算 RSI、MACD、SMA、EMA、BBands、ATR、Stoch、VWAP。
+
+```bash
+openbb-agent-cli technical.indicators SYMBOL \
+  [--start-date YYYY-MM-DD] \
+  [--end-date YYYY-MM-DD] \
+  [--interval INTERVAL] \
+  [--adjusted] \
+  [--indicators rsi|macd|sma|ema|bbands|atr|stoch|vwap]... \
+  [--rsi-length N] \
+  [--macd-fast N] \
+  [--macd-slow N] \
+  [--macd-signal N] \
+  [--sma-lengths N]... \
+  [--ema-lengths N]... \
+  [--bbands-length N] \
+  [--bbands-std X] \
+  [--atr-length N] \
+  [--stoch-k N] \
+  [--stoch-d N] \
+  [--limit N]
+```
+
+**参数**:
+- `SYMBOL`: 股票代码（必需）。该必需参数支持位置参数与 `--symbol SYMBOL` 两种写法。
+- `--start-date` / `--end-date`: 日期范围
+- `--interval`: 时间间隔，默认 `1d`
+- `--adjusted`: 是否复权，默认 false
+- `--indicators`: 指标列表，可多次指定；默认 `rsi macd sma ema bbands atr stoch vwap`
+- `--rsi-length`: RSI 周期，默认 14
+- `--macd-fast` / `--macd-slow` / `--macd-signal`: MACD 参数，默认 12/26/9
+- `--sma-lengths`: SMA 周期，可多次指定；默认 20、50
+- `--ema-lengths`: EMA 周期，可多次指定；默认 20
+- `--bbands-length` / `--bbands-std`: 布林带参数，默认 20/2.0
+- `--atr-length`: ATR 周期，默认 14
+- `--stoch-k` / `--stoch-d`: Stoch 参数，默认 14/3
+- `--limit`: 只保留最近的 N 条记录（在 CLI 侧裁剪）
+
+**示例**:
+```bash
+# 默认计算全部内置指标
+openbb-agent-cli technical.indicators AAPL --start-date 2024-01-01 --limit 30
+
+# 指定指标与参数
+openbb-agent-cli technical.indicators AAPL \
+  --start-date 2024-01-01 \
+  --indicators rsi \
+  --indicators macd \
+  --rsi-length 7 \
+  --macd-fast 5 \
+  --macd-slow 15
+```
+
+---
+
 ## news.company
 
 获取公司新闻。
@@ -701,6 +759,7 @@ openbb-agent-cli batch --queries '[
 | `economy.indicators` | `symbol` | `country`, `frequency`, `start-date`, `end-date` |
 | `economy.gdp.nominal` | - | `country`, `start-date`, `end-date` |
 | `economy.cpi` | - | `country`, `transform`, `frequency`, `harmonized`, `start-date`, `end-date` |
+| `technical.indicators` | `symbol` | `start-date`, `end-date`, `interval`, `adjusted`, `indicators`, `rsi-length`, `macd-fast`, `macd-slow`, `macd-signal`, `sma-lengths`, `ema-lengths`, `bbands-length`, `bbands-std`, `atr-length`, `stoch-k`, `stoch-d`, `limit` |
 | `news.company` | `symbol` | `start-date`, `end-date`, `limit` |
 | `news.world` | - | `start-date`, `end-date`, `limit` |
 | `derivatives.options.unusual` | - | `symbol`, `start-date`, `end-date`, `side`, `option-type`, `min-premium`, `min-vol-oi`, `limit` |
