@@ -18,6 +18,13 @@ api_key = "${TICKFLOW_API_KEY}"
 # Optional: override the default API base URL
 # base_url = "https://api.tickflow.org"
 
+[sources.finnhub]
+enabled = true
+priority = 102
+api_key = "${FINNHUB_API_KEY}"
+# Optional: override the default API base URL
+# base_url = "https://finnhub.io/api/v1"
+
 [sources.futunn]
 enabled = true
 priority = 100

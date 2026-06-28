@@ -29,7 +29,12 @@ class FinanceCompanyNewsFetcher(Fetcher[CompanyNewsQueryParams, list[CompanyNews
         del credentials
         registry = kwargs.get("registry") or build_default_registry()
         market = infer_market(query.symbol) if query.symbol else "global"
-        names = ["futunn", "openbb"] if market in {"us", "hk"} else ["futunn", "akshare", "openbb"]
+        if market == "us":
+            names = ["finnhub", "futunn", "openbb"]
+        elif market == "hk":
+            names = ["futunn", "openbb"]
+        else:
+            names = ["futunn", "akshare", "openbb"]
         sources = registry.ordered_by_names(names)
 
         async def fetch(source: Any) -> list[dict[str, Any]]:

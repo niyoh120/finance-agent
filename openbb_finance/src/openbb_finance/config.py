@@ -22,6 +22,7 @@ class SourceConfig:
 DEFAULT_PRIORITIES = {
     "tdx": 110,
     "tickflow": 105,
+    "finnhub": 102,
     "futunn": 100,
     "sina": 98,
     "eastmoney": 95,
@@ -38,6 +39,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
         for name, priority in DEFAULT_PRIORITIES.items()
     }
 }
+DEFAULT_CONFIG["sources"]["finnhub"]["api_key"] = "${FINNHUB_API_KEY}"
 
 CONFIG_FILENAMES = ("openbb_finance.toml", ".openbb_finance.toml")
 ENV_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")

@@ -28,7 +28,7 @@ class FinanceWorldNewsFetcher(Fetcher[WorldNewsQueryParams, list[WorldNewsData]]
     ) -> list[dict[str, Any]]:
         del credentials
         registry = kwargs.get("registry") or build_default_registry()
-        sources = registry.ordered_by_names(["futunn", "openbb"])
+        sources = registry.ordered_by_names(["finnhub", "futunn", "openbb"])
         start_date = query.start_date
         end_date = query.end_date or dateType.today()
 

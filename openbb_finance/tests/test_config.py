@@ -59,6 +59,17 @@ base_url = "https://tdx.example.com"
     assert config.base_url == "https://tdx.example.com"
 
 
+def test_get_source_config_reads_finnhub_api_key_from_env(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("FINNHUB_API_KEY", "finnhub-token")
+
+    config = get_source_config("finnhub")
+
+    assert config.enabled is True
+    assert config.priority == 102
+    assert config.api_key == "finnhub-token"
+
+
 def test_apply_runtime_environment_sets_database_url(tmp_path, monkeypatch):
     monkeypatch.delenv("FA_DATABASE_URL", raising=False)
     monkeypatch.setenv("TEST_DB_URL", "sqlite+aiosqlite:///openbb-finance-test.db")
