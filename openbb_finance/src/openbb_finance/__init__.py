@@ -123,7 +123,7 @@ def _patch_equity_screener_route() -> None:
         def screener(
             self,
             provider: Annotated[
-                Optional[Literal["finviz", "fmp", "nasdaq", "yfinance", "finance"]],
+                Optional[Literal["finviz", "fmp", "nasdaq", "finance"]],
                 OpenBBField(
                     description=(
                         "The provider to use, by default None. If None, the"
@@ -136,7 +136,7 @@ def _patch_equity_screener_route() -> None:
             selected_provider = self._get_provider(
                 provider,
                 "equity.screener",
-                ("finviz", "fmp", "nasdaq", "yfinance", "finance"),
+                ("finviz", "fmp", "nasdaq", "finance"),
             )
             if selected_provider != "finance":
                 return original_screener(self, provider=selected_provider, **kwargs)

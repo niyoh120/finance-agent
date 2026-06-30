@@ -3,7 +3,6 @@ from datetime import date, datetime
 import pandas as pd
 import pytest
 from easy_tdx import Adjust, ExMarket, Period
-
 from openbb_finance.config import SourceConfig
 from openbb_finance.sources import tdx as tdx_module
 from openbb_finance.sources.base import PriceQuery, SourceError
@@ -148,6 +147,10 @@ def test_tdx_symbol_mapping():
     assert _to_ex_market_code("700.HK", "hk") == (ExMarket.HK_MAIN_BOARD, "00700")
     assert _to_ex_market_code("8001.HK", "hk") == (ExMarket.HK_GEM, "08001")
     assert _to_ex_market_code("AAPL", "us") == (ExMarket.US_STOCK, "AAPL")
+    assert _to_ex_market_code("SPX", "us") == (ExMarket.INTL_INDEX, "A_SPX")
+    assert _to_ex_market_code("HSI", "hk") == (ExMarket.HK_INDEX, "HSI")
+    assert _to_ex_market_code("HSCEI", "hk") == (ExMarket.HK_INDEX, "HZ5014")
+    assert _to_ex_market_code("HSTECH", "hk") == (ExMarket.HK_INDEX, "HZ5017")
     with pytest.raises(SourceError):
         _to_tdx_code("AAPL")
 
@@ -221,6 +224,36 @@ async def test_tdx_us_price_uses_us_stock_market():
         0,
         700,
         Adjust.QFQ,
+    )
+
+
+async def test_tdx_us_index_price_uses_intl_index_market():
+    result = await make_source().fetch_price(PriceQuery(symbol="SPX", market="us", interval="1d"))
+
+    assert FakeMacExClient.calls[1] == (
+        "goods_kline",
+        ExMarket.INTL_INDEX,
+        "A_SPX",
+        Period.DAILY,
+        0,
+        700,
+        Adjust.NONE,
+    )
+    assert result[0]["symbol"] == "SPX"
+    assert result[0]["source"] == "tdx"
+
+
+async def test_tdx_hk_index_price_uses_hk_index_market():
+    await make_source().fetch_price(PriceQuery(symbol="HSTECH", market="hk", interval="1d"))
+
+    assert FakeMacExClient.calls[1] == (
+        "goods_kline",
+        ExMarket.HK_INDEX,
+        "HZ5017",
+        Period.DAILY,
+        0,
+        700,
+        Adjust.NONE,
     )
 
 

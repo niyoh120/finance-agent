@@ -16,15 +16,14 @@ mise run install
 uv run --package openbb-finance python -c "from openbb_finance import provider; print(provider.name)"
 ```
 
-## 验证 OpenBB 注册
-
-OpenBB 平台包仅作为开发/集成验证依赖提供，验证时启用 `dev` extra：
+## 验证 OpenBB Provider
 
 ```bash
-uv run --package openbb-finance --extra dev python - <<'PY'
-from openbb import obb
+uv run --package openbb-finance python - <<'PY'
+from openbb_finance import provider
 
-print(obb.coverage.providers["finance"])
+print(provider.name)
+print(provider.fetcher_dict.keys())
 PY
 ```
 
@@ -282,10 +281,6 @@ base_url = "https://api.tickflow.org"
 enabled = true
 priority = 70
 
-[sources.yahoo]
-enabled = true
-priority = 60
-
 [sources.openbb]
 enabled = true
 priority = 50
@@ -309,7 +304,6 @@ priority = 50
 - `baostock` - BaoStock
 - `tickflow` - TickFlow
 - `akshare` - AKShare
-- `yahoo` - Yahoo Finance
 - `openbb` - OpenBB 内置数据源
 
 敏感信息建议在 TOML 中使用 `${TOKEN}` 形式从环境变量注入，例如：
@@ -322,7 +316,7 @@ api_key = "${TICKFLOW_API_KEY}"
 ## 开发
 
 ```bash
-uv run --package openbb-finance --extra dev pytest openbb_finance/tests -q
-uv run --package openbb-finance --extra dev ruff check openbb_finance/src/openbb_finance openbb_finance/tests
+uv run --package openbb-finance pytest openbb_finance/tests -q
+uv run --package openbb-finance ruff check openbb_finance/src/openbb_finance openbb_finance/tests
 uv run --package openbb-finance python -m compileall -q openbb_finance/src/openbb_finance
 ```

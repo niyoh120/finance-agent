@@ -77,20 +77,15 @@ def route_price_sources(query: PriceQuery, *, now: datetime | None = None) -> li
 
     if market in {"us", "hk"}:
         if interval_type == "minute":
-            return ["tdx", "yahoo"]
-        return ["tdx", "tickflow", "yahoo"]
+            return ["tdx"]
+        return ["tdx", "tickflow"]
 
     return ["openbb"]
 
 
 def route_index_price_sources(query: PriceQuery, *, now: datetime | None = None) -> list[str]:
-    """Route index historical price sources.
-
-    TickFlow klines do not cover US/HK index prices, so only Yahoo is used
-    for non-CN index K-line data. CN indices route through the standard
-    price sources that include TDX and TickFlow.
-    """
+    """Route index historical price sources."""
     market: Market = query.market
     if market == "cn":
         return route_price_sources(query, now=now)
-    return ["yahoo"]
+    return ["tdx"]

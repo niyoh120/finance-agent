@@ -28,7 +28,6 @@ DEFAULT_PRIORITIES = {
     "eastmoney": 95,
     "baostock": 90,
     "akshare": 70,
-    "yahoo": 60,
     "openbb": 50,
 }
 

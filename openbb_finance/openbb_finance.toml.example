@@ -29,10 +29,6 @@ api_key = "${FINNHUB_API_KEY}"
 enabled = true
 priority = 100
 
-[sources.yahoo]
-enabled = true
-priority = 60
-
 [sources.openbb]
 enabled = true
 priority = 50

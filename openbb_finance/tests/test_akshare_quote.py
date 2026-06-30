@@ -8,7 +8,6 @@ from openbb_finance.config import SourceConfig
 from openbb_finance.models.equity_quote import FinanceEquityQuoteFetcher
 from openbb_finance.sources.akshare import AkshareSource
 from openbb_finance.sources.base import PriceQuery
-from openbb_finance.sources.yahoo import YahooSource
 
 
 @pytest.mark.anyio
@@ -121,32 +120,10 @@ async def test_equity_quote_us_routes_tdx_before_fallbacks():
 
     class FakeRegistry:
         def ordered_by_names(self, names):
-            assert names == ["tdx", "tickflow", "yahoo"]
+            assert names == ["tdx", "tickflow"]
             return [FakeSource(name) for name in names]
 
     query = FinanceEquityQuoteFetcher.transform_query({"symbol": "AAPL"})
     result = await FinanceEquityQuoteFetcher.aextract_data(query, credentials=None, registry=FakeRegistry())
 
     assert result == [{"symbol": "AAPL", "last_price": 297.28, "source": "tdx"}]
-
-
-@pytest.mark.anyio
-async def test_yahoo_quote_maps_china_symbol_for_yfinance(monkeypatch):
-    captured = {}
-
-    def quote(symbol, provider):
-        captured["symbol"] = symbol
-        captured["provider"] = provider
-        quote_result = SimpleNamespace(model_dump=lambda: {"symbol": "600000.SS", "last_price": 9.37})
-        return SimpleNamespace(results=[quote_result])
-
-    obb = SimpleNamespace(equity=SimpleNamespace(price=SimpleNamespace(quote=quote)))
-    monkeypatch.setitem(sys.modules, "openbb", SimpleNamespace(obb=obb))
-
-    source = YahooSource(SourceConfig(name="yahoo", enabled=True, priority=60))
-    result = await source.fetch_quote("600000.SH")
-
-    assert captured == {"symbol": "600000.SS", "provider": "yfinance"}
-    assert result["symbol"] == "600000.XSHG"
-    assert result["last_price"] == 9.37
-    assert result["source"] == "yahoo"

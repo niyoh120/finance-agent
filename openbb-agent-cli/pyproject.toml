@@ -5,7 +5,16 @@ description = "Agent-friendly JSON CLI for the OpenBB finance provider"
 requires-python = ">=3.11"
 dependencies = [
   "cyclopts>=4.0.0",
-  "openbb>=4.7.1",
+  "openbb-core>=1.4.0",
+  "openbb-derivatives>=1.6.1",
+  "openbb-econdb>=1.5.0",
+  "openbb-economy>=1.6.1",
+  "openbb-equity>=1.6.1",
+  "openbb-etf>=1.6.1",
+  "openbb-index>=1.6.1",
+  "openbb-news>=1.6.1",
+  "openbb-oecd>=1.6.0",
+  "openbb-technical>=1.6.1",
   "openbb-finance",
 ]
 

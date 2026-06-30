@@ -6,6 +6,7 @@ import contextlib
 import io
 import json
 from collections.abc import Callable
+from dataclasses import is_dataclass
 from typing import Any, Literal
 
 from cyclopts import App
@@ -61,14 +62,24 @@ def _inject_obbject_types() -> None:
         setattr(pi_module, f"OBBject_{name}", cls)
 
 
-def _resolve_route(route: str) -> Callable[..., Any]:
-    _inject_obbject_types()
-    from openbb import obb
-
-    target: Any = obb
-    for part in route.split("."):
-        target = getattr(target, part)
-    return target
+ROUTE_MODELS = {
+    "equity.price.historical": "EquityHistorical",
+    "equity.price.quote": "EquityQuote",
+    "equity.search": "EquitySearch",
+    "equity.screener": "EquityScreener",
+    "index.available": "AvailableIndices",
+    "index.search": "IndexSearch",
+    "index.price.historical": "IndexHistorical",
+    "etf.historical": "EtfHistorical",
+    "economy.calendar": "EconomicCalendar",
+    "economy.available_indicators": "AvailableIndicators",
+    "economy.indicators": "EconomicIndicators",
+    "economy.gdp.nominal": "GdpNominal",
+    "economy.cpi": "ConsumerPriceIndex",
+    "news.company": "CompanyNews",
+    "news.world": "WorldNews",
+    "derivatives.options.unusual": "OptionsUnusual",
+}
 
 
 def _error_code(exc: Exception) -> str:
@@ -81,12 +92,7 @@ def _error_code(exc: Exception) -> str:
 
 
 def _execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
-    stdout = io.StringIO()
-    stderr = io.StringIO()
-    with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
-        command = _resolve_route(route)
-        result = command(provider="finance", **_drop_none(params))
-    return result.model_dump(mode="json").get("results", [])
+    return _execute_provider_model(ROUTE_MODELS[route], params)
 
 
 def _run_route(route: str, **params: Any) -> None:
@@ -112,8 +118,19 @@ def _execute_provider_model(
         _inject_obbject_types()
         pi = ProviderInterface()
         provider_choices = pi.model_providers[model_name](provider="finance")
-        standard = pi.params[model_name]["standard"](**_drop_none(standard_params or {}))
-        extra = pi.params[model_name]["extra"](**(extra_params or {}))
+        standard_cls = pi.params[model_name]["standard"]
+        extra_cls = pi.params[model_name]["extra"]
+        model_fields = getattr(standard_cls, "model_fields", None)
+        standard_fields = set(model_fields if model_fields is not None else standard_cls.__annotations__)
+        if extra_params is None:
+            params = _drop_none(standard_params or {})
+            standard_values = {key: value for key, value in params.items() if key in standard_fields}
+            extra_values = {key: value for key, value in params.items() if key not in standard_fields}
+        else:
+            standard_values = _drop_none(standard_params or {})
+            extra_values = extra_params if is_dataclass(extra_cls) else _drop_none(extra_params or {})
+        standard = standard_cls(**standard_values)
+        extra = extra_cls(**extra_values)
         query_obj = Query(CommandContext(), provider_choices, standard, extra)
 
         stdout = io.StringIO()

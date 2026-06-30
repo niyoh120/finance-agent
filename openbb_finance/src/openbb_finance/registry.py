@@ -47,7 +47,6 @@ def build_default_registry() -> DataSourceRegistry:
     from openbb_finance.sources.sina import SinaSource
     from openbb_finance.sources.tdx import TdxSource
     from openbb_finance.sources.tickflow import TickflowSource
-    from openbb_finance.sources.yahoo import YahooSource
 
     registry = DataSourceRegistry()
     for source_cls in [
@@ -59,7 +58,6 @@ def build_default_registry() -> DataSourceRegistry:
         TickflowSource,
         FinnhubSource,
         FutunnSource,
-        YahooSource,
         OpenbbSource,
     ]:
         config = get_source_config(source_cls.name)

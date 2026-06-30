@@ -10,13 +10,29 @@ from typing import Any
 from easy_tdx import Adjust, ExMarket, MacClient, MacExClient, Period
 
 from openbb_finance.config import SourceConfig
-from openbb_finance.sources.base import DataType, Market, PriceQuery, SourceError, is_intraday_interval, normalize_interval
+from openbb_finance.sources.base import (
+    DataType,
+    Market,
+    PriceQuery,
+    SourceError,
+    is_intraday_interval,
+    normalize_interval,
+)
 from openbb_finance.sources.symbols import cn_exchange, cn_plain_symbol, split_symbol, to_openbb_symbol
 
 CN_MARKET_SZ = 0
 CN_MARKET_SH = 1
 TDX_COUNT_LIMIT = 700
 DEFAULT_TIMEOUT = 15.0
+TDX_INDEX_SYMBOLS: dict[str, tuple[int, str]] = {
+    "SPX": (ExMarket.INTL_INDEX, "A_SPX"),
+    "DJI": (ExMarket.INTL_INDEX, "A_DJI"),
+    "IXIC": (ExMarket.INTL_INDEX, "A_IXIC"),
+    "NDX": (ExMarket.INTL_INDEX, "A_NDX"),
+    "HSI": (ExMarket.HK_INDEX, "HSI"),
+    "HSCEI": (ExMarket.HK_INDEX, "HZ5014"),
+    "HSTECH": (ExMarket.HK_INDEX, "HZ5017"),
+}
 logger = logging.getLogger(__name__)
 
 
@@ -129,6 +145,9 @@ def _to_cn_market_code(symbol: str) -> tuple[int, str]:
 def _to_ex_market_code(symbol: str, market: Market) -> tuple[int, str]:
     code, suffix = split_symbol(symbol)
     del suffix
+    value = code.strip().upper()
+    if value in TDX_INDEX_SYMBOLS:
+        return TDX_INDEX_SYMBOLS[value]
     if market == "hk":
         if not code.isdigit():
             raise SourceError(f"TDX invalid Hong Kong symbol: {symbol}")
@@ -137,7 +156,6 @@ def _to_ex_market_code(symbol: str, market: Market) -> tuple[int, str]:
             return ExMarket.HK_GEM, padded
         return ExMarket.HK_MAIN_BOARD, padded
     if market == "us":
-        value = code.strip().upper()
         if not value:
             raise SourceError(f"TDX invalid US symbol: {symbol}")
         return ExMarket.US_STOCK, value

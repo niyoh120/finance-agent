@@ -18,11 +18,6 @@ dependencies = [
   "tvscreener>=0.3.0",
 ]
 
-[project.optional-dependencies]
-dev = [
-  "openbb>=4.7.1",
-]
-
 [project.entry-points."openbb_provider_extension"]
 finance = "openbb_finance:provider"
 
@@ -36,8 +31,3 @@ finance-shared = { workspace = true }
 [tool.uv.build-backend]
 module-root = "src"
 module-name = "openbb_finance"
-
-[dependency-groups]
-dev = [
-    "openbb-cli>=1.4.1",
-]
