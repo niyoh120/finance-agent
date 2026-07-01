@@ -680,16 +680,16 @@ wheels = [
 
 [[package]]
 name = "easy-tdx"
-version = "1.14.1"
+version = "1.16.0"
 source = { registry = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple" }
 dependencies = [
     { name = "click" },
     { name = "pandas" },
     { name = "tzdata" },
 ]
-sdist = { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/75/59/0168ebaf12a6acfa29119c8f3ef62de71fcea8c9338b439dd103944bf5b7/easy_tdx-1.14.1.tar.gz", hash = "sha256:81e28728368d288df0479bd9715603d63b6a51adc6e7c360d99e324b6fbf287f", size = 11396457, upload-time = "2026-06-15T12:52:00.122Z" }
+sdist = { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/b7/c9/b6826f7c7c596f20dfcfe0698024683613c5242c670b7c94f753ad9b60b1/easy_tdx-1.16.0.tar.gz", hash = "sha256:31c25af582f0cf4b1d3fda64b137db5879166441599adc46d91613074548ca53", size = 11423169, upload-time = "2026-06-30T07:03:34.771Z" }
 wheels = [
-    { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/8c/3d/6a3277a748452b0bea4ed06a69828d416f424b0ba65d3f887e2f539a10cd/easy_tdx-1.14.1-py3-none-any.whl", hash = "sha256:4c163bf2cdc6adc14dd455e990053dae9e1f328f66c735498dc4bf305e6d23de", size = 359300, upload-time = "2026-06-15T12:51:58.03Z" },
+    { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/5c/7e/6c0e64988e584faf4b9183f3cfb09f4b720b596d017e603e6860b42c5ee9/easy_tdx-1.16.0-py3-none-any.whl", hash = "sha256:68e92d13125f96cf230c6171bdeb012003bac04b0f445072829be56611ce1ad9", size = 366553, upload-time = "2026-06-30T07:03:33.439Z" },
 ]
 
 [[package]]
@@ -1682,7 +1682,7 @@ requires-dist = [
     { name = "akshare", specifier = ">=1.18.23,<1.19" },
     { name = "asyncpg", specifier = ">=0.29.0" },
     { name = "baostock", specifier = ">=0.8.9" },
-    { name = "easy-tdx", specifier = ">=1.14.1" },
+    { name = "easy-tdx", specifier = ">=1.16.0" },
     { name = "finance-shared", editable = "shared" },
     { name = "httpx", specifier = ">=0.27.0" },
     { name = "openbb-core", specifier = ">=1.4.0" },
