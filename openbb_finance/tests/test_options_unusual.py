@@ -110,7 +110,8 @@ async def test_aextract_data_uses_mock_db(monkeypatch):
     assert len(data) == 1
     assert data[0]["symbol"] == "AAPL"
     assert data[0]["contract_symbol"] == "AAPL250117C00200000"
-    assert data[0]["sentiment"] == "bullish"
+    # Call @ Bid -> seller aggressor -> bearish (see _infer_sentiment)
+    assert data[0]["sentiment"] == "bearish"
     execute.assert_awaited_once()
 
 

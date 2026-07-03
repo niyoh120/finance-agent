@@ -31,7 +31,10 @@ class FinanceOptionsUnusualQueryParams(OptionsUnusualQueryParams):
         default=None,
         description=QUERY_DESCRIPTIONS.get("end_date", ""),
     )
-    side: Literal["Bid", "Ask"] | None = Field(default=None, description="Trade side.")
+    side: Literal["Bid", "Ask"] | None = Field(
+        default=None,
+        description="Filter by where the trade prints: 'Bid' = seller-aggressor side, 'Ask' = buyer-aggressor side.",
+    )
     option_type: Literal["P", "C"] | None = Field(default=None, description="Option type.")
     min_premium: float | None = Field(default=None, description="Minimum premium in USD.")
     min_vol_oi: float | None = Field(default=None, description="Minimum volume/open-interest ratio.")
@@ -74,13 +77,19 @@ class FinanceOptionsUnusualData(OptionsUnusualData):
     option_type: Literal["P", "C"] = Field(description="Put or Call.")
     expiration: dateType = Field(description="Expiration date.")
     dte: int = Field(description="Days to expiration.")
-    side: Literal["Bid", "Ask"] = Field(description="Trade side.")
+    side: Literal["Bid", "Ask"] = Field(
+        description="Where the trade prints relative to the spread: 'Bid' = seller-aggressor side, 'Ask' = buyer-aggressor side.",
+    )
     interval_volume: int = Field(description="Interval volume.")
     open_interest: int = Field(description="Open interest.")
     vol_oi: float = Field(description="Volume/open-interest ratio.")
     otm_percent: float = Field(description="Out-of-the-money percentage.")
-    bid_percent: int = Field(description="Bid percentage.")
-    ask_percent: int = Field(description="Ask percentage.")
+    bid_percent: int = Field(
+        description="Share of this flow on the bid side, as a percentage (0-100).",
+    )
+    ask_percent: int = Field(
+        description="Share of this flow on the ask side, as a percentage (0-100).",
+    )
     multileg_percent: float = Field(description="Multi-leg percentage.")
     interval_type: str = Field(description="Interval type.")
 
@@ -140,7 +149,7 @@ class FinanceOptionsUnusualFetcher(
                 "symbol": row.symbol,
                 "contract_symbol": _build_contract_symbol(row.symbol, row.expiry, row.option_type, row.strike),
                 "timestamp": row.timestamp,
-                "sentiment": _infer_sentiment(row.side),
+                "sentiment": _infer_sentiment(row.side, row.option_type),
                 "avg_fill": row.avg_fill,
                 "premium": row.premium,
                 "strike": row.strike,
@@ -173,11 +182,22 @@ class FinanceOptionsUnusualFetcher(
         return [FinanceOptionsUnusualData.model_validate(item) for item in data]
 
 
-def _infer_sentiment(side: str) -> Literal["bullish", "bearish", "neutral"]:
-    if side == "Bid":
-        return "bullish"
+# Direction follows the Unusual Whales convention: aggressor is inferred from
+# where the trade prints relative to the bid/ask spread, and direction also
+# depends on whether the contract is a call or a put.
+#   Call @ Ask -> buyer aggressor -> bullish
+#   Call @ Bid -> seller aggressor -> bearish
+#   Put  @ Ask -> buyer aggressor -> bearish
+#   Put  @ Bid -> seller aggressor -> bullish
+def _infer_sentiment(
+    side: str, option_type: str | None
+) -> Literal["bullish", "bearish", "neutral"]:
+    is_call = option_type == "C"
+    is_put = option_type == "P"
     if side == "Ask":
-        return "bearish"
+        return "bullish" if is_call else "bearish" if is_put else "neutral"
+    if side == "Bid":
+        return "bearish" if is_call else "bullish" if is_put else "neutral"
     return "neutral"
 
 
