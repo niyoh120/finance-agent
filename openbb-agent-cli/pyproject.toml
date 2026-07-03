@@ -16,6 +16,7 @@ dependencies = [
   "openbb-oecd>=1.6.0",
   "openbb-technical>=1.6.1",
   "openbb-finance",
+  "tzdata>=2025.3",
 ]
 
 [project.scripts]

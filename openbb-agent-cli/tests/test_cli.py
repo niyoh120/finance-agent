@@ -786,3 +786,129 @@ def test_index_detail_template_includes_historical_limit() -> None:
 
     historical_params = queries[1]["params"]
     assert historical_params["__cli_limit__"] == 50
+
+
+def test_is_market_open_returns_false_on_weekend() -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    # Saturday 2026-07-04 10:00 Beijing, all three markets closed.
+    saturday = datetime(2026, 7, 4, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+    monkeypatch_dt = type("DT", (), {"now": staticmethod(lambda tz=None: saturday.astimezone(tz) if tz else saturday.replace(tzinfo=None))})
+    monkeypatch = pytest.MonkeyPatch()
+    monkeypatch.setattr(cli, "datetime", monkeypatch_dt)
+    try:
+        assert cli._is_market_open("cn") is False
+        assert cli._is_market_open("hk") is False
+        assert cli._is_market_open("us") is False
+    finally:
+        monkeypatch.undo()
+
+
+def test_is_market_open_cn_during_session() -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    # Wednesday 2026-07-01 10:00 Beijing -> CN session (9:30-11:30).
+    morning = datetime(2026, 7, 1, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+    monkeypatch_dt = type("DT", (), {"now": staticmethod(lambda tz=None: morning.astimezone(tz) if tz else morning.replace(tzinfo=None))})
+    mp = pytest.MonkeyPatch()
+    mp.setattr(cli, "datetime", monkeypatch_dt)
+    try:
+        assert cli._is_market_open("cn") is True
+    finally:
+        mp.undo()
+
+
+def test_historical_executor_skips_intraday_tag_when_symbol_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    rows = [{"date": "2026-07-03", "close": 100.0}]
+
+    monkeypatch.setattr(cli, "_execute_route", lambda route, **params: rows)
+
+    def fail_tag(symbol: str, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        raise AssertionError("tagging should be skipped when symbol is missing")
+
+    monkeypatch.setattr(cli, "_tag_intraday_last_bar", fail_tag)
+
+    executor = cli._historical_executor("equity.price.historical")
+    assert executor({}) is rows
+
+
+def test_tag_intraday_last_bar_passthrough_when_market_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(cli, "_is_market_open", lambda market: False)
+    rows = [{"date": "2026-07-03", "close": 100.0}, {"date": "2026-07-04", "close": 101.0}]
+    result = cli._tag_intraday_last_bar("AAPL", rows)
+    assert result is rows  # no copy when market closed
+    assert "_meta" not in result[-1]
+
+
+def test_tag_intraday_last_bar_tags_today_bar_when_market_open(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setattr(cli, "_is_market_open", lambda market: True)
+    monkeypatch.setattr(cli, "infer_market_from_symbol", lambda symbol: "cn")
+    # Fix "now" to 2026-07-04 10:00 Beijing so today == last bar's date.
+    fixed = datetime(2026, 7, 4, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(cli, "datetime", type("DT", (), {"now": staticmethod(lambda tz=None: fixed.astimezone(tz) if tz else fixed.replace(tzinfo=None))}))
+
+    rows = [{"date": "2026-07-03", "close": 100.0}, {"date": "2026-07-04", "close": 101.0}]
+    result = cli._tag_intraday_last_bar("510300.XSHG", rows)
+    assert len(result) == 2
+    assert result[0] == rows[0]  # earlier bars untouched
+    assert result[-1]["_meta"]["warning"]
+    assert result[-1]["_meta"]["market"] == "cn"
+    assert "_meta" not in rows[-1]  # original list not mutated
+
+
+def test_tag_intraday_last_bar_no_tag_when_last_bar_not_today(monkeypatch: pytest.MonkeyPatch) -> None:
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    monkeypatch.setattr(cli, "_is_market_open", lambda market: True)
+    monkeypatch.setattr(cli, "infer_market_from_symbol", lambda symbol: "cn")
+    # Freeze "now" so the test is deterministic regardless of the real wall-clock date.
+    fixed = datetime(2026, 7, 3, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(
+        cli, "datetime",
+        type("DT", (), {"now": staticmethod(lambda tz=None: fixed.astimezone(tz) if tz else fixed.replace(tzinfo=None))}),
+    )
+    rows = [{"date": "2026-07-01", "close": 100.0}, {"date": "2026-07-02", "close": 101.0}]
+    result = cli._tag_intraday_last_bar("510300.XSHG", rows)
+    assert result is rows  # passthrough, no copy
+    assert "_meta" not in result[-1]
+
+
+def test_is_market_open_us_session_on_beijing_saturday(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Friday 10:00 ET (DST) == Saturday 00:00 Beijing. The US market is open, so the
+    # Beijing-time weekend guard must NOT suppress it. The cross-midnight boundary is
+    # the critical case for the US branch. Use a non-holiday Friday (2026-07-10) so the
+    # test isolates the timezone boundary rather than the documented holiday gap.
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    fixed = datetime(2026, 7, 11, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(
+        cli, "datetime",
+        type("DT", (), {"now": staticmethod(lambda tz=None: fixed.astimezone(tz) if tz else fixed.replace(tzinfo=None))}),
+    )
+    assert cli._is_market_open("us") is True
+
+
+def test_tag_intraday_last_bar_tags_us_bar_during_beijing_saturday_session(monkeypatch: pytest.MonkeyPatch) -> None:
+    # US daily bar is dated by the US trading day (Friday 2026-07-10), even though it is
+    # already Saturday in Beijing. The tag must compare against the US-local date, not
+    # the Beijing date, otherwise the partial bar is never flagged.
+    from datetime import datetime
+    from zoneinfo import ZoneInfo
+
+    fixed = datetime(2026, 7, 11, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
+    monkeypatch.setattr(
+        cli, "datetime",
+        type("DT", (), {"now": staticmethod(lambda tz=None: fixed.astimezone(tz) if tz else fixed.replace(tzinfo=None))}),
+    )
+    monkeypatch.setattr(cli, "infer_market_from_symbol", lambda symbol: "us")
+
+    rows = [{"date": "2026-07-10", "close": 100.0}]  # US trading-day date
+    result = cli._tag_intraday_last_bar("AAPL", rows)
+    assert result[-1]["_meta"]["market"] == "us"

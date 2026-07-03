@@ -7,10 +7,14 @@ import io
 import json
 from collections.abc import Callable
 from dataclasses import is_dataclass
+from datetime import datetime
 from typing import Any, Literal
+from zoneinfo import ZoneInfo
 
 from cyclopts import App
 from cyclopts.exceptions import CycloptsError
+
+from openbb_finance.sources.symbols import infer_market_from_symbol
 
 from openbb_agent_cli import __version__
 
@@ -36,6 +40,68 @@ def _apply_limit(results: list[dict[str, Any]], limit: int | None) -> list[dict[
     if limit < 1:
         raise ValueError(f"limit must be >= 1, got {limit}")
     return results[-limit:]
+
+
+_SHANGHAI = ZoneInfo("Asia/Shanghai")
+_NEW_YORK = ZoneInfo("America/New_York")
+
+
+def _is_market_open(market: str) -> bool:
+    """Best-effort check whether *market* (cn/hk/us) is currently in its regular session.
+
+    Holidays and early-close days are ignored: an early-close session still has partial
+    data, and on a holiday the source returns no same-day row at all, so neither case
+    produces a false positive for the "latest bar may be intraday" warning.
+    """
+    # Weekend is checked in the exchange-local timezone, because the US session spans
+    # past Beijing midnight (e.g. Friday evening ET is Saturday morning in Shanghai).
+    if market == "us":
+        now = datetime.now(_NEW_YORK)
+        if now.weekday() >= 5:
+            return False
+        minutes = now.hour * 60 + now.minute
+        return 9 * 60 + 30 <= minutes < 16 * 60
+
+    now_bj = datetime.now(_SHANGHAI)
+    if now_bj.weekday() >= 5:
+        return False
+
+    def _in(start_h: int, start_m: int, end_h: int, end_m: int) -> bool:
+        minutes = now_bj.hour * 60 + now_bj.minute
+        return start_h * 60 + start_m <= minutes < end_h * 60 + end_m
+
+    if market == "cn":
+        return _in(9, 30, 11, 30) or _in(13, 0, 15, 0)
+    if market == "hk":
+        return _in(9, 30, 12, 0) or _in(13, 0, 16, 0)
+    return False
+
+
+def _tag_intraday_last_bar(symbol: str, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Annotate the last bar with `_meta` when the market is open and that bar is today.
+
+    Non-intraday case is a full pass-through: no key added, no copy made. The annotation
+    is attached to the triggering record so consumers reading that bar see the caveat in
+    place (e.g. volume is a partial-session cumulative, not a full day).
+    """
+    if not results:
+        return results
+    market = infer_market_from_symbol(symbol)
+    if not _is_market_open(market):
+        return results
+    last = results[-1]
+    last_date = str(last.get("date", ""))[:10]
+    # Compare against the exchange-local calendar date: a US daily bar is dated by the
+    # US trading day, which is one Beijing day behind during the cross-midnight session.
+    now_tz = _NEW_YORK if market == "us" else _SHANGHAI
+    if last_date != datetime.now(now_tz).date().isoformat():
+        return results
+    # ponytail: shallow-copy only the tagged bar so callers keep their own list intact
+    tagged = [{**last, "_meta": {
+        "warning": "market is currently open; this bar may be a partial-session snapshot, OHLCV not final",
+        "market": market,
+    }}]
+    return results[:-1] + tagged
 
 
 def _ensure_list(value: Any) -> list[str] | None:
@@ -178,14 +244,20 @@ _ROUTE_LIMIT_KEY = "__cli_limit__"
 
 
 def _historical_executor(route: str) -> RouteExecutor:
-    """Execute a historical route, applying CLI-side limit if provided in params."""
+    """Execute a historical route, applying CLI-side limit and intraday tagging.
+
+    Both direct commands and the `batch` path route through here for the three
+    historical routes, so partial-session tagging stays consistent.
+    """
     defaults = _HISTORICAL_ROUTES[route]
 
     def _exec(params: dict[str, Any]) -> list[dict[str, Any]]:
         limit = params.pop(_ROUTE_LIMIT_KEY, None)
         route_params = {**defaults, **params}
         results = _execute_route(route, **route_params)
-        return _apply_limit(results, limit)
+        limited = _apply_limit(results, limit)
+        symbol = route_params.get("symbol")
+        return _tag_intraday_last_bar(symbol, limited) if symbol else limited
 
     return _exec
 
@@ -477,7 +549,7 @@ def equity_price_historical(
             interval=interval,
             adjusted=adjusted,
         )
-        _print_json(_apply_limit(results, limit))
+        _print_json(_tag_intraday_last_bar(symbol, _apply_limit(results, limit)))
     except Exception as exc:
         _print_json({"error": str(exc), "code": _error_code(exc)})
         raise SystemExit(1) from exc
@@ -821,7 +893,7 @@ def index_price_historical(
     """Get index historical price data."""
     try:
         results = _execute_route("index.price.historical", symbol=symbol, start_date=start_date, end_date=end_date)
-        _print_json(_apply_limit(results, limit))
+        _print_json(_tag_intraday_last_bar(symbol, _apply_limit(results, limit)))
     except Exception as exc:
         _print_json({"error": str(exc), "code": _error_code(exc)})
         raise SystemExit(1) from exc
@@ -851,7 +923,7 @@ def etf_historical(
     """Get ETF historical price data."""
     try:
         results = _execute_route("etf.historical", symbol=symbol, start_date=start_date, end_date=end_date)
-        _print_json(_apply_limit(results, limit))
+        _print_json(_tag_intraday_last_bar(symbol, _apply_limit(results, limit)))
     except Exception as exc:
         _print_json({"error": str(exc), "code": _error_code(exc)})
         raise SystemExit(1) from exc
