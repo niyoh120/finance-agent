@@ -78,7 +78,10 @@ class FinanceOptionsUnusualData(OptionsUnusualData):
     expiration: dateType = Field(description="Expiration date.")
     dte: int = Field(description="Days to expiration.")
     side: Literal["Bid", "Ask"] = Field(
-        description="Where the trade prints relative to the spread: 'Bid' = seller-aggressor side, 'Ask' = buyer-aggressor side.",
+        description=(
+            "Where the trade prints relative to the spread: "
+            "'Bid' = seller-aggressor side, 'Ask' = buyer-aggressor side."
+        ),
     )
     interval_volume: int = Field(description="Interval volume.")
     open_interest: int = Field(description="Open interest.")

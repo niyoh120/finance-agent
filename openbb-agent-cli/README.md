@@ -131,6 +131,52 @@ openbb-agent-cli derivatives.options.unusual \
   --limit 100
 ```
 
+### 美股期权数据（ConvexValue）
+
+需要 `CV_API_KEY` 环境变量（ConvexValue Research Plan，$19/月，覆盖美股权权 + FMP 全量财务数据）。
+
+```bash
+# 完整期权链（含 Greeks/IV/OI/bid-ask/day stats）
+openbb-agent-cli derivatives.options.chain --symbol SPY --limit 50
+openbb-agent-cli derivatives.options.chain --symbol SPY --expiration 2026-07-17  # 单到期日
+openbb-agent-cli derivatives.options.chain --symbol SPY --option-type put --min-dte 0 --max-dte 30 --sort-by implied_volatility
+
+# 跨标的筛选
+openbb-agent-cli derivatives.options.screener --min-open-interest 100000 --min-iv 0.5 --limit 20
+openbb-agent-cli derivatives.options.screener --delta-min -0.3 --delta-max -0.1 --option-type put
+# 高级：CV 原生 filter（支持字段间比较 eq_field/gt_field）
+openbb-agent-cli derivatives.options.screener --extra-filters '[{"field":"day_volume","op":"gt_field","value":"open_interest"}]'
+
+# 期权合约历史 K 线（OCC 合约代码）
+openbb-agent-cli derivatives.options.historical --symbol O:SPY260731C00750000 --start-date 2026-06-15 --end-date 2026-07-02
+# 单日 OHLCV（含盘前盘后）
+openbb-agent-cli derivatives.options.daily --symbol O:SPY260731C00750000 --date 2026-06-30
+
+# 自由 SQL 聚合查询（GEX 排名/期限结构/PCR/Max Pain 等）
+openbb-agent-cli derivatives.options.query --sql "SELECT underlying_ticker, SUM(open_interest) AS oi FROM options_snapshots GROUP BY underlying_ticker ORDER BY oi DESC LIMIT 10"
+```
+
+### 基本面 / FMP 财务数据（ConvexValue）
+
+```bash
+# 财报三表（annual/quarter/ttm）
+openbb-agent-cli stocks.fundamental.income --symbol AAPL --period annual --limit 5
+openbb-agent-cli stocks.fundamental.balance --symbol AAPL --period quarter --limit 4
+openbb-agent-cli stocks.fundamental.cash --symbol AAPL --period ttm --limit 1
+# 财务比率（PE/PB/ROE 等）
+openbb-agent-cli stocks.fundamental.ratios --symbol AAPL
+# 分析师预测
+openbb-agent-cli stocks.estimates --symbol AAPL --period quarter --limit 4
+# 内部人交易 / 参议院交易
+openbb-agent-cli stocks.insider_trading --symbol AAPL --transaction-type P-Purchase --after 2025-01-01 --limit 20
+openbb-agent-cli government.trades --symbol AAPL --page 1 --limit 50
+# SEC 8-K 文件
+openbb-agent-cli stocks.filings --symbol AAPL --from-date 2024-01-01 --to-date 2024-06-01 --limit 10
+# ETF 持仓 / 行业权重（默认按权重降序取前 20）
+openbb-agent-cli etf.holdings --symbol SPY --sort-by weight_percentage --limit 20
+openbb-agent-cli etf.sectors --symbol SPY
+```
+
 ### 批量查询
 
 ```bash

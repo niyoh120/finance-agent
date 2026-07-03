@@ -1,6 +1,6 @@
 ---
 name: openbb-agent-cli
-description: 使用 openbb-agent-cli 获取金融数据。支持股票历史价格、行情报价、搜索、筛选（支持3500+字段的高级过滤和自定义返回字段）、指数、ETF、经济日历、宏观经济数据、技术指标、新闻、期权异动和批量查询。当用户需要查询股票价格、筛选股票、获取市场数据、查看宏观数据、计算技术指标、查看期权异动或一次聚合多个金融查询时使用此 skill。
+description: 使用 openbb-agent-cli 获取金融数据。支持股票历史价格、行情报价、搜索、筛选（支持3500+字段的高级过滤和自定义返回字段）、指数、ETF、经济日历、宏观经济数据、技术指标、新闻、期权链/筛选/历史K线/自由SQL聚合、财报三表/财务比率/分析师预测/内部人交易/参议院交易/SEC文件、ETF持仓与行业权重、批量查询。当用户需要查询股票价格、筛选股票、获取市场数据、查看宏观数据、计算技术指标、查看期权数据、获取财报/分析师预测/内部人交易、一次聚合多个金融查询时使用此 skill。
 ---
 
 # OpenBB Agent CLI
@@ -32,6 +32,8 @@ openbb-agent-cli <command> [options]
 | `index.snapshots` | 指数快照 |
 | `etf.historical` | ETF 历史价格 |
 | `etf.search` | ETF 搜索 |
+| `etf.holdings` `CV` | ETF 持仓明细（本地排序+截断） |
+| `etf.sectors` `CV` | ETF 行业权重 |
 | `economy.calendar` | 经济日历 |
 | `economy.available-indicators` | 可用宏观指标 |
 | `economy.indicators` | 宏观经济指标 |
@@ -40,7 +42,20 @@ openbb-agent-cli <command> [options]
 | `technical.indicators` | 技术指标 |
 | `news.company` | 公司新闻 |
 | `news.world` | 全球新闻 |
-| `derivatives.options.unusual` | 期权异动 |
+| `derivatives.options.chain` `CV` | 期权链（含 Greeks/IV/OI，本地过滤+排序） |
+| `derivatives.options.screener` `CV` | 期权跨标的筛选（服务端过滤） |
+| `derivatives.options.historical` `CV` | 期权合约历史 K 线 |
+| `derivatives.options.daily` `CV` | 期权单日 OHLCV |
+| `derivatives.options.query` `CV` | 期权自由 SQL 聚合查询（GEX/PCR/Max Pain） |
+| `derivatives.options.unusual` | 期权异动（本地数据库） |
+| `stocks.fundamental.income` `CV` | 利润表 |
+| `stocks.fundamental.balance` `CV` | 资产负债表 |
+| `stocks.fundamental.cash` `CV` | 现金流量表 |
+| `stocks.fundamental.ratios` `CV` | 财务比率（PE/PB/ROE 等 ~60 个） |
+| `stocks.estimates` `CV` | 分析师预测 |
+| `stocks.insider_trading` `CV` | 内部人交易 |
+| `government.trades` `CV` | 参议院交易披露 |
+| `stocks.filings` `CV` | SEC 8-K 文件 |
 | `batch` | 批量查询和内置模板 |
 
 ---
@@ -605,6 +620,153 @@ openbb-agent-cli news.world --limit 50
 
 ---
 
+## derivatives.options.chain `CV`
+
+单标的完整期权链，含 Greeks/IV/OI/bid-ask/day stats/break_even/vwap。服务端返回全合约（SPY ~13000），客户端过滤+排序+截断。返回 `{results, _meta}`，`_meta.total` 为合约总数。
+
+```bash
+openbb-agent-cli derivatives.options.chain SYMBOL \
+  [--expiration YYYY-MM-DD] \
+  [--option-type call|put] \
+  [--min-dte N] [--max-dte N] \
+  [--sort-by FIELD] [--sort-dir asc|desc] \
+  [--limit N]
+```
+
+**参数**:
+- `SYMBOL`: 标的代码（必需，如 SPY/AAPL/I:SPX/I:VIX）
+- `--expiration`: 单到期日过滤（YYYY-MM-DD，本地过滤）
+- `--option-type`: `call` / `put`（本地过滤）
+- `--min-dte` / `--max-dte`: DTE 区间（本地过滤）
+- `--sort-by`: `expiration`|`strike`|`open_interest`|`volume`|`implied_volatility`|`delta`|`bid`|`ask`|`vwap`，默认 `open_interest`
+- `--sort-dir`: `asc` / `desc`，默认 `desc`
+- `--limit`: 返回条数，默认 50；传 `0` 表示返回全部过滤后结果
+
+**示例**:
+```bash
+# 默认：按 OI 降序取前 50
+openbb-agent-cli derivatives.options.chain SPY
+# 单到期日（SPY 2026-07-17 共 ~500 合约）
+openbb-agent-cli derivatives.options.chain SPY --expiration 2026-07-17
+# 近月看跌，按 IV 降序
+openbb-agent-cli derivatives.options.chain AAPL --option-type put --min-dte 0 --max-dte 30 --sort-by implied_volatility --limit 30
+# 全部过滤后结果
+openbb-agent-cli derivatives.options.chain SPY --expiration 2026-07-17 --limit 0
+```
+
+---
+
+## derivatives.options.screener `CV`
+
+跨标的多字段筛选（全市场扫描）。服务端过滤 + 排序，支持字段间比较（如 day_volume > open_interest）。返回 `{results, _meta}`，`_meta.row_count` 是服务端匹配数，`_meta.truncated` 表示是否还有更多。
+
+```bash
+openbb-agent-cli derivatives.options.screener \
+  [--underlying-symbol SYMBOL] \
+  [--option-type call|put] \
+  [--min-open-interest X] [--max-open-interest X] \
+  [--min-volume X] \
+  [--min-iv X] [--max-iv X] \
+  [--delta-min X] [--delta-max X] \
+  [--expiration-date YYYY-MM-DD] \
+  [--sort-by FIELD] [--sort-dir asc|desc] \
+  [--limit N] \
+  [--extra-filters JSON]
+```
+
+**参数**:
+- `--underlying-symbol`: 限定标的
+- `--option-type`: `call` / `put`
+- `--min-open-interest` / `--max-open-interest`: OI 区间
+- `--min-volume`: 最小日成交量
+- `--min-iv` / `--max-iv`: IV 区间
+- `--delta-min` / `--delta-max`: delta 区间
+- `--expiration-date`: 单到期日
+- `--sort-by`: CV 字段名，默认 `open_interest`
+- `--sort-dir`: 默认 `desc`
+- `--limit`: 默认 50
+- `--extra-filters`: CV 原生 filter JSON 数组，支持操作符 `eq/ne/gt/gte/lt/lte` 及字段间比较 `eq_field/ne_field/gt_field/gte_field/lt_field/lte_field`
+
+**示例**:
+```bash
+# 高 OI + 高 IV
+openbb-agent-cli derivatives.options.screener --min-open-interest 100000 --min-iv 0.5 --limit 20
+# 看跌、delta 区间、按 IV 排序
+openbb-agent-cli derivatives.options.screener --delta-min -0.3 --delta-max -0.1 --option-type put --sort-by implied_volatility
+# 字段间比较：当日成交量 > 持仓量
+openbb-agent-cli derivatives.options.screener --extra-filters '[{"field":"day_volume","op":"gt_field","value":"open_interest"}]'
+```
+
+---
+
+## derivatives.options.historical `CV`
+
+单合约历史 OHLCV K 线（Massive Aggregates）。
+
+```bash
+openbb-agent-cli derivatives.options.historical SYMBOL \
+  --start-date YYYY-MM-DD \
+  --end-date YYYY-MM-DD \
+  [--multiplier N] \
+  [--timespan second|minute|hour|day|week|month|quarter|year]
+```
+
+**参数**:
+- `SYMBOL`: OCC 合约代码（必需，如 `O:SPY260731C00750000`）
+- `--start-date` / `--end-date`: 日期范围（**必填**，YYYY-MM-DD）
+- `--multiplier`: K 线乘数，默认 1
+- `--timespan`: 时间粒度，默认 `day`
+
+**示例**:
+```bash
+openbb-agent-cli derivatives.options.historical O:SPY260731C00750000 --start-date 2026-06-15 --end-date 2026-07-02
+# 5 分钟 K 线
+openbb-agent-cli derivatives.options.historical O:SPY260731C00750000 --multiplier 5 --timespan minute --start-date 2026-07-01 --end-date 2026-07-02
+```
+
+---
+
+## derivatives.options.daily `CV`
+
+单合约单日 OHLCV（含盘前盘后）。
+
+```bash
+openbb-agent-cli derivatives.options.daily SYMBOL [--date YYYY-MM-DD]
+```
+
+**参数**:
+- `SYMBOL`: OCC 合约代码（必需）
+- `--date`: 交易日（YYYY-MM-DD，或用 `--start-date`/`--end-date` 代替）
+
+**示例**:
+```bash
+openbb-agent-cli derivatives.options.daily O:SPY260731C00750000 --date 2026-06-30
+```
+
+---
+
+## derivatives.options.query `CV`
+
+自由 SQL 聚合查询（DuckDB 只读，DDL/DML 被服务端拒绝）。这是 ConvexValue 杀手级能力：跨合约聚合（GEX/Max Pain/PCR/期限结构），`chain` 和 `screener` 做不到，服务端聚合 14-27ms 返回。返回 `{results, _meta}`。
+
+```bash
+openbb-agent-cli derivatives.options.query --sql SQL [--max-rows N]
+```
+
+**参数**:
+- `--sql`: 只读 SELECT/WITH 语句（必需）
+- `--max-rows`: 返回行数上限，默认 5000，上限 50000
+
+**示例**:
+```bash
+# GEX 排名
+openbb-agent-cli derivatives.options.query --sql "SELECT underlying_ticker, SUM(gamma*open_interest) AS gex FROM options_snapshots GROUP BY underlying_ticker ORDER BY ABS(gex) DESC LIMIT 10"
+```
+
+更多 SQL 模板（GEX/期限结构/PCR/Max Pain/OI集中度）和 `options_snapshots` 表 44 字段参考见文末 [SQL 模板](#sql-聚合查询模板)。
+
+---
+
 ## derivatives.options.unusual
 
 获取期权异动数据。
@@ -642,6 +804,182 @@ openbb-agent-cli derivatives.options.unusual \
 # 获取大额权利金异动
 openbb-agent-cli derivatives.options.unusual \
   --min-premium 100000
+```
+
+---
+
+## etf.holdings `CV`
+
+ETF 持仓明细。服务端返回全量（SPY 505），本地排序+截断。返回 `{results, _meta}`，`_meta.filtered` 是总持仓数。
+
+```bash
+openbb-agent-cli etf.holdings SYMBOL \
+  [--sort-by weight_percentage|market_value|shares_number] \
+  [--sort-dir asc|desc] \
+  [--limit N]
+```
+
+**参数**:
+- `SYMBOL`: ETF 代码（必需）
+- `--sort-by`: 排序字段，默认 `weight_percentage`
+- `--sort-dir`: 默认 `desc`
+- `--limit`: 默认 20
+
+**示例**:
+```bash
+openbb-agent-cli etf.holdings SPY --limit 20
+openbb-agent-cli etf.holdings SPY --sort-by market_value --limit 50
+```
+
+---
+
+## etf.sectors `CV`
+
+ETF 行业权重（12 条固定，返回纯数组）。返回 12 条 sector weight 记录。
+
+```bash
+openbb-agent-cli etf.sectors SYMBOL
+```
+
+**示例**:
+```bash
+openbb-agent-cli etf.sectors SPY
+```
+
+---
+
+## stocks.fundamental.income / balance / cash `CV`
+
+财报三表（利润表/资产负债表/现金流量表）。TTM 路由到独立 `*-ttm` endpoint（真实滚动 12 个月）。返回 `{results, _meta}`，默认按期降序。
+
+```bash
+openbb-agent-cli stocks.fundamental.income SYMBOL [--period annual|quarter|ttm] [--limit N]
+openbb-agent-cli stocks.fundamental.balance SYMBOL [--period annual|quarter|ttm] [--limit N]
+openbb-agent-cli stocks.fundamental.cash SYMBOL [--period annual|quarter|ttm] [--limit N]
+```
+
+**参数**:
+- `SYMBOL`: 股票代码（必需）
+- `--period`: `annual` / `quarter` / `ttm`，默认 `annual`
+- `--limit`: 默认 5
+
+**示例**:
+```bash
+# 年报
+openbb-agent-cli stocks.fundamental.income AAPL --period annual --limit 5
+# 季报
+openbb-agent-cli stocks.fundamental.balance AAPL --period quarter --limit 4
+# TTM（真实滚动 12 个月）
+openbb-agent-cli stocks.fundamental.cash AAPL --period ttm --limit 1
+```
+
+---
+
+## stocks.fundamental.ratios `CV`
+
+财务比率（PE/PB/ROE/debt-to-equity/current-ratio 等 ~60 个）。**不支持 ttm**（ratios-ttm endpoint 字段命名不同）。返回 `{results, _meta}`。
+
+```bash
+openbb-agent-cli stocks.fundamental.ratios SYMBOL [--period annual|quarter] [--limit N]
+```
+
+**参数**:
+- `SYMBOL`: 股票代码（必需）
+- `--period`: `annual` / `quarter`（不支持 ttm），默认 `annual`
+- `--limit`: 默认 5
+
+**示例**:
+```bash
+openbb-agent-cli stocks.fundamental.ratios AAPL --period annual --limit 5
+```
+
+---
+
+## stocks.estimates `CV`
+
+分析师预测（营收/EPS/EBITDA/SGA/NetIncome 各 low/high/avg + 分析师数量）。返回 `{results, _meta}`。
+
+```bash
+openbb-agent-cli stocks.estimates SYMBOL [--period annual|quarter] [--limit N]
+```
+
+**参数**:
+- `SYMBOL`: 股票代码（必需）
+- `--period`: `annual` / `quarter`，默认 `annual`
+- `--limit`: 默认 10
+
+**示例**:
+```bash
+openbb-agent-cli stocks.estimates AAPL --period quarter --limit 4
+```
+
+---
+
+## stocks.insider_trading `CV`
+
+内部人交易。服务端支持 transactionType/after 过滤。返回 `{results, _meta}`，默认按 filing_date desc。
+
+```bash
+openbb-agent-cli stocks.insider_trading SYMBOL \
+  [--transaction-type CODE] \
+  [--after YYYY-MM-DD] \
+  [--limit N]
+```
+
+**参数**:
+- `SYMBOL`: 股票代码（必需）
+- `--transaction-type`: FMP 交易代码：`P-Purchase`（买入）/`S-Sale`（卖出）/`M-Exempt`/`F-InKind`/`J-Other`/`G-Gift`
+- `--after`: 只返回此日期之后的交易（YYYY-MM-DD，服务端过滤）
+- `--limit`: 默认 50
+
+**示例**:
+```bash
+# 只看内部人买入
+openbb-agent-cli stocks.insider_trading AAPL --transaction-type P-Purchase --after 2025-01-01 --limit 20
+```
+
+---
+
+## government.trades `CV`
+
+参议院交易披露。支持 page 翻页（0-indexed）。返回 `{results, _meta}`，默认按 transaction_date desc。
+
+```bash
+openbb-agent-cli government.trades [SYMBOL] [--page N] [--limit N]
+```
+
+**参数**:
+- `SYMBOL`: 股票代码（可选，不传则返回全市场）
+- `--page`: 页码（0-indexed，服务端翻页）
+- `--limit`: 默认 50
+
+**示例**:
+```bash
+openbb-agent-cli government.trades AAPL --limit 50
+openbb-agent-cli government.trades AAPL --page 1 --limit 50
+```
+
+---
+
+## stocks.filings `CV`
+
+SEC 8-K 文件。服务端支持 from/to 日期 + page 翻页。返回 `{results, _meta}`，默认按 filing_date desc。
+
+```bash
+openbb-agent-cli stocks.filings SYMBOL \
+  [--from-date YYYY-MM-DD] [--to-date YYYY-MM-DD] \
+  [--page N] [--limit N]
+```
+
+**参数**:
+- `SYMBOL`: 股票代码（必需）
+- `--from-date` / `--to-date`: 日期范围（服务端过滤）
+- `--page`: 页码（服务端翻页）
+- `--limit`: 默认 50
+
+**示例**:
+```bash
+openbb-agent-cli stocks.filings AAPL --from-date 2024-01-01 --to-date 2024-06-01 --limit 10
 ```
 
 ---
@@ -717,25 +1055,33 @@ openbb-agent-cli batch --queries '[
 
 ## 输出格式
 
-所有命令输出均为 JSON 格式。
+**ConvexValue 接口**（下文标注 `CV`，含期权链/筛选/历史/查询/财报/分析师/内部人/参议院/ETF持仓/SEC文件）返回 `{"results": [...], "_meta": {...}}` 对象：
+- `results`: 数据记录数组
+- `_meta.returned`: 实际返回条数
+- `_meta.filtered`: 本地过滤后的总条数（limit 截断前）
+- `_meta.total`: 服务端报告的合约总数（仅 options.chain 提供）
+- `_meta.truncated`: 是否因 limit 截断（boolean）
+- `_meta.sort_by`/`_meta.sort_dir`: 排序字段和方向
+- `_meta.row_count`: 服务端报告的匹配数（screener/query）
 
-**成功**:
+当 `_meta.truncated=true` 时，调宽 `--limit` 或加严过滤可获取更多数据。
+
+**非 ConvexValue 接口**（行情/指数/宏观/技术指标/新闻/期权异动）返回纯 JSON 数组：
 ```json
-[
-  {"symbol": "AAPL", "price": 175.50, ...},
-  {"symbol": "MSFT", "price": 380.25, ...}
-]
+[{"symbol": "AAPL", "price": 175.50, ...}, ...]
 ```
 
-**失败**:
+**失败**：
 ```json
 {"error": "错误信息", "code": "ERROR_CODE"}
 ```
 
-**常见错误码**:
-- `EMPTY_DATA`: 无数据
-- `CLI_ERROR`: CLI 参数错误
-- 其他错误码为异常类名
+常见错误码：`EMPTY_DATA`（无数据）、`VALIDATIONERROR`（参数错误）、`CLI_ERROR`（CLI 参数错误）。
+
+## Setup
+
+- `CV_API_KEY` 环境变量必须设置（ConvexValue Research Plan，$19/月，覆盖美股权权 + FMP 全量财务数据）
+- `FINNHUB_API_KEY` 可选（公司新闻）
 
 ---
 
@@ -754,6 +1100,8 @@ openbb-agent-cli batch --queries '[
 | `index.snapshots` | - | `region` (cn/us/hk), `symbol` |
 | `etf.historical` | `symbol` | `start-date`, `end-date`, `limit` |
 | `etf.search` | `query` | - |
+| `etf.holdings` `CV` | `symbol` | `sort-by` (weight_percentage/market_value/shares_number), `sort-dir`, `limit` |
+| `etf.sectors` `CV` | `symbol` | - |
 | `economy.calendar` | - | `start-date`, `end-date` |
 | `economy.available-indicators` | - | - |
 | `economy.indicators` | `symbol` | `country`, `frequency`, `start-date`, `end-date` |
@@ -762,5 +1110,103 @@ openbb-agent-cli batch --queries '[
 | `technical.indicators` | `symbol` | `start-date`, `end-date`, `interval`, `adjusted`, `indicators`, `rsi-length`, `macd-fast`, `macd-slow`, `macd-signal`, `sma-lengths`, `ema-lengths`, `bbands-length`, `bbands-std`, `atr-length`, `stoch-k`, `stoch-d`, `limit` |
 | `news.company` | `symbol` | `start-date`, `end-date`, `limit` |
 | `news.world` | - | `start-date`, `end-date`, `limit` |
+| `derivatives.options.chain` `CV` | `symbol` | `expiration`, `option-type`, `min-dte`, `max-dte`, `sort-by`, `sort-dir`, `limit` |
+| `derivatives.options.screener` `CV` | - | `underlying-symbol`, `option-type`, `min-open-interest`, `max-open-interest`, `min-volume`, `min-iv`, `max-iv`, `delta-min`, `delta-max`, `expiration-date`, `sort-by`, `sort-dir`, `limit`, `extra-filters` |
+| `derivatives.options.historical` `CV` | `symbol`, `start-date`, `end-date` | `multiplier`, `timespan` |
+| `derivatives.options.daily` `CV` | `symbol` | `date`, `start-date`, `end-date` |
+| `derivatives.options.query` `CV` | `sql` | `max-rows` |
 | `derivatives.options.unusual` | - | `symbol`, `start-date`, `end-date`, `side`, `option-type`, `min-premium`, `min-vol-oi`, `limit` |
+| `stocks.fundamental.income/balance/cash` `CV` | `symbol` | `period` (annual/quarter/ttm), `limit` |
+| `stocks.fundamental.ratios` `CV` | `symbol` | `period` (annual/quarter), `limit` |
+| `stocks.estimates` `CV` | `symbol` | `period` (annual/quarter), `limit` |
+| `stocks.insider_trading` `CV` | `symbol` | `transaction-type`, `after`, `limit` |
+| `government.trades` `CV` | - | `symbol`, `page`, `limit` |
+| `stocks.filings` `CV` | `symbol` | `from-date`, `to-date`, `page`, `limit` |
 | `batch` | `queries` 或 `template` | `symbol`, `region`, `country`, `start-date`, `end-date`, `limit`, `news-limit`, `options-limit`, `max-workers` |
+
+---
+
+## SQL 聚合查询模板
+
+`derivatives.options.query` 对 `options_snapshots` 表（DuckDB）执行只读 SELECT/WITH。后端强制 `only SELECT and WITH queries are allowed`（DDL/DML/DESCRIBE 被 400 拒）。下面是实测跑通的常用聚合模板（14-27ms 返回）。
+
+### GEX 排名（做市商 gamma 定位）
+```sql
+SELECT underlying_ticker, SUM(gamma * open_interest) AS gex, SUM(open_interest) AS oi
+FROM options_snapshots GROUP BY underlying_ticker ORDER BY ABS(gex) DESC LIMIT 10
+```
+
+### 期限结构（IV + OI 按到期日）
+```sql
+SELECT expiration_date, SUM(open_interest) AS oi, AVG(implied_volatility) AS avg_iv
+FROM options_snapshots WHERE underlying_ticker = 'SPY'
+GROUP BY expiration_date ORDER BY expiration_date LIMIT 15
+```
+
+### 全市场 PCR（情绪指标）
+```sql
+SELECT underlying_ticker,
+  SUM(CASE WHEN contract_type='put' THEN open_interest ELSE 0 END) AS put_oi,
+  SUM(CASE WHEN contract_type='call' THEN open_interest ELSE 0 END) AS call_oi,
+  ROUND(SUM(CASE WHEN contract_type='put' THEN open_interest ELSE 0 END)::FLOAT
+        / NULLIF(SUM(CASE WHEN contract_type='call' THEN open_interest ELSE 0 END), 0), 3) AS pcr
+FROM options_snapshots GROUP BY underlying_ticker
+HAVING SUM(open_interest) > 100000 ORDER BY pcr DESC LIMIT 10
+```
+
+### 高 IV 标的筛选
+```sql
+SELECT underlying_ticker, ROUND(AVG(implied_volatility), 2) AS avg_iv, SUM(open_interest) AS oi
+FROM options_snapshots WHERE open_interest > 10000
+GROUP BY underlying_ticker HAVING AVG(implied_volatility) > 1.0
+ORDER BY avg_iv DESC LIMIT 10
+```
+
+### Max Pain（到期磁吸价）
+```sql
+WITH pain AS (
+  SELECT strike_price,
+    SUM(CASE WHEN contract_type='call' THEN open_interest * GREATEST(underlying_price - strike_price, 0) ELSE 0 END)
+    + SUM(CASE WHEN contract_type='put' THEN open_interest * GREATEST(strike_price - underlying_price, 0) ELSE 0 END) AS total_pain
+  FROM options_snapshots WHERE underlying_ticker = 'SPY' AND expiration_date = '2026-07-17'
+  GROUP BY strike_price
+)
+SELECT strike_price, total_pain FROM pain ORDER BY total_pain ASC LIMIT 1
+```
+
+### OI 集中度 + IV skew（支撑阻力 + smile）
+```sql
+SELECT contract_type, strike_price, SUM(open_interest) AS oi, ROUND(AVG(implied_volatility),3) AS iv, AVG(delta) AS delta
+FROM options_snapshots WHERE underlying_ticker = 'SPY' AND expiration_date = '2026-07-17'
+GROUP BY contract_type, strike_price ORDER BY oi DESC LIMIT 20
+```
+
+### options_snapshots 表字段（44 个）
+
+- **标的**：underlying_ticker, underlying_symbol, underlying_price, underlying_change_to_break_even, underlying_last_updated, underlying_timeframe
+- **合约**：ticker（OCC 合约代码）, contract_type（call/put）, exercise_style, expiration_date, strike_price, shares_per_contract, break_even_price
+- **Greeks + 定价**：delta, gamma, theta, vega, implied_volatility, fair_market_value, midpoint
+- **报价**：bid, bid_size, ask, ask_size, quote_last_updated, quote_timeframe
+- **成交**：trade_price, trade_size, trade_exchange, trade_conditions, trade_sip_timestamp, trade_timeframe
+- **日统计**：open_interest, day_volume, day_open, day_high, day_low, day_close, day_change, day_change_percent, day_vwap, day_previous_close, day_last_updated
+- **系统**：fetched_at
+
+## 索引符号规则
+
+`I:SPX`（标普500）、`I:VIX`（波动率指数）、`I:NDX`（纳斯达克100）、`I:RUT`（罗素2000）。普通股票直接用 ticker。
+
+## 选择指南
+
+| 需求 | 命令 |
+|---|---|
+| 单标的全合约 Greeks/IV | `derivatives.options.chain` |
+| 跨标的多字段筛选 | `derivatives.options.screener` |
+| 跨合约聚合（GEX/PCR/Max Pain） | `derivatives.options.query` |
+| 单合约历史 K 线 | `derivatives.options.historical` |
+| 单合约单日 OHLCV | `derivatives.options.daily` |
+| 财报分析 | `stocks.fundamental.income/balance/cash` |
+| 估值 | `stocks.fundamental.ratios` + `stocks.estimates` |
+| 内部人异动 | `stocks.insider_trading` |
+| 政治交易信号 | `government.trades` |
+| 监管文件 | `stocks.filings` |
+| ETF 持仓变动 | `etf.holdings` + `etf.sectors` |

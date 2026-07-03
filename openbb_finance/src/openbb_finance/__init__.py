@@ -3,26 +3,41 @@
 from openbb_core.provider.abstract.provider import Provider
 
 from openbb_finance.config import apply_runtime_environment
+from openbb_finance.models.analyst_estimates import FinanceAnalystEstimatesFetcher
 from openbb_finance.models.available_indicators import FinanceAvailableIndicatorsFetcher
+from openbb_finance.models.balance_sheet_statement import FinanceBalanceSheetFetcher
+from openbb_finance.models.cash_flow_statement import FinanceCashFlowFetcher
+from openbb_finance.models.company_filings import FinanceCompanyFilingsFetcher
 from openbb_finance.models.company_news import FinanceCompanyNewsFetcher
 from openbb_finance.models.consumer_price_index import FinanceConsumerPriceIndexFetcher
 from openbb_finance.models.economic_calendar import FinanceEconomicCalendarFetcher
 from openbb_finance.models.economic_indicators import FinanceEconomicIndicatorsFetcher
 from openbb_finance.models.equity_historical import FinanceEquityHistoricalFetcher
+from openbb_finance.models.equity_options_chain import FinanceOptionsChainFetcher
+from openbb_finance.models.equity_options_daily import FinanceOptionDailyFetcher
+from openbb_finance.models.equity_options_historical import FinanceOptionHistoricalFetcher
+from openbb_finance.models.equity_options_query import FinanceOptionsQueryFetcher
+from openbb_finance.models.equity_options_screener import FinanceOptionsScreenerFetcher
 from openbb_finance.models.equity_quote import FinanceEquityQuoteFetcher
 from openbb_finance.models.equity_screener import FinanceEquityScreenerFetcher
 from openbb_finance.models.equity_search import FinanceEquitySearchFetcher
 from openbb_finance.models.etf_historical import FinanceEtfHistoricalFetcher
+from openbb_finance.models.etf_holdings import FinanceEtfHoldingsFetcher
 from openbb_finance.models.etf_search import FinanceEtfSearchFetcher
+from openbb_finance.models.etf_sectors import FinanceEtfSectorsFetcher
+from openbb_finance.models.financial_ratios import FinanceFinancialRatiosFetcher
 from openbb_finance.models.gdp_nominal import (
     FinanceGdpNominalFetcher,
     reset_gdp_nominal_country_context,
     set_gdp_nominal_country_context,
 )
+from openbb_finance.models.government_trades import FinanceGovernmentTradesFetcher
+from openbb_finance.models.income_statement import FinanceIncomeStatementFetcher
 from openbb_finance.models.index_available import FinanceAvailableIndicesFetcher
 from openbb_finance.models.index_historical import FinanceIndexHistoricalFetcher
 from openbb_finance.models.index_search import FinanceIndexSearchFetcher
 from openbb_finance.models.index_snapshots import FinanceIndexSnapshotsFetcher
+from openbb_finance.models.insider_trading import FinanceInsiderTradingFetcher
 from openbb_finance.models.options_unusual import FinanceOptionsUnusualFetcher
 from openbb_finance.models.technical_indicators import FinanceTechnicalIndicatorsFetcher
 from openbb_finance.models.world_news import FinanceWorldNewsFetcher
@@ -35,8 +50,12 @@ provider = Provider(
     description="Pluggable finance data provider for market data, calendars, news, and options flow.",
     credentials=None,
     fetcher_dict={
+        "AnalystEstimates": FinanceAnalystEstimatesFetcher,
         "AvailableIndices": FinanceAvailableIndicesFetcher,
         "AvailableIndicators": FinanceAvailableIndicatorsFetcher,
+        "BalanceSheetStatement": FinanceBalanceSheetFetcher,
+        "CashFlowStatement": FinanceCashFlowFetcher,
+        "CompanyFilings": FinanceCompanyFilingsFetcher,
         "CompanyNews": FinanceCompanyNewsFetcher,
         "ConsumerPriceIndex": FinanceConsumerPriceIndexFetcher,
         "EconomicCalendar": FinanceEconomicCalendarFetcher,
@@ -46,11 +65,22 @@ provider = Provider(
         "EquityScreener": FinanceEquityScreenerFetcher,
         "EquitySearch": FinanceEquitySearchFetcher,
         "EtfHistorical": FinanceEtfHistoricalFetcher,
+        "EtfHoldings": FinanceEtfHoldingsFetcher,
         "EtfSearch": FinanceEtfSearchFetcher,
+        "EtfSectors": FinanceEtfSectorsFetcher,
+        "FinancialRatios": FinanceFinancialRatiosFetcher,
         "GdpNominal": FinanceGdpNominalFetcher,
+        "GovernmentTrades": FinanceGovernmentTradesFetcher,
+        "IncomeStatement": FinanceIncomeStatementFetcher,
         "IndexHistorical": FinanceIndexHistoricalFetcher,
         "IndexSearch": FinanceIndexSearchFetcher,
         "IndexSnapshots": FinanceIndexSnapshotsFetcher,
+        "InsiderTrading": FinanceInsiderTradingFetcher,
+        "OptionsChain": FinanceOptionsChainFetcher,
+        "OptionsDaily": FinanceOptionDailyFetcher,
+        "OptionsHistorical": FinanceOptionHistoricalFetcher,
+        "OptionsQuery": FinanceOptionsQueryFetcher,
+        "OptionsScreener": FinanceOptionsScreenerFetcher,
         "OptionsUnusual": FinanceOptionsUnusualFetcher,
         "TechnicalIndicators": FinanceTechnicalIndicatorsFetcher,
         "WorldNews": FinanceWorldNewsFetcher,

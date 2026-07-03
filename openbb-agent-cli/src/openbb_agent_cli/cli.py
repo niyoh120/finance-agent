@@ -137,6 +137,8 @@ ROUTE_MODELS = {
     "index.search": "IndexSearch",
     "index.price.historical": "IndexHistorical",
     "etf.historical": "EtfHistorical",
+    "etf.holdings": "EtfHoldings",
+    "etf.sectors": "EtfSectors",
     "economy.calendar": "EconomicCalendar",
     "economy.available_indicators": "AvailableIndicators",
     "economy.indicators": "EconomicIndicators",
@@ -145,6 +147,17 @@ ROUTE_MODELS = {
     "news.company": "CompanyNews",
     "news.world": "WorldNews",
     "derivatives.options.unusual": "OptionsUnusual",
+    "derivatives.options.chain": "OptionsChain",
+    "derivatives.options.historical": "OptionsHistorical",
+    "derivatives.options.daily": "OptionsDaily",
+    "stocks.fundamental.income": "IncomeStatement",
+    "stocks.fundamental.balance": "BalanceSheetStatement",
+    "stocks.fundamental.cash": "CashFlowStatement",
+    "stocks.fundamental.ratios": "FinancialRatios",
+    "stocks.estimates": "AnalystEstimates",
+    "stocks.insider_trading": "InsiderTrading",
+    "government.trades": "GovernmentTrades",
+    "stocks.filings": "CompanyFilings",
 }
 
 
@@ -157,6 +170,29 @@ def _error_code(exc: Exception) -> str:
     return name.upper()
 
 
+def _split_standard_extra(model_name: str, params: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Split params into standard vs extra based on the model's standard fields.
+
+    Custom ConvexValue models add fields (period, multiplier, etc.) to the
+    QueryParams subclass that the OpenBB standard model does not declare; the
+    dynamic API wrapper only sees the standard fields, so those extras end up
+    untyped and default to Query(...). Route them through extra_params instead.
+    """
+    from openbb_core.app.provider_interface import ProviderInterface
+
+    pi = ProviderInterface()
+    std_cls = pi.params[model_name]["standard"]
+    model_fields = getattr(std_cls, "model_fields", None)
+    standard_names = set(model_fields if model_fields is not None else std_cls.__annotations__)
+    standard: dict[str, Any] = {}
+    extra: dict[str, Any] = {}
+    for key, value in params.items():
+        if value is None:
+            continue
+        (standard if key in standard_names else extra)[key] = value
+    return standard, extra
+
+
 def _execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
     return _execute_provider_model(ROUTE_MODELS[route], params)
 
@@ -164,6 +200,22 @@ def _execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
 def _run_route(route: str, **params: Any) -> None:
     try:
         _print_json(_execute_route(route, **params))
+    except Exception as exc:
+        _print_json({"error": str(exc), "code": _error_code(exc)})
+        raise SystemExit(1) from exc
+
+
+def _run_cv_route(route: str, **params: Any) -> None:
+    """Run a ConvexValue-backed route, splitting standard vs extra params.
+
+    CV models subclass an OpenBB standard QueryParams and add provider-specific
+    fields (period, multiplier, date, etc.). The dynamic API layer only sees
+    the standard fields, so extras must go through extra_params to avoid the
+    Query(...) default injection. See _split_standard_extra.
+    """
+    try:
+        standard, extra = _split_standard_extra(ROUTE_MODELS[route], params)
+        _print_json(_execute_provider_model(ROUTE_MODELS[route], standard, extra))
     except Exception as exc:
         _print_json({"error": str(exc), "code": _error_code(exc)})
         raise SystemExit(1) from exc
@@ -221,6 +273,87 @@ def _run_provider_model(
         raise SystemExit(1) from exc
 
 
+def _filter_sort_limit(
+    records: list[dict[str, Any]],
+    *,
+    filters: dict[str, Any] | None = None,
+    sort_by: str | None = None,
+    sort_dir: Literal["asc", "desc"] = "asc",
+    limit: int | None = None,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Apply local filter/sort/limit and return (records, meta).
+
+    meta always includes `returned`. When sort_by is set it is echoed. When the
+    limit truncates, `truncated=True` and `filtered` reports the pre-limit size
+    so the caller can decide whether to raise the limit. `total` is included
+    only when provided by the caller (server-reported total).
+    """
+    filtered = list(records)
+    if filters:
+        for key, expected in filters.items():
+            if expected is None:
+                continue
+            filtered = [r for r in filtered if r.get(key) == expected]
+    if sort_by:
+        # Sort with None always last (regardless of direction): split None rows,
+        # sort the rest, then append None rows at the end.
+        with_value = [r for r in filtered if r.get(sort_by) is not None]
+        without_value = [r for r in filtered if r.get(sort_by) is None]
+        with_value.sort(key=lambda r: r.get(sort_by), reverse=(sort_dir == "desc"))
+        filtered = with_value + without_value
+    pre_limit = len(filtered)
+    if limit is not None and limit > 0:
+        filtered = filtered[:limit]
+    meta: dict[str, Any] = {"returned": len(filtered), "filtered": pre_limit}
+    if sort_by:
+        meta["sort_by"] = sort_by
+        meta["sort_dir"] = sort_dir
+    if limit is not None and limit > 0 and len(filtered) < pre_limit:
+        meta["truncated"] = True
+    return filtered, meta
+
+
+def _print_results_with_meta(
+    records: list[dict[str, Any]],
+    meta: dict[str, Any],
+    total: int | None = None,
+) -> None:
+    payload: dict[str, Any] = {"results": records, "_meta": meta}
+    if total is not None:
+        payload["_meta"]["total"] = total
+    _print_json(payload)
+
+
+def _run_cv_list(
+    model_name: str,
+    *,
+    standard_params: dict[str, Any] | None = None,
+    extra_params: dict[str, Any] | None = None,
+    sort_by: str | None = None,
+    sort_dir: Literal["asc", "desc"] = "desc",
+    limit: int | None = None,
+    date_fields: tuple[str, ...] = ("date", "period_ending", "filing_date", "transaction_date", "filingDate", "transactionDate", "date"),
+) -> None:
+    """Run a ConvexValue list-returning model and wrap output as {results, _meta}.
+
+    Fetches via _execute_provider_model (which returns list[dict]), then applies
+    local sort + limit. _meta reports returned/filtered/sort info; FMP endpoints
+    do not expose a server total so `total` is omitted (the caller can infer
+    "there may be more" from filtered > returned).
+    """
+    try:
+        records = _execute_provider_model(model_name, standard_params, extra_params)
+        # Normalize date-like string fields to sortable strings (ISO sorts lexicographically).
+        filtered, meta = _filter_sort_limit(
+            records, sort_by=sort_by, sort_dir=sort_dir,
+            limit=limit,
+        )
+        _print_results_with_meta(filtered, meta)
+    except Exception as exc:
+        _print_json({"error": str(exc), "code": _error_code(exc)})
+        raise SystemExit(1) from exc
+
+
 RouteExecutor = Callable[[dict[str, Any]], list[dict[str, Any]]]
 TechnicalIndicator = Literal["rsi", "macd", "sma", "ema", "bbands", "atr", "stoch", "vwap"]
 _TECHNICAL_INDICATORS = ["rsi", "macd", "sma", "ema", "bbands", "atr", "stoch", "vwap"]
@@ -228,6 +361,34 @@ _TECHNICAL_INDICATORS = ["rsi", "macd", "sma", "ema", "bbands", "atr", "stoch", 
 
 def _route_executor(route: str) -> RouteExecutor:
     return lambda params: _execute_route(route, **params)
+
+
+def _cv_route_executor(route: str) -> RouteExecutor:
+    """Executor for ConvexValue-backed routes that splits standard vs extra params."""
+    # Safety defaults: when batch callers omit limit on these list endpoints,
+    # cap the result to avoid multi-megabyte payloads. Callers can override
+    # by passing an explicit limit (use 0 for chain/historical to mean all).
+    default_limit = {
+        "derivatives.options.chain": 100,
+        "etf.holdings": 20,
+        "stocks.insider_trading": 50,
+        "government.trades": 50,
+        "stocks.filings": 50,
+    }.get(route)
+
+    def _exec(params: dict[str, Any]) -> list[dict[str, Any]]:
+        explicit_limit = params.get("limit")
+        if default_limit is not None and explicit_limit is None:
+            params = {"limit": default_limit, **params}
+        standard, extra = _split_standard_extra(ROUTE_MODELS[route], params)
+        records = _execute_provider_model(ROUTE_MODELS[route], standard, extra)
+        # Only apply a local cap when we injected the default; respect an
+        # explicit positive limit (and limit=0 meaning "all").
+        effective = default_limit if explicit_limit is None else explicit_limit
+        if isinstance(effective, int) and effective > 0 and len(records) > effective:
+            records = records[:effective]
+        return records
+    return _exec
 
 
 def _provider_executor(model_name: str) -> RouteExecutor:
@@ -344,6 +505,71 @@ def _technical_indicators_executor(params: dict[str, Any]) -> list[dict[str, Any
     return _apply_limit(results, limit)
 
 
+def _options_screener_executor(params: dict[str, Any]) -> list[dict[str, Any]]:
+    """Execute OptionsScreener via the provider model directly (no standard route)."""
+    route_params = dict(params)
+    limit = route_params.pop("limit", 50)
+    extra = {}
+    if "extra_filters" in route_params:
+        ef = route_params.pop("extra_filters")
+        if isinstance(ef, str):
+            import json as _json
+            ef = _json.loads(ef)
+        extra["extra_filters"] = ef
+    return _execute_provider_model(
+        "OptionsScreener",
+        {},
+        {**_drop_none(route_params), "limit": limit, **extra},
+    )
+
+
+def _options_query_executor(params: dict[str, Any]) -> list[dict[str, Any]]:
+    """Execute OptionsQuery (free-form SQL) via the provider model directly."""
+    return _execute_provider_model(
+        "OptionsQuery",
+        {},
+        {"sql": params["sql"], "max_rows": params.get("max_rows")},
+    )
+
+
+def _options_chain_batch_executor(params: dict[str, Any]) -> list[dict[str, Any]]:
+    """Batch executor for options chain: fetch via source, apply limit."""
+    import asyncio
+    from openbb_finance.models.equity_options_chain import FinanceOptionsChainFetcher
+    symbol = params.get("symbol")
+    if not symbol:
+        return []
+    limit = params.get("limit", 100)
+    expiration = params.get("expiration")
+    option_type = params.get("option_type")
+
+    async def _fetch() -> tuple[list[dict[str, Any]], int]:
+        q = FinanceOptionsChainFetcher.transform_query({"symbol": symbol})
+        data = await FinanceOptionsChainFetcher.aextract_data(q, None)
+        return data.get("records", []), data.get("contract_count", 0)
+
+    records, _ = asyncio.run(_fetch())
+    if expiration:
+        from datetime import date as _date
+        exp = _date.fromisoformat(expiration)
+        records = [r for r in records if r.get("expiration") == exp]
+    if option_type:
+        records = [r for r in records if r.get("option_type") == option_type]
+    min_dte = params.get("min_dte")
+    max_dte = params.get("max_dte")
+    if min_dte is not None:
+        records = [r for r in records if r.get("dte") is not None and r["dte"] >= min_dte]
+    if max_dte is not None:
+        records = [r for r in records if r.get("dte") is not None and r["dte"] <= max_dte]
+    records, _ = _filter_sort_limit(
+        records,
+        sort_by=params.get("sort_by", "open_interest"),
+        sort_dir=params.get("sort_dir", "desc"),
+        limit=limit if isinstance(limit, int) and limit > 0 else None,
+    )
+    return records
+
+
 COMMAND_EXECUTORS: dict[str, RouteExecutor] = {
     "equity.price.historical": _historical_executor("equity.price.historical"),
     "equity.price.quote": _route_executor("equity.price.quote"),
@@ -364,6 +590,21 @@ COMMAND_EXECUTORS: dict[str, RouteExecutor] = {
     "news.company": _route_executor("news.company"),
     "news.world": _route_executor("news.world"),
     "derivatives.options.unusual": _route_executor("derivatives.options.unusual"),
+    "derivatives.options.chain": _options_chain_batch_executor,
+    "derivatives.options.historical": _cv_route_executor("derivatives.options.historical"),
+    "derivatives.options.daily": _cv_route_executor("derivatives.options.daily"),
+    "etf.holdings": _cv_route_executor("etf.holdings"),
+    "etf.sectors": _cv_route_executor("etf.sectors"),
+    "stocks.fundamental.income": _cv_route_executor("stocks.fundamental.income"),
+    "stocks.fundamental.balance": _cv_route_executor("stocks.fundamental.balance"),
+    "stocks.fundamental.cash": _cv_route_executor("stocks.fundamental.cash"),
+    "stocks.fundamental.ratios": _cv_route_executor("stocks.fundamental.ratios"),
+    "stocks.estimates": _cv_route_executor("stocks.estimates"),
+    "stocks.insider_trading": _cv_route_executor("stocks.insider_trading"),
+    "government.trades": _cv_route_executor("government.trades"),
+    "stocks.filings": _cv_route_executor("stocks.filings"),
+    "derivatives.options.screener": _options_screener_executor,
+    "derivatives.options.query": _options_query_executor,
 }
 
 
@@ -1101,6 +1342,318 @@ def derivatives_options_unusual(
         min_vol_oi=min_vol_oi,
         limit=limit,
     )
+
+
+from openbb_finance.models.equity_options_chain import FinanceOptionsChainFetcher
+
+
+@app.command(name="derivatives.options.chain")
+def derivatives_options_chain(
+    symbol: str,
+    expiration: str | None = None,
+    option_type: Literal["call", "put"] | None = None,
+    min_dte: int | None = None,
+    max_dte: int | None = None,
+    sort_by: Literal["expiration", "strike", "open_interest", "volume", "implied_volatility", "delta", "bid", "ask", "vwap"] = "open_interest",
+    sort_dir: Literal["asc", "desc"] = "desc",
+    limit: int = 50,
+) -> None:
+    """Get option contracts for a symbol with filtering and sorting (ConvexValue /chains).
+
+    Returns {results, _meta} where _meta.total is the server-reported contract
+    count and _meta.filtered is the count after local filtering. Without filters
+    this can be large (SPY ~13k contracts); use --expiration/--option-type/--limit
+    to scope. limit=0 returns all filtered records.
+    """
+    import asyncio
+    try:
+        async def _fetch() -> tuple[list[dict[str, Any]], int]:
+            q = FinanceOptionsChainFetcher.transform_query({"symbol": symbol})
+            data = await FinanceOptionsChainFetcher.aextract_data(q, None)
+            records = data.get("records", [])
+            total = data.get("contract_count", len(records))
+            return records, total
+
+        records, total = asyncio.run(_fetch())
+        # Local filters (expiration/option_type handled here because records
+        # use date objects, not the string values the CLI receives).
+        if expiration:
+            from datetime import date as _date
+            exp_date = _date.fromisoformat(expiration)
+            records = [r for r in records if r.get("expiration") == exp_date]
+        if option_type:
+            records = [r for r in records if r.get("option_type") == option_type]
+        if min_dte is not None:
+            records = [r for r in records if r.get("dte") is not None and r["dte"] >= min_dte]
+        if max_dte is not None:
+            records = [r for r in records if r.get("dte") is not None and r["dte"] <= max_dte]
+        filtered, meta = _filter_sort_limit(
+            records, sort_by=sort_by, sort_dir=sort_dir,
+            limit=limit if limit > 0 else None,
+        )
+        _print_results_with_meta(filtered, meta, total=total)
+    except Exception as exc:
+        _print_json({"error": str(exc), "code": _error_code(exc)})
+        raise SystemExit(1) from exc
+
+
+@app.command(name="derivatives.options.historical")
+def derivatives_options_historical(
+    symbol: str,
+    multiplier: int = 1,
+    timespan: str = "day",
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> None:
+    """Get aggregated OHLCV bars for an option contract (ConvexValue /mas/aggs).
+
+    symbol is the OCC-style option ticker, e.g. O:SPY260731C00750000.
+    """
+    _run_cv_route(
+        "derivatives.options.historical",
+        symbol=symbol,
+        multiplier=multiplier,
+        timespan=timespan,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
+@app.command(name="derivatives.options.daily")
+def derivatives_options_daily(
+    symbol: str,
+    date: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> None:
+    """Get single-day OHLCV for an option contract (ConvexValue /mas/open-close)."""
+    _run_cv_route(
+        "derivatives.options.daily",
+        symbol=symbol,
+        date=date,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
+@app.command(name="derivatives.options.screener")
+def derivatives_options_screener(
+    underlying_symbol: str | None = None,
+    option_type: Literal["call", "put"] | None = None,
+    min_open_interest: float | None = None,
+    max_open_interest: float | None = None,
+    min_volume: float | None = None,
+    min_iv: float | None = None,
+    max_iv: float | None = None,
+    delta_min: float | None = None,
+    delta_max: float | None = None,
+    expiration_date: str | None = None,
+    sort_by: str = "open_interest",
+    sort_dir: Literal["asc", "desc"] = "desc",
+    limit: int = 50,
+    extra_filters: str | None = None,
+) -> None:
+    """Screen option contracts across symbols (ConvexValue /screen).
+
+    extra_filters is a JSON string of CV-native filter objects, e.g.
+    '[{"field":"day_volume","op":"gt_field","value":"open_interest"}]'.
+    """
+    # Custom provider model: all params belong in extra_params (standard is
+    # empty for fetcher_dict-registered models without an OpenBB standard
+    # QueryParams counterpart). Mirrors the technical.indicators pattern.
+    # Keep None values so they override the Query() defaults the dynamic
+    # OptionsScreener class injects; dropping them lets Query leak through.
+    import json as _json
+    import asyncio
+    from openbb_finance.sources import convexvalue as _cv
+    from openbb_finance.models.equity_options_screener import (
+        FinanceOptionsScreenerQueryParams, _build_filters, DEFAULT_COLUMNS as _SCR_COLS,
+    )
+    try:
+        q = FinanceOptionsScreenerQueryParams(
+            underlying_symbol=underlying_symbol, option_type=option_type,
+            min_open_interest=min_open_interest, max_open_interest=max_open_interest,
+            min_volume=min_volume, min_iv=min_iv, max_iv=max_iv,
+            delta_min=delta_min, delta_max=delta_max,
+            expiration_date=expiration_date, sort_by=sort_by, sort_dir=sort_dir,
+            limit=limit, extra_filters=_json.loads(extra_filters) if extra_filters else None,
+        )
+        filters = _build_filters(q)
+        sort_list = [{"field": q.sort_by, "direction": q.sort_dir}] if q.sort_by else None
+        raw = asyncio.run(_cv.fetch_screen(
+            columns=list(_SCR_COLS), filters=filters, sort=sort_list, limit=q.limit,
+        ))
+        columns = raw.get("columns", [])
+        rows = raw.get("rows", [])
+        records = [dict(zip(columns, row, strict=False)) for row in rows]
+        meta = {
+            "returned": len(records),
+            "row_count": raw.get("row_count", len(records)),
+            "truncated": raw.get("truncated", False),
+            "sort_by": sort_by, "sort_dir": sort_dir,
+        }
+        _print_results_with_meta(records, meta)
+    except Exception as exc:
+        _print_json({"error": str(exc), "code": _error_code(exc)})
+        raise SystemExit(1) from exc
+
+
+@app.command(name="derivatives.options.query")
+def derivatives_options_query(sql: str, max_rows: int = 5000) -> None:
+    """Run a read-only SELECT/WITH SQL against the options_snapshots table (ConvexValue /query).
+
+    DDL/DML are rejected server-side. See the openbb-agent-cli skill for SQL
+    templates (GEX ranking, term structure, market PCR, max pain, etc.).
+    Returns {results, _meta} where _meta.row_count/truncated come from the server.
+    """
+    import asyncio
+    from openbb_finance.sources import convexvalue as _cv
+    try:
+        raw = asyncio.run(_cv.fetch_query(sql, max_rows=max_rows))
+        rows = raw.get("rows", [])
+        meta = {
+            "returned": len(rows),
+            "row_count": raw.get("row_count", len(rows)),
+            "truncated": raw.get("truncated", False),
+            "elapsed_ms": raw.get("elapsed_ms"),
+        }
+        _print_results_with_meta(rows, meta)
+    except Exception as exc:
+        _print_json({"error": str(exc), "code": _error_code(exc)})
+        raise SystemExit(1) from exc
+
+
+@app.command(name="stocks.fundamental.income")
+def stocks_fundamental_income(
+    symbol: str,
+    period: Literal["annual", "quarter", "ttm"] = "annual",
+    limit: int = 5,
+) -> None:
+    """Get income statements (ConvexValue/FMP). Sorted by period_ending desc."""
+    _run_cv_list("IncomeStatement", extra_params={"symbol": symbol, "period": period, "limit": limit},
+                 sort_by="period_ending", sort_dir="desc")
+
+
+@app.command(name="stocks.fundamental.balance")
+def stocks_fundamental_balance(
+    symbol: str,
+    period: Literal["annual", "quarter", "ttm"] = "annual",
+    limit: int = 5,
+) -> None:
+    """Get balance sheet statements (ConvexValue/FMP). Sorted by period_ending desc."""
+    _run_cv_list("BalanceSheetStatement", extra_params={"symbol": symbol, "period": period, "limit": limit},
+                 sort_by="period_ending", sort_dir="desc")
+
+
+@app.command(name="stocks.fundamental.cash")
+def stocks_fundamental_cash(
+    symbol: str,
+    period: Literal["annual", "quarter", "ttm"] = "annual",
+    limit: int = 5,
+) -> None:
+    """Get cash flow statements (ConvexValue/FMP). Sorted by period_ending desc."""
+    _run_cv_list("CashFlowStatement", extra_params={"symbol": symbol, "period": period, "limit": limit},
+                 sort_by="period_ending", sort_dir="desc")
+
+
+@app.command(name="stocks.fundamental.ratios")
+def stocks_fundamental_ratios(
+    symbol: str,
+    period: Literal["annual", "quarter"] = "annual",
+    limit: int = 5,
+) -> None:
+    """Get financial ratios (ConvexValue/FMP). Sorted by period_ending desc."""
+    _run_cv_list("FinancialRatios", extra_params={"symbol": symbol, "period": period, "limit": limit},
+                 sort_by="period_ending", sort_dir="desc")
+
+
+@app.command(name="stocks.estimates")
+def stocks_estimates(
+    symbol: str,
+    period: Literal["annual", "quarter"] = "annual",
+    limit: int = 10,
+) -> None:
+    """Get analyst estimates (ConvexValue/FMP). Sorted by date desc."""
+    _run_cv_list("AnalystEstimates", extra_params={"symbol": symbol, "period": period, "limit": limit},
+                 sort_by="date", sort_dir="desc")
+
+
+@app.command(name="stocks.insider_trading")
+def stocks_insider_trading(
+    symbol: str,
+    transaction_type: str | None = None,
+    after: str | None = None,
+    limit: int = 50,
+) -> None:
+    """Get insider trades (ConvexValue/FMP).
+
+    transaction_type: FMP code, e.g. P-Purchase, S-Sale, M-Exempt (server-side).
+    after: YYYY-MM-DD, only trades after this date (server-side).
+    Output sorted by filing_date desc.
+    """
+    _run_cv_list("InsiderTrading",
+                 extra_params={"symbol": symbol, "transaction_type": transaction_type,
+                               "after": after, "limit": limit},
+                 sort_by="filing_date", sort_dir="desc")
+
+
+@app.command(name="government.trades")
+def government_trades(
+    symbol: str | None = None,
+    page: int | None = None,
+    limit: int = 50,
+) -> None:
+    """Get Senate trading disclosures (ConvexValue/FMP).
+
+    page: 0-indexed page number (server-side pagination).
+    Output sorted by transaction_date desc.
+    """
+    _run_cv_list("GovernmentTrades",
+                 extra_params={"symbol": symbol, "page": page, "limit": limit},
+                 sort_by="transaction_date", sort_dir="desc")
+
+
+@app.command(name="etf.holdings")
+def etf_holdings(
+    symbol: str,
+    sort_by: Literal["weight_percentage", "market_value", "shares_number"] = "weight_percentage",
+    sort_dir: Literal["asc", "desc"] = "desc",
+    limit: int = 20,
+) -> None:
+    """Get ETF holdings (ConvexValue/FMP).
+
+    Server returns ALL holdings (limit is ignored upstream); this command sorts
+    locally then truncates. Default: top 20 by weight.
+    """
+    # Server ignores limit, so request everything and truncate here.
+    _run_cv_list("EtfHoldings",
+                 extra_params={"symbol": symbol, "limit": None},
+                 sort_by=sort_by, sort_dir=sort_dir, limit=limit)
+
+
+@app.command(name="etf.sectors")
+def etf_sectors(symbol: str) -> None:
+    """Get ETF sector weightings (ConvexValue/FMP)."""
+    _run_cv_route("etf.sectors", symbol=symbol)
+
+
+@app.command(name="stocks.filings")
+def stocks_filings(
+    symbol: str,
+    from_date: str | None = None,
+    to_date: str | None = None,
+    page: int | None = None,
+    limit: int = 50,
+) -> None:
+    """Get SEC 8-K filings (ConvexValue/FMP).
+
+    from_date/to_date (YYYY-MM-DD) and page are server-side filters.
+    Output sorted by filing_date desc.
+    """
+    _run_cv_list("CompanyFilings",
+                 extra_params={"symbol": symbol, "from_date": from_date,
+                               "to_date": to_date, "page": page, "limit": limit},
+                 sort_by="filing_date", sort_dir="desc")
 
 
 @app.command(name="batch")

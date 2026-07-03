@@ -24,6 +24,7 @@ DEFAULT_PRIORITIES = {
     "tickflow": 105,
     "finnhub": 102,
     "futunn": 100,
+    "convexvalue": 100,
     "sina": 98,
     "eastmoney": 95,
     "baostock": 90,
@@ -39,6 +40,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     }
 }
 DEFAULT_CONFIG["sources"]["finnhub"]["api_key"] = "${FINNHUB_API_KEY}"
+DEFAULT_CONFIG["sources"]["convexvalue"]["api_key"] = "${CV_API_KEY}"
 
 CONFIG_FILENAMES = ("openbb_finance.toml", ".openbb_finance.toml")
 ENV_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")
