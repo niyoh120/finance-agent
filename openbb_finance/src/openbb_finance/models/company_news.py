@@ -14,7 +14,7 @@ from openbb_finance.sources.base import infer_market
 
 
 class FinanceCompanyNewsFetcher(Fetcher[CompanyNewsQueryParams, list[CompanyNewsData]]):
-    """Fetcher for priority-merged company news."""
+    """Fetcher for multi-source merged company news."""
 
     @staticmethod
     def transform_query(params: dict[str, Any]) -> CompanyNewsQueryParams:

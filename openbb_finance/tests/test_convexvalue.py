@@ -16,7 +16,7 @@ from typing import Any
 
 import httpx
 import pytest
-from openbb_finance.config import DEFAULT_PRIORITIES, get_source_config
+from openbb_finance.config import DEFAULT_SOURCES, get_source_config
 from openbb_finance.models.equity_options_chain import (
     FinanceOptionsChainFetcher,
     _flatten_chain,
@@ -259,8 +259,11 @@ def test_income_statement_alias_camel_to_snake() -> None:
 # ---------- config registration ----------
 
 def test_config_registers_convexvalue_source() -> None:
-    assert "convexvalue" in DEFAULT_PRIORITIES
-    assert DEFAULT_PRIORITIES["convexvalue"] == 100
+    # convexvalue should be registered in the defaults and enabled, so CV
+    # models work out of the box (get_source_config alone would default
+    # unknown sources to enabled, masking accidental removal).
+    assert "convexvalue" in DEFAULT_SOURCES
+    assert get_source_config("convexvalue").enabled
 
 
 def test_config_convexvalue_api_key_expands(monkeypatch: pytest.MonkeyPatch) -> None:

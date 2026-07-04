@@ -11,13 +11,13 @@ from openbb_finance.sources.sina import SinaSource, _parse_hk
 
 @pytest.fixture
 def eastmoney_source() -> EastmoneySource:
-    config = SourceConfig(name="eastmoney", enabled=True, priority=95)
+    config = SourceConfig(name="eastmoney", enabled=True)
     return EastmoneySource(config)
 
 
 @pytest.fixture
 def sina_source() -> SinaSource:
-    config = SourceConfig(name="sina", enabled=True, priority=98)
+    config = SourceConfig(name="sina", enabled=True)
     return SinaSource(config)
 
 

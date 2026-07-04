@@ -10,7 +10,7 @@ from openbb_finance.sources.eastmoney import EastmoneySource, normalize_hk_symbo
 
 @pytest.fixture
 def eastmoney_source() -> EastmoneySource:
-    config = SourceConfig(name="eastmoney", enabled=True, priority=95)
+    config = SourceConfig(name="eastmoney", enabled=True)
     return EastmoneySource(config)
 
 

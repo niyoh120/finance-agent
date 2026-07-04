@@ -20,7 +20,6 @@ class EastmoneySource:
 
     def __init__(self, config: SourceConfig) -> None:
         self.enabled = config.enabled
-        self.priority = config.priority
 
     def supports(self, market: Market, data_type: DataType, **kwargs: Any) -> bool:
         del kwargs

@@ -36,7 +36,7 @@ async def test_tickflow_quote_uses_v1_quotes_payload():
                 }
             ]
 
-    source = FakeTickflowSource(SourceConfig(name="tickflow", enabled=True, priority=80, api_key="token"))
+    source = FakeTickflowSource(SourceConfig(name="tickflow", enabled=True, api_key="token"))
     result = await source.fetch_quote("600519.XSHG")
 
     assert result["symbol"] == "600519.XSHG"
@@ -67,7 +67,7 @@ async def test_tickflow_equity_search_uses_search_api():
                 },
             ]
 
-    source = FakeTickflowSource(SourceConfig(name="tickflow", enabled=True, priority=105, api_key="token"))
+    source = FakeTickflowSource(SourceConfig(name="tickflow", enabled=True, api_key="token"))
     result = await source.fetch_equity_search("茅台", is_symbol=False)
 
     assert result == [
@@ -105,7 +105,7 @@ async def test_tickflow_index_snapshots_outputs_openbb_symbols():
                 }
             ]
 
-    source = FakeTickflowSource(SourceConfig(name="tickflow", enabled=True, priority=80, api_key="token"))
+    source = FakeTickflowSource(SourceConfig(name="tickflow", enabled=True, api_key="token"))
     result = await source.fetch_index_snapshots(region="cn")
 
     assert result[0]["symbol"] == "000001.XSHG"
@@ -141,7 +141,7 @@ async def test_tickflow_available_indices_uses_universe_and_instruments():
                 {"symbol": "HSTECH.HK", "name": "恒生科技指数", "exchange": "HK", "region": "HK", "type": "index"},
             ]
 
-    source = FakeTickflowSource(SourceConfig(name="tickflow", enabled=True, priority=80, api_key="token"))
+    source = FakeTickflowSource(SourceConfig(name="tickflow", enabled=True, api_key="token"))
     result = await source.fetch_available_indices()
 
     assert result == [

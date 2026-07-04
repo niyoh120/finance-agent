@@ -19,10 +19,28 @@ api_key = "${TICKFLOW_TOKEN}"
     config = load_config(config_file)
 
     assert config["sources"]["tickflow"]["enabled"] is False
-    assert config["sources"]["tickflow"]["priority"] == 88
     assert config["sources"]["tickflow"]["api_key"] == "secret-token"
-    assert config["sources"]["tdx"]["priority"] == 110
-    assert config["sources"]["baostock"]["priority"] == 90
+    # Sources not overridden by the TOML stay enabled by default.
+    assert config["sources"]["tdx"]["enabled"] is True
+
+
+def test_load_config_accepts_legacy_priority_key_for_backward_compat(tmp_path, monkeypatch):
+    # Legacy `priority` keys in TOML are accepted (no error) but ignored: the
+    # resolved SourceConfig has no priority field. This guards accidental
+    # breakage of existing user configs during the priority removal migration.
+    monkeypatch.chdir(tmp_path)
+    config_file = tmp_path / "openbb_finance.toml"
+    config_file.write_text(
+        """
+[sources.tdx]
+priority = 88
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_file)
+    assert config["sources"]["tdx"]["priority"] == 88  # surfaced in raw dict
+    assert not hasattr(get_source_config("tdx"), "priority")  # not on SourceConfig
 
 
 def test_get_source_config_reads_openbb_finance_toml_from_cwd(tmp_path, monkeypatch):
@@ -31,7 +49,6 @@ def test_get_source_config_reads_openbb_finance_toml_from_cwd(tmp_path, monkeypa
         """
 [sources.akshare]
 enabled = false
-priority = 11
 """,
         encoding="utf-8",
     )
@@ -39,7 +56,6 @@ priority = 11
     config = get_source_config("akshare")
 
     assert config.enabled is False
-    assert config.priority == 11
 
 
 def test_get_source_config_reads_tdx_base_url(tmp_path, monkeypatch):
@@ -55,7 +71,6 @@ base_url = "https://tdx.example.com"
     config = get_source_config("tdx")
 
     assert config.enabled is True
-    assert config.priority == 110
     assert config.base_url == "https://tdx.example.com"
 
 
@@ -66,7 +81,6 @@ def test_get_source_config_reads_finnhub_api_key_from_env(tmp_path, monkeypatch)
     config = get_source_config("finnhub")
 
     assert config.enabled is True
-    assert config.priority == 102
     assert config.api_key == "finnhub-token"
 
 

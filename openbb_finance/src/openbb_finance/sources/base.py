@@ -13,7 +13,6 @@ DataType = Literal["price", "news", "calendar", "fundamental", "macro"]
 @dataclass(frozen=True)
 class DataSourceInfo:
     name: str
-    priority: int
     enabled: bool
 
 
@@ -29,7 +28,6 @@ class PriceQuery:
 
 class DataSource(Protocol):
     name: str
-    priority: int
     enabled: bool
 
     def supports(self, market: Market, data_type: DataType, **kwargs: Any) -> bool: ...

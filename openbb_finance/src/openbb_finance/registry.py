@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
 
 from openbb_finance.config import get_source_config
-from openbb_finance.sources.base import DataSource, DataType, Market
+from openbb_finance.sources.base import DataSource
 
 
 @dataclass
@@ -22,18 +21,12 @@ class DataSourceRegistry:
     def get(self, name: str) -> DataSource | None:
         return self.sources.get(name)
 
-    def enabled_sources(self, market: Market, data_type: DataType, **kwargs: Any) -> list[DataSource]:
-        return sorted(
-            [
-                source
-                for source in self.sources.values()
-                if source.enabled and source.supports(market, data_type, **kwargs)
-            ],
-            key=lambda source: source.priority,
-            reverse=True,
-        )
-
     def ordered_by_names(self, names: list[str]) -> list[DataSource]:
+        """Return enabled sources in the order their names appear in *names*.
+
+        The list order IS the priority: callers pass ["tdx", "tickflow", ...]
+        and the first source that returns data wins. No numeric priority field.
+        """
         return [source for name in names if (source := self.sources.get(name)) and source.enabled]
 
 

@@ -13,7 +13,6 @@ from zoneinfo import ZoneInfo
 
 from cyclopts import App
 from cyclopts.exceptions import CycloptsError
-
 from openbb_finance.sources.symbols import infer_market_from_symbol
 
 from openbb_agent_cli import __version__
@@ -332,7 +331,6 @@ def _run_cv_list(
     sort_by: str | None = None,
     sort_dir: Literal["asc", "desc"] = "desc",
     limit: int | None = None,
-    date_fields: tuple[str, ...] = ("date", "period_ending", "filing_date", "transaction_date", "filingDate", "transactionDate", "date"),
 ) -> None:
     """Run a ConvexValue list-returning model and wrap output as {results, _meta}.
 
@@ -343,7 +341,6 @@ def _run_cv_list(
     """
     try:
         records = _execute_provider_model(model_name, standard_params, extra_params)
-        # Normalize date-like string fields to sortable strings (ISO sorts lexicographically).
         filtered, meta = _filter_sort_limit(
             records, sort_by=sort_by, sort_dir=sort_dir,
             limit=limit,
@@ -535,6 +532,7 @@ def _options_query_executor(params: dict[str, Any]) -> list[dict[str, Any]]:
 def _options_chain_batch_executor(params: dict[str, Any]) -> list[dict[str, Any]]:
     """Batch executor for options chain: fetch via source, apply limit."""
     import asyncio
+
     from openbb_finance.models.equity_options_chain import FinanceOptionsChainFetcher
     symbol = params.get("symbol")
     if not symbol:
@@ -1463,12 +1461,17 @@ def derivatives_options_screener(
     # QueryParams counterpart). Mirrors the technical.indicators pattern.
     # Keep None values so they override the Query() defaults the dynamic
     # OptionsScreener class injects; dropping them lets Query leak through.
-    import json as _json
     import asyncio
-    from openbb_finance.sources import convexvalue as _cv
+    import json as _json
+
     from openbb_finance.models.equity_options_screener import (
-        FinanceOptionsScreenerQueryParams, _build_filters, DEFAULT_COLUMNS as _SCR_COLS,
+        DEFAULT_COLUMNS as _SCR_COLS,
     )
+    from openbb_finance.models.equity_options_screener import (
+        FinanceOptionsScreenerQueryParams,
+        _build_filters,
+    )
+    from openbb_finance.sources import convexvalue as _cv
     try:
         q = FinanceOptionsScreenerQueryParams(
             underlying_symbol=underlying_symbol, option_type=option_type,
@@ -1507,6 +1510,7 @@ def derivatives_options_query(sql: str, max_rows: int = 5000) -> None:
     Returns {results, _meta} where _meta.row_count/truncated come from the server.
     """
     import asyncio
+
     from openbb_finance.sources import convexvalue as _cv
     try:
         raw = asyncio.run(_cv.fetch_query(sql, max_rows=max_rows))

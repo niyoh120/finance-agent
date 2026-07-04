@@ -31,7 +31,7 @@ async def test_akshare_quote_falls_back_to_individual_info(monkeypatch):
     )
     monkeypatch.setitem(sys.modules, "akshare", akshare)
 
-    source = AkshareSource(SourceConfig(name="akshare", enabled=True, priority=70))
+    source = AkshareSource(SourceConfig(name="akshare", enabled=True))
     result = await source.fetch_quote("600000.SH")
 
     assert result["symbol"] == "600000.XSHG"
@@ -47,7 +47,7 @@ async def test_akshare_search_matches_a_share_suffix_symbol(monkeypatch):
 
     monkeypatch.setitem(sys.modules, "akshare", SimpleNamespace(stock_info_a_code_name=stock_info_a_code_name))
 
-    source = AkshareSource(SourceConfig(name="akshare", enabled=True, priority=70))
+    source = AkshareSource(SourceConfig(name="akshare", enabled=True))
     result = await source.fetch_equity_search("600000.SH", is_symbol=True)
 
     assert result == [{"symbol": "600000.XSHG", "name": "浦发银行", "source": "akshare"}]
@@ -75,7 +75,7 @@ async def test_akshare_adjusted_intraday_uses_qfq(monkeypatch):
 
     monkeypatch.setitem(sys.modules, "akshare", SimpleNamespace(stock_zh_a_hist_min_em=stock_zh_a_hist_min_em))
 
-    source = AkshareSource(SourceConfig(name="akshare", enabled=True, priority=70))
+    source = AkshareSource(SourceConfig(name="akshare", enabled=True))
     result = await source.fetch_price(
         PriceQuery(symbol="600000.XSHG", market="cn", interval="5m", adjusted=True)
     )

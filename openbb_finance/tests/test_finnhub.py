@@ -12,7 +12,6 @@ def test_finnhub_reads_custom_base_url():
         SourceConfig(
             name="finnhub",
             enabled=True,
-            priority=102,
             api_key="token",
             base_url="https://proxy.example.com/finnhub/",
         )
@@ -22,7 +21,7 @@ def test_finnhub_reads_custom_base_url():
 
 
 def test_finnhub_disables_without_api_key():
-    source = FinnhubSource(SourceConfig(name="finnhub", enabled=True, priority=102, api_key=""))
+    source = FinnhubSource(SourceConfig(name="finnhub", enabled=True, api_key=""))
 
     assert source.enabled is False
 
@@ -47,7 +46,7 @@ async def test_finnhub_company_news_normalizes_records():
                 {"datetime": "", "headline": "No date"},
             ]
 
-    source = FakeFinnhubSource(SourceConfig(name="finnhub", enabled=True, priority=102, api_key="token"))
+    source = FakeFinnhubSource(SourceConfig(name="finnhub", enabled=True, api_key="token"))
     result = await source.fetch_news("aapl", limit=5)
 
     assert result[0] == {
@@ -76,7 +75,7 @@ async def test_finnhub_world_news_filters_dates_and_limit():
                 {"datetime": 1782691200, "headline": "Later"},
             ]
 
-    source = FakeFinnhubSource(SourceConfig(name="finnhub", enabled=True, priority=102, api_key="token"))
+    source = FakeFinnhubSource(SourceConfig(name="finnhub", enabled=True, api_key="token"))
     start_date = date.fromtimestamp(1782604800)
     end_date = date.fromtimestamp(1782691200)
 

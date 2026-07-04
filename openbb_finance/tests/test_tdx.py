@@ -136,7 +136,7 @@ def reset_fake_clients(monkeypatch):
 
 
 def make_source() -> TdxSource:
-    return TdxSource(SourceConfig(name="tdx", enabled=True, priority=110))
+    return TdxSource(SourceConfig(name="tdx", enabled=True))
 
 
 def test_tdx_symbol_mapping():

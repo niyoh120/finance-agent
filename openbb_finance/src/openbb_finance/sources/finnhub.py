@@ -21,7 +21,6 @@ class FinnhubSource:
         self.api_key = config.api_key
         # Finnhub requires an API key; skip the source when none is configured.
         self.enabled = config.enabled and bool(self.api_key)
-        self.priority = config.priority
         self.base_url = (config.base_url or "https://finnhub.io/api/v1").rstrip("/")
 
     def supports(self, market: Market, data_type: DataType, **kwargs: Any) -> bool:

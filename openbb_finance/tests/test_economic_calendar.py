@@ -7,7 +7,7 @@ from openbb_finance.models.economic_calendar import FinanceEconomicCalendarFetch
 
 class FakeRegistry:
     def __init__(self) -> None:
-        self.source = SimpleNamespace(name="futunn", priority=100, enabled=True, fetch_economic_calendar=self.fetch)
+        self.source = SimpleNamespace(name="futunn", enabled=True, fetch_economic_calendar=self.fetch)
         self.received: tuple[date, date] | None = None
 
     def ordered_by_names(self, names):

@@ -17,7 +17,7 @@ from openbb_finance.registry import build_default_registry
 
 
 class FinanceEconomicCalendarFetcher(Fetcher[EconomicCalendarQueryParams, list[EconomicCalendarData]]):
-    """Fetcher for priority-merged economic calendar data."""
+    """Fetcher for multi-source merged economic calendar data."""
 
     @staticmethod
     def transform_query(params: dict[str, Any]) -> EconomicCalendarQueryParams:

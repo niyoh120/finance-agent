@@ -45,7 +45,6 @@ class TickflowSource:
 
     def __init__(self, config: SourceConfig) -> None:
         self.enabled = config.enabled
-        self.priority = config.priority
         self.api_key = config.api_key
         self.base_url = config.base_url or "https://api.tickflow.org"
 

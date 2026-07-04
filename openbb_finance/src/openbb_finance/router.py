@@ -89,14 +89,3 @@ def route_index_price_sources(query: PriceQuery, *, now: datetime | None = None)
     if market == "cn":
         return route_price_sources(query, now=now)
     return ["tdx"]
-
-
-def route_options_sources() -> list[str]:
-    """Route options queries to the ConvexValue source.
-
-    ConvexValue is currently the only options data source wired through the
-    provider fetcher_dict (chains/screen/query/aggregates), so this returns a
-    single-element list. Kept as a function for symmetry with the price/index
-    routers in case future sources (e.g. a local flow cache) join the chain.
-    """
-    return ["convexvalue"]

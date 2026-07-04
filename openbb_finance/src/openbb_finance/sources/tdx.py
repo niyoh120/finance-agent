@@ -43,7 +43,6 @@ class TdxSource:
 
     def __init__(self, config: SourceConfig) -> None:
         self.enabled = config.enabled
-        self.priority = config.priority
         self.timeout = DEFAULT_TIMEOUT
 
     def supports(self, market: Market, data_type: DataType, **kwargs: Any) -> bool:

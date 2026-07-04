@@ -14,7 +14,7 @@ from openbb_finance.registry import build_default_registry
 
 
 class FinanceWorldNewsFetcher(Fetcher[WorldNewsQueryParams, list[WorldNewsData]]):
-    """Fetcher for priority-merged world news."""
+    """Fetcher for multi-source merged world news."""
 
     @staticmethod
     def transform_query(params: dict[str, Any]) -> WorldNewsQueryParams:

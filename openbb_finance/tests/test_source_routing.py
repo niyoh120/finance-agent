@@ -11,7 +11,6 @@ class FakeSource:
     def __init__(self, name):
         self.name = name
         self.enabled = True
-        self.priority = {"finnhub": 102, "futunn": 100, "openbb": 50}.get(name, 80)
 
     async def fetch_equity_search(self, query, is_symbol=None):
         if self.name == "tickflow":

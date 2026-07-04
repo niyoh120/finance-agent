@@ -30,8 +30,7 @@ class MockAkshareSource:
     
     name = "akshare"
     enabled = True
-    priority = 70
-    
+
     def __init__(self, data):
         self.data = data
     

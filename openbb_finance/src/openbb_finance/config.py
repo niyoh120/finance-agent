@@ -14,30 +14,21 @@ from typing import Any
 class SourceConfig:
     name: str
     enabled: bool
-    priority: int
     api_key: str | None = None
     base_url: str | None = None
 
 
-DEFAULT_PRIORITIES = {
-    "tdx": 110,
-    "tickflow": 105,
-    "finnhub": 102,
-    "futunn": 100,
-    "convexvalue": 100,
-    "sina": 98,
-    "eastmoney": 95,
-    "baostock": 90,
-    "akshare": 70,
-    "openbb": 50,
-}
-
+# Source ordering is controlled by the `ordered_by_names([...])` call in each
+# model (the list order is the fallback order); no numeric priority is needed.
+# This map only exists so that sources enabled by default and the API key
+# placeholders are declared in one place.
+DEFAULT_SOURCES: tuple[str, ...] = (
+    "tdx", "tickflow", "finnhub", "futunn", "convexvalue",
+    "sina", "eastmoney", "baostock", "akshare", "openbb",
+)
 
 DEFAULT_CONFIG: dict[str, Any] = {
-    "sources": {
-        name: {"enabled": True, "priority": priority}
-        for name, priority in DEFAULT_PRIORITIES.items()
-    }
+    "sources": {name: {"enabled": True} for name in DEFAULT_SOURCES}
 }
 DEFAULT_CONFIG["sources"]["finnhub"]["api_key"] = "${FINNHUB_API_KEY}"
 DEFAULT_CONFIG["sources"]["convexvalue"]["api_key"] = "${CV_API_KEY}"
@@ -97,7 +88,6 @@ def get_source_config(name: str) -> SourceConfig:
     config = load_config()
     source = config.get("sources", {}).get(name, {})
     enabled = bool(source.get("enabled", True))
-    priority = int(source.get("priority", DEFAULT_PRIORITIES.get(name, 50)))
     api_key = source.get("api_key")
     base_url = source.get("base_url")
-    return SourceConfig(name=name, enabled=enabled, priority=priority, api_key=api_key, base_url=base_url)
+    return SourceConfig(name=name, enabled=enabled, api_key=api_key, base_url=base_url)
