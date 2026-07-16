@@ -8,6 +8,7 @@ Python monorepo for finance data ingestion, shared database models, and the Open
 | :--- | :--- | :--- |
 | macro-scraper | `services/macro-scraper` | 抓取宏观金融数据并写入数据库 |
 | options-scraper | `services/options-scraper` | 抓取 Discord `UW Live Options Flow` 消息并写入数据库 |
+| options-dashboard | `services/options-dashboard` | 内网 Streamlit 期权交易辅助面板（期权链、策略构建器、财报 IV Crush） |
 | migrate | `migrate/Dockerfile` | 运行 Alembic 数据库迁移 |
 | shared | `shared` | 共享数据库模型、连接和日志工具 |
 | openbb-finance | `openbb_finance` | OpenBB provider |
@@ -51,6 +52,19 @@ mise run db-upgrade
 mise run macro-scraper
 mise run options-scraper
 mise run openbb-agent-cli
+mise run options-dashboard
+```
+
+`options-dashboard` 默认监听 `http://localhost:8501`，仅适用于内网。生产部署建议置于反向代理（Nginx/Caddy/Authelia）之后，由代理统一负责 TLS 与访问认证；容器本身不实现登录。所需环境变量：
+
+- `CV_API_KEY`（ConvexValue Research Plan，覆盖美股期权 + FMP 全量财务数据）
+
+镜像构建与发布：
+
+```bash
+mise run docker-build-options-dashboard
+mise run docker-push-options-dashboard
+mise run docker-build-push-options-dashboard
 ```
 
 发布镜像相关任务：
@@ -82,6 +96,7 @@ mise run docker-build-push-all
 ├── openbb_finance/        # OpenBB provider
 ├── services/
 │   ├── macro-scraper/     # 宏观抓取
+│   ├── options-dashboard/ # 期权面板
 │   └── options-scraper/   # Discord 期权流抓取
 ├── shared/                # 共享 Python 模块
 ├── mise.toml              # 本地任务

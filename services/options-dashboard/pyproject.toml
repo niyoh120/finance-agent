@@ -1,0 +1,32 @@
+[project]
+name = "options-dashboard"
+version = "0.1.0"
+description = "Intranet Streamlit dashboard for options trading assistance"
+requires-python = ">=3.11"
+dependencies = [
+  "httpx>=0.27.0",
+  "numpy>=1.24.0",
+  "openbb-finance",
+  "pandas>=2.0.0",
+  "plotly>=5.20.0",
+  "streamlit>=1.36.0",
+]
+
+[project.scripts]
+options-dashboard = "options_dashboard.main:main"
+
+[build-system]
+requires = ["uv_build>=0.9.26,<0.10.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+openbb-finance = { workspace = true }
+
+[tool.uv.build-backend]
+module-root = "src"
+module-name = "options_dashboard"
+
+[dependency-groups]
+dev = [
+  "pytest>=8.0.0",
+]

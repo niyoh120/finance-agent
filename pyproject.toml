@@ -15,6 +15,7 @@ finance-shared = { workspace = true }
 members = [
   "shared",
   "services/macro-scraper",
+  "services/options-dashboard",
   "services/options-scraper",
   "openbb-agent-cli",
   "openbb_finance",

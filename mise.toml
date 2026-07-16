@@ -36,11 +36,19 @@ run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=macro-scraper
 [tasks.docker-build-options-scraper]
 run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=options-scraper --build-arg MODULE_ENTRY=options_scraper.main -t {{vars.image_repo}}finance-options-scraper:latest -t {{vars.image_repo}}finance-options-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
 
+[tasks.options-dashboard]
+depends = ["install"]
+run = "uv run --package options-dashboard streamlit run services/options-dashboard/app.py"
+
+[tasks.docker-build-options-dashboard]
+run = "docker build -f services/options-dashboard/Dockerfile -t {{vars.image_repo}}finance-options-dashboard:latest -t {{vars.image_repo}}finance-options-dashboard:{{exec(command='git rev-parse --short HEAD')}} ."
+
 [tasks.docker-build-all]
 run = [
   { tasks = [
     "docker-build-migrate",
     "docker-build-macro-scraper",
+    "docker-build-options-dashboard",
     "docker-build-options-scraper",
   ] },
 ]
@@ -63,11 +71,18 @@ run = [
   "docker push {{vars.image_repo}}finance-options-scraper:{{exec(command='git rev-parse --short HEAD')}}",
 ]
 
+[tasks.docker-push-options-dashboard]
+run = [
+  "docker push {{vars.image_repo}}finance-options-dashboard:latest",
+  "docker push {{vars.image_repo}}finance-options-dashboard:{{exec(command='git rev-parse --short HEAD')}}",
+]
+
 [tasks.docker-push-all]
 run = [
   { tasks = [
     "docker-push-migrate",
     "docker-push-macro-scraper",
+    "docker-push-options-dashboard",
     "docker-push-options-scraper",
   ] },
 ]
@@ -88,6 +103,12 @@ run = [
 run = [
   { tasks = ["docker-build-options-scraper"] },
   { tasks = ["docker-push-options-scraper"] },
+]
+
+[tasks.docker-build-push-options-dashboard]
+run = [
+  { tasks = ["docker-build-options-dashboard"] },
+  { tasks = ["docker-push-options-dashboard"] },
 ]
 
 [tasks.docker-build-push-all]
