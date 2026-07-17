@@ -28,20 +28,20 @@ depends = ["install"]
 run = "uv run --package openbb-agent-cli openbb-agent-cli"
 
 [tasks.docker-build-migrate]
-run = "docker build -f migrate/Dockerfile -t {{vars.image_repo}}finance-migrate:latest -t {{vars.image_repo}}finance-migrate:{{exec(command='git rev-parse --short HEAD')}} ."
+run = "docker build -f migrate/Dockerfile -t {{vars.image_repo}}/finance-migrate:latest -t {{vars.image_repo}}/finance-migrate:{{exec(command='git rev-parse --short HEAD')}} ."
 
 [tasks.docker-build-macro-scraper]
-run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=macro-scraper --build-arg MODULE_ENTRY=macro_scraper.main -t {{vars.image_repo}}finance-macro-scraper:latest -t {{vars.image_repo}}finance-macro-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
+run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=macro-scraper --build-arg MODULE_ENTRY=macro_scraper.main -t {{vars.image_repo}}/finance-macro-scraper:latest -t {{vars.image_repo}}/finance-macro-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
 
 [tasks.docker-build-options-scraper]
-run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=options-scraper --build-arg MODULE_ENTRY=options_scraper.main -t {{vars.image_repo}}finance-options-scraper:latest -t {{vars.image_repo}}finance-options-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
+run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=options-scraper --build-arg MODULE_ENTRY=options_scraper.main -t {{vars.image_repo}}/finance-options-scraper:latest -t {{vars.image_repo}}/finance-options-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
 
 [tasks.options-dashboard]
 depends = ["install"]
 run = "uv run --package options-dashboard streamlit run services/options-dashboard/app.py"
 
 [tasks.docker-build-options-dashboard]
-run = "docker build -f services/options-dashboard/Dockerfile -t {{vars.image_repo}}finance-options-dashboard:latest -t {{vars.image_repo}}finance-options-dashboard:{{exec(command='git rev-parse --short HEAD')}} ."
+run = "docker build -f services/options-dashboard/Dockerfile -t {{vars.image_repo}}/finance-options-dashboard:latest -t {{vars.image_repo}}/finance-options-dashboard:{{exec(command='git rev-parse --short HEAD')}} ."
 
 [tasks.docker-build-all]
 run = [
@@ -55,26 +55,26 @@ run = [
 
 [tasks.docker-push-migrate]
 run = [
-  "docker push {{vars.image_repo}}finance-migrate:latest",
-  "docker push {{vars.image_repo}}finance-migrate:{{exec(command='git rev-parse --short HEAD')}}",
+  "docker push {{vars.image_repo}}/finance-migrate:latest",
+  "docker push {{vars.image_repo}}/finance-migrate:{{exec(command='git rev-parse --short HEAD')}}",
 ]
 
 [tasks.docker-push-macro-scraper]
 run = [
-  "docker push {{vars.image_repo}}finance-macro-scraper:latest",
-  "docker push {{vars.image_repo}}finance-macro-scraper:{{exec(command='git rev-parse --short HEAD')}}",
+  "docker push {{vars.image_repo}}/finance-macro-scraper:latest",
+  "docker push {{vars.image_repo}}/finance-macro-scraper:{{exec(command='git rev-parse --short HEAD')}}",
 ]
 
 [tasks.docker-push-options-scraper]
 run = [
-  "docker push {{vars.image_repo}}finance-options-scraper:latest",
-  "docker push {{vars.image_repo}}finance-options-scraper:{{exec(command='git rev-parse --short HEAD')}}",
+  "docker push {{vars.image_repo}}/finance-options-scraper:latest",
+  "docker push {{vars.image_repo}}/finance-options-scraper:{{exec(command='git rev-parse --short HEAD')}}",
 ]
 
 [tasks.docker-push-options-dashboard]
 run = [
-  "docker push {{vars.image_repo}}finance-options-dashboard:latest",
-  "docker push {{vars.image_repo}}finance-options-dashboard:{{exec(command='git rev-parse --short HEAD')}}",
+  "docker push {{vars.image_repo}}/finance-options-dashboard:latest",
+  "docker push {{vars.image_repo}}/finance-options-dashboard:{{exec(command='git rev-parse --short HEAD')}}",
 ]
 
 [tasks.docker-push-all]
@@ -151,4 +151,4 @@ depends = ["install"]
 run = "uv run alembic history"
 
 [vars]
-image_repo = "docker.io/niyoh/"
+image_repo = { required = "Set image_repo in mise.local.toml" }
