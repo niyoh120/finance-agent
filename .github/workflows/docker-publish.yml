@@ -16,6 +16,7 @@ on:
           - migrate
           - macro-scraper
           - options-scraper
+          - options-dashboard
       push:
         description: Push images to DockerHub
         required: true
@@ -52,6 +53,10 @@ jobs:
             build_args: |
               MODULE_NAME=options-scraper
               MODULE_ENTRY=options_scraper.main
+          - service: options-dashboard
+            image: finance-options-dashboard
+            dockerfile: services/options-dashboard/Dockerfile
+            build_args: ""
     steps:
       - name: Checkout
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.service == 'all' || inputs.service == matrix.service }}
