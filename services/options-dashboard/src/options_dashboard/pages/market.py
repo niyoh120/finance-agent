@@ -392,9 +392,16 @@ def _render_market_params(
         st.caption(dividend_note)
 
     first_row = st.columns([3, 1, 3, 1], gap="small", vertical_alignment="bottom")
+    # widget 默认值只在首次渲染时写入 session_state，重置回调随后覆盖；
+    # 同时传 value= 和 key= 且 key 已存在会触发 Streamlit widget 警告。
+    st.session_state.setdefault(
+        "ctx_spot", float(defaults["spot"]) if defaults["spot"] > 0 else 0.0,
+    )
+    st.session_state.setdefault("ctx_r", float(defaults["r"]))
+    st.session_state.setdefault("ctx_q", float(defaults["q"]))
+    st.session_state.setdefault("ctx_val_date", date.today())
     spot = first_row[0].number_input(
         "标的价格", min_value=0.0,
-        value=float(defaults["spot"]) if defaults["spot"] > 0 else 0.0,
         step=0.5, format="%.2f", key="ctx_spot",
     )
     first_row[1].button(
@@ -406,7 +413,7 @@ def _render_market_params(
         args=(symbol,),
     )
     r = first_row[2].number_input(
-        "无风险利率", min_value=0.0, value=float(defaults["r"]),
+        "无风险利率", min_value=0.0,
         step=0.005, format="%.4f", key="ctx_r",
         help="使用小数输入，例如 0.04 表示 4%。",
     )
@@ -419,7 +426,7 @@ def _render_market_params(
 
     second_row = st.columns([3, 1, 3, 1], gap="small", vertical_alignment="bottom")
     q = second_row[0].number_input(
-        "股息率", min_value=0.0, value=float(defaults["q"]),
+        "股息率", min_value=0.0,
         step=0.005, format="%.4f", key="ctx_q",
         help="使用连续股息率小数，例如 0.01 表示 1%。",
     )
@@ -430,7 +437,7 @@ def _render_market_params(
         on_click=lambda: st.session_state.update(ctx_q=float(defaults["q"])),
     )
     val_date = second_row[2].date_input(
-        "估值日期", value=date.today(), key="ctx_val_date",
+        "估值日期", key="ctx_val_date",
     )
     second_row[3].button(
         "重置",
