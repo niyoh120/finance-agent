@@ -20,6 +20,7 @@ from options_dashboard.strategy import (
     MixedExpiryError,
     PricingContext,
     current_payoff_curve,
+    effective_leverage,
     suggest_limit_price,
     template_bull_call_spread,
     template_iron_condor,
@@ -285,3 +286,46 @@ def test_current_payoff_curve_bull_spread_no_negative_expiry() -> None:
     assert curves.expiry_points[0] == pytest.approx(-3.0, abs=0.01)
     # Max profit (at very high price) = (110-100) - 3 = 7.
     assert curves.expiry_points[-1] == pytest.approx(7.0, abs=0.05)
+
+
+# ---------- effective_leverage ----------
+
+def test_effective_leverage_long_call_matches_lambda_definition() -> None:
+    """For a single long call, effective leverage == delta * spot / price."""
+    leg = Leg("option", "buy", 1, "AAPL", strike=100.0,
+              expiration=date(2026, 9, 18), option_side="call", cost=5.0)
+    ctx = PricingContext(spot=100.0, r=0.04, q=0.0, default_iv=0.3)
+    val = value_strategy([leg], ctx)
+    expected = val.net_greeks["delta"] * 100.0 / val.net_price
+    assert effective_leverage(val, spot=100.0) == pytest.approx(expected, rel=1e-9)
+    # A positive-debit, positive-delta position must have positive leverage.
+    assert effective_leverage(val, spot=100.0) > 0
+
+
+def test_effective_leverage_short_call_is_negative() -> None:
+    """Short call: negative delta-equivalent exposure over positive credit."""
+    leg = Leg("option", "sell", 1, "AAPL", strike=100.0,
+              expiration=date(2026, 9, 18), option_side="call", cost=5.0)
+    ctx = PricingContext(spot=100.0, r=0.04, q=0.0, default_iv=0.3)
+    val = value_strategy([leg], ctx)
+    lev = effective_leverage(val, spot=100.0)
+    assert lev is not None and lev < 0
+
+
+def test_effective_leverage_zero_cost_structure_is_none() -> None:
+    """Delta-hedged or zero-net-price structure -> leverage undefined."""
+    long_call = Leg("option", "buy", 1, "AAPL", strike=100.0,
+                    expiration=date(2026, 9, 18), option_side="call", cost=5.0)
+    short_call = Leg("option", "sell", 1, "AAPL", strike=100.0,
+                     expiration=date(2026, 9, 18), option_side="call", cost=5.0)
+    ctx = PricingContext(spot=100.0, r=0.04, q=0.0, default_iv=0.3)
+    val = value_strategy([long_call, short_call], ctx)
+    assert effective_leverage(val, spot=100.0) is None
+
+
+def test_effective_leverage_stock_leg_equals_one() -> None:
+    """Pure long stock: delta 1, price = spot -> leverage == 1."""
+    leg = Leg("stock", "buy", 100, "AAPL", cost=100.0)
+    ctx = PricingContext(spot=100.0, r=0.04, q=0.0)
+    val = value_strategy([leg], ctx)
+    assert effective_leverage(val, spot=100.0) == pytest.approx(1.0, rel=1e-9)

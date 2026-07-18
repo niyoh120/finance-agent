@@ -31,6 +31,7 @@ from ..strategy import (
     Leg,
     PricingContext,
     current_payoff_curve,
+    effective_leverage,
     value_leg,
     value_strategy,
 )
@@ -562,9 +563,15 @@ def _render_strategy(
     valuation = value_strategy(legs, ctx, iv_overrides=iv_overrides)
 
     st.markdown("#### 组合估值")
-    m1, m2 = st.columns(2, gap="small")
+    lev = effective_leverage(valuation, spot=spot)
+    m1, m2, m3 = st.columns(3, gap="small")
     m1.metric("组合模型价", f"{net_theo:+.2f}")
     m2.metric("组合 CV 估值", f"{net_fmv:+.2f}")
+    m3.metric(
+        "有效杠杆",
+        f"{lev:+.2f}×" if lev is not None else "—",
+        help="标的价格每变动 1%，组合模型价变动约 lev%。零成本组合（如平值 Iron Condor）该值不定义。",
+    )
 
     st.caption("组合 Greeks（按方向与张数汇总）")
     greek_labels = {

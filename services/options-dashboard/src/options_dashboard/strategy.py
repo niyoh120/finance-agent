@@ -538,6 +538,30 @@ def suggest_limit_price(
     )
 
 
+# --------------------------------------------------------------------------- #
+# Effective leverage (lambda)
+# --------------------------------------------------------------------------- #
+
+def effective_leverage(valuation: "StrategyValuation", spot: float) -> float | None:
+    """Portfolio effective leverage: % change in portfolio value per 1% move in spot.
+
+    Equals (net_delta * spot) / |net_price|, where net_delta and net_price share
+    the same unit basis (per-share * contracts), so the 100 shares/contract
+    factor cancels. The absolute value keeps the sign coming only from delta so
+    that long and short positions get correct directional leverage. Returns
+    None when net_price is ~0 (zero-cost structures such as at-money iron
+    condors have no well-defined leverage) or spot <= 0.
+    """
+    if spot <= 0:
+        return None
+    net_price = valuation.net_price
+    # ponytail: |net_price| < 1 cent per contract-basis -> treat as zero;
+    # threshold absorbs float noise near flat structures.
+    if abs(net_price) < 1e-6:
+        return None
+    return valuation.net_greeks["delta"] * spot / abs(net_price)
+
+
 __all__ = [
     "Leg",
     "PricingContext",
@@ -555,4 +579,5 @@ __all__ = [
     "template_straddle",
     "template_iron_condor",
     "suggest_limit_price",
+    "effective_leverage",
 ]
