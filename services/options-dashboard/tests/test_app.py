@@ -93,6 +93,88 @@ def test_fmt_contract_trader_friendly() -> None:
     assert fmt_contract("") == ""
 
 
+# ---------- auto-refresh fmv update ----------
+
+class _FakeSessionState(dict):
+    """Minimal stand-in for st.session_state used by _refresh_leg_fmvs."""
+
+
+def test_refresh_leg_fmvs_updates_changed_fmv(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_refresh_leg_fmvs rewrites fmv when the chain snapshot changed."""
+    from options_dashboard.pages import market as market_mod
+
+    legs = [{
+        "kind": "option", "direction": "buy", "quantity": 1.0,
+        "kind_symbol": "O:AAPL260918C00100000",
+        "iv": 0.30, "fmv": 5.0,  # user-set iv preserved; fmv refreshed
+    }]
+    monkeypatch.setattr(streamlit, "session_state", _FakeSessionState({STRATEGY_LEGS_KEY: legs}))
+
+    records = [{
+        "contract_symbol": "O:AAPL260918C00100000",
+        "theoretical_price": 6.25,
+    }]
+    changed = market_mod._refresh_leg_fmvs(records)
+
+    assert changed is True
+    assert legs[0]["fmv"] == 6.25
+    assert legs[0]["iv"] == 0.30  # user-set value untouched
+
+
+def test_refresh_leg_fmvs_noop_when_unchanged(monkeypatch: pytest.MonkeyPatch) -> None:
+    """_refresh_leg_fmvs returns False and does not write state when unchanged."""
+    from options_dashboard.pages import market as market_mod
+
+    legs = [{
+        "kind": "option", "direction": "buy", "quantity": 1.0,
+        "kind_symbol": "O:AAPL260918C00100000", "fmv": 5.0,
+    }]
+    fake_state = _FakeSessionState({STRATEGY_LEGS_KEY: legs})
+    monkeypatch.setattr(streamlit, "session_state", fake_state)
+
+    legs_before = [dict(legs[0])]
+    changed = market_mod._refresh_leg_fmvs([
+        {"contract_symbol": "O:AAPL260918C00100000", "theoretical_price": 5.0},
+    ])
+    assert changed is False
+    assert legs == legs_before  # untouched
+
+
+
+def test_refresh_leg_fmvs_skips_malformed_price(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A non-numeric theoretical_price is skipped, not raised."""
+    from options_dashboard.pages import market as market_mod
+
+    legs = [{
+        "kind": "option", "direction": "buy", "quantity": 1.0,
+        "kind_symbol": "O:AAPL260918C00100000", "fmv": 5.0,
+    }]
+    monkeypatch.setattr(streamlit, "session_state", _FakeSessionState({STRATEGY_LEGS_KEY: legs}))
+
+    changed = market_mod._refresh_leg_fmvs([
+        {"contract_symbol": "O:AAPL260918C00100000", "theoretical_price": "N/A"},
+    ])
+    assert changed is False
+    assert legs[0]["fmv"] == 5.0
+
+
+def test_refresh_leg_fmvs_clears_stale_fmv_on_zero(monkeypatch: pytest.MonkeyPatch) -> None:
+    """When CV reports 0/None, a stale positive fmv is cleared to None (shows —)."""
+    from options_dashboard.pages import market as market_mod
+
+    legs = [{
+        "kind": "option", "direction": "buy", "quantity": 1.0,
+        "kind_symbol": "O:AAPL260918C00100000", "fmv": 5.0,
+    }]
+    monkeypatch.setattr(streamlit, "session_state", _FakeSessionState({STRATEGY_LEGS_KEY: legs}))
+
+    changed = market_mod._refresh_leg_fmvs([
+        {"contract_symbol": "O:AAPL260918C00100000", "theoretical_price": 0},
+    ])
+    assert changed is True
+    assert legs[0]["fmv"] is None
+
+
 # ---------- page render flows ----------
 
 def test_page_prompts_before_symbol_submit() -> None:

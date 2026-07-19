@@ -197,7 +197,7 @@ def render_chain_strategy() -> None:
         _render_strategy(symbol, spot, r, q, style, val_now)
 
     # --- 5-second auto-refresh fragment ---
-    _render_auto_refresh()
+    _render_auto_refresh(symbol)
 
 
 # --------------------------------------------------------------------------- #
@@ -205,13 +205,66 @@ def render_chain_strategy() -> None:
 # --------------------------------------------------------------------------- #
 
 @st.fragment(run_every=5.0)
-def _render_auto_refresh() -> None:
-    """Clear the chain cache on a 5-second timer.
+def _render_auto_refresh(symbol: str) -> None:
+    """Refresh ConvexValue valuations (CV 估值) on a 5-second timer.
 
-    Fragment runs without a full page reload; clearing the cache makes the
-    next script run pull a fresh ConvexValue snapshot (FMV/IV/underlying).
+    Pulls a fresh chain snapshot, updates each strategy leg's ``fmv`` from the
+    latest chain record, and reruns the page so the strategy table shows the
+    refreshed CV 估值. User-set values (direction/张数/建仓价/IV) are left intact.
+    Rerun only when something actually changed; otherwise the fragment is a
+    no-op, which also keeps AppTest deterministic.
     """
     _load_chain.clear()
+    try:
+        records = _load_chain(symbol)
+    except data.RateLimitedError as exc:
+        st.toast(f"CV 估值刷新被限频：{exc}", icon="⏳")
+        return
+    except data.DataUnavailableError as exc:
+        st.toast(f"CV 估值刷新无数据：{exc}", icon="⚠️")
+        return
+    except Exception as exc:  # noqa: BLE001 - keep the auto-refresh timer alive
+        # Unexpected upstream error (timeout / decode / connection). Without
+        # this guard the fragment raises and its run_every timer stops until a
+        # full page rerun; surface it and skip this tick instead.
+        st.toast(f"CV 估值刷新出错：{exc}", icon="⚠️")
+        return
+    if _refresh_leg_fmvs(records):
+        st.rerun()
+
+
+def _refresh_leg_fmvs(records: list[dict[str, Any]]) -> bool:
+    """Update each strategy option leg's ``fmv`` from the latest chain records.
+
+    Returns True if any leg was updated.
+    """
+    legs = get_strategy_legs()
+    if not legs:
+        return False
+    by_symbol = {str(r.get("contract_symbol")): r for r in records}
+    changed = False
+    for leg in legs:
+        if leg.get("kind") != "option":
+            continue
+        row = by_symbol.get(leg.get("kind_symbol", ""))
+        if not row:
+            continue
+        # CV returns float | None here, but guard against malformed upstream
+        # payloads so a single bad row never crashes the auto-refresh loop.
+        try:
+            new_fmv = float(row.get("theoretical_price") or 0.0)
+            cur_fmv = float(leg.get("fmv") or 0.0)
+        except (TypeError, ValueError):
+            continue
+        if abs(new_fmv - cur_fmv) > 1e-9:
+            # Match the codebase convention (fmv > 0 == "has valuation"):
+            # a CV drop to 0/None clears a stale positive FMV to None so the
+            # strategy table shows "—" instead of a stale price.
+            leg["fmv"] = new_fmv if new_fmv > 0 else None
+            changed = True
+    if changed:
+        st.session_state[STRATEGY_LEGS_KEY] = legs
+    return changed
 
 
 # --------------------------------------------------------------------------- #
