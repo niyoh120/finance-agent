@@ -104,3 +104,34 @@ def test_index_price_routes_hk_only_tdx():
     )
     sources = route_index_price_sources(query, now=datetime(2026, 4, 27, 16, 0))
     assert sources == ["tdx"]
+
+
+def test_futures_price_routes_tdx_primary_akshare_fallback():
+    from openbb_finance.router import route_futures_price_sources
+
+    query = PriceQuery(symbol="rb.SHFE", market="future", interval="1d")
+    assert route_futures_price_sources(query) == ["tdx", "akshare"]
+
+
+def test_futures_price_sge_routes_tdx_only():
+    from openbb_finance.router import route_futures_price_sources
+
+    query = PriceQuery(symbol="AU.SGE", market="future", interval="1d")
+    assert route_futures_price_sources(query) == ["tdx"]
+
+
+def test_futures_price_intraday_routes_tdx_only():
+    from openbb_finance.router import route_futures_price_sources
+
+    query = PriceQuery(symbol="rb.SHFE", market="future", interval="5m")
+    assert route_futures_price_sources(query) == ["tdx"]
+
+
+def test_futures_price_international_routes_tdx_only():
+    from openbb_finance.router import route_futures_price_sources
+
+    # sina daily covers only domestic commodity exchanges; international falls
+    # back to nothing beyond tdx.
+    for symbol in ["GC.COMEX", "CL.NYMEX", "ZL.CBOT"]:
+        query = PriceQuery(symbol=symbol, market="future", interval="1d")
+        assert route_futures_price_sources(query) == ["tdx"]

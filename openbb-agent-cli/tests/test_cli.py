@@ -15,12 +15,15 @@ class DummyResult:
 
 
 def test_run_route_outputs_results_only(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    def command(provider: str, **params: Any) -> DummyResult:
-        assert provider == "finance"
-        assert params == {"query": "AAPL", "is_symbol": False}
-        return DummyResult()
+    def fake_execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
+        assert route == "equity.search"
+        assert {key: value for key, value in params.items() if value is not None} == {
+            "query": "AAPL",
+            "is_symbol": False,
+        }
+        return [{"symbol": "AAPL"}]
 
-    monkeypatch.setattr(cli, "_resolve_route", lambda route: command)
+    monkeypatch.setattr(cli, "_execute_route", fake_execute_route)
 
     cli._run_route("equity.search", query="AAPL", is_symbol=False, start_date=None)
 
@@ -31,17 +34,21 @@ def test_run_route_suppresses_provider_output(
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    def command(provider: str, **params: Any) -> DummyResult:
-        print("provider stdout")
-        print("provider stderr", file=sys.stderr)
-        return DummyResult()
+    class FakeQuery:
+        def __init__(self, cc, provider_choices, standard, extra) -> None:
+            pass
 
-    monkeypatch.setattr(cli, "_resolve_route", lambda route: command)
+        async def execute(self) -> list[DummyResult]:
+            print("provider stdout")
+            print("provider stderr", file=sys.stderr)
+            return [DummyResult()]
 
-    cli._run_route("equity.search")
+    monkeypatch.setattr("openbb_core.app.query.Query", FakeQuery)
+
+    cli._run_route("equity.search", query="AAPL")
 
     captured = capsys.readouterr()
-    assert captured.out == '[{"symbol":"AAPL"}]\n'
+    assert captured.out == '[{"results":[{"symbol":"AAPL"}]}]\n'
     assert captured.err == ""
 
 
@@ -49,7 +56,7 @@ def test_run_route_outputs_json_error(monkeypatch: pytest.MonkeyPatch, capsys: p
     def command(provider: str, **params: Any) -> DummyResult:
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(cli, "_resolve_route", lambda route: command)
+    monkeypatch.setattr(cli, "_execute_route", lambda route, **params: command(provider="finance", **params))
 
     with pytest.raises(SystemExit) as exc_info:
         cli._run_route("equity.search")
@@ -912,3 +919,112 @@ def test_tag_intraday_last_bar_tags_us_bar_during_beijing_saturday_session(monke
     rows = [{"date": "2026-07-10", "close": 100.0}]  # US trading-day date
     result = cli._tag_intraday_last_bar("AAPL", rows)
     assert result[-1]["_meta"]["market"] == "us"
+
+
+def test_futures_routes_registered() -> None:
+    assert cli.ROUTE_MODELS["futures.price.historical"] == "FuturesHistorical"
+    assert cli.ROUTE_MODELS["futures.price.quote"] == "FuturesQuote"
+    assert cli.ROUTE_MODELS["futures.search"] == "FuturesSearch"
+    assert "futures.price.historical" in cli.COMMAND_EXECUTORS
+    assert "futures.price.quote" in cli.COMMAND_EXECUTORS
+    assert "futures.search" in cli.COMMAND_EXECUTORS
+
+
+def test_futures_price_historical_command_routes_params(monkeypatch: pytest.MonkeyPatch, capsys) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
+        captured["route"] = route
+        captured["params"] = params
+        return [{"date": "2026-08-07", "close": 3010.0}]
+
+    monkeypatch.setattr(cli, "_execute_route", fake_execute_route)
+
+    cli.futures_price_historical(symbol="rb.SHFE", expiration="2026-10", limit=1)
+
+    assert captured["route"] == "futures.price.historical"
+    assert captured["params"] == {
+        "symbol": "rb.SHFE",
+        "expiration": "2026-10",
+        "start_date": None,
+        "end_date": None,
+        "interval": "1d",
+        "adjusted": False,
+    }
+    assert json.loads(capsys.readouterr().out) == [{"date": "2026-08-07", "close": 3010.0}]
+
+
+def test_futures_price_quote_command_routes_params(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
+        captured["route"] = route
+        captured["params"] = params
+        return []
+
+    monkeypatch.setattr(cli, "_execute_route", fake_execute_route)
+
+    cli.futures_price_quote(symbol="GC.COMEX")
+
+    assert captured["route"] == "futures.price.quote"
+    assert captured["params"] == {"symbol": "GC.COMEX", "expiration": None}
+
+
+def test_futures_search_command_routes_params(monkeypatch: pytest.MonkeyPatch) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
+        captured["route"] = route
+        captured["params"] = params
+        return []
+
+    monkeypatch.setattr(cli, "_execute_route", fake_execute_route)
+
+    cli.futures_search(query="工业硅")
+
+    assert captured["route"] == "futures.search"
+    assert captured["params"] == {"query": "工业硅", "is_symbol": False}
+
+
+def test_futures_historical_executor_applies_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
+    called_params: dict[str, Any] = {}
+
+    def fake_execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
+        called_params.update(params)
+        return [{"date": "2026-08-07", "close": 3010.0}]
+
+    monkeypatch.setattr(cli, "_execute_route", fake_execute_route)
+
+    result = cli.COMMAND_EXECUTORS["futures.price.historical"](
+        {"symbol": "rb.SHFE", "limit": 1},
+    )
+
+    assert called_params["interval"] == "1d"
+    assert called_params["adjusted"] is False
+    assert len(result) == 1
+
+
+def test_execute_provider_model_strips_query_markers(monkeypatch: pytest.MonkeyPatch) -> None:
+    """The generated standard/extra dataclasses must not leak fastapi Query(...)
+    markers into the fetcher's pydantic QueryParams for unset optional fields."""
+    import dataclasses
+
+    captured: dict[str, Any] = {}
+
+    class FakeQuery:
+        def __init__(self, cc, provider_choices, standard, extra) -> None:
+            self.standard = standard
+            self.extra = extra
+
+        async def execute(self) -> list[dict[str, Any]]:
+            captured["standard"] = dataclasses.asdict(self.standard)
+            captured["extra"] = dataclasses.asdict(self.extra)
+            return []
+
+    monkeypatch.setattr("openbb_core.app.query.Query", FakeQuery)
+
+    cli._execute_provider_model("FuturesQuote", None, {"symbol": "rb.SHFE"})
+
+    assert captured["standard"] == {}
+    assert captured["extra"] == {"symbol": "rb.SHFE", "expiration": None}
+    assert not any(type(value).__name__ == "Query" for value in captured["extra"].values())

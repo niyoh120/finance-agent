@@ -138,6 +138,9 @@ ROUTE_MODELS = {
     "etf.historical": "EtfHistorical",
     "etf.holdings": "EtfHoldings",
     "etf.sectors": "EtfSectors",
+    "futures.price.historical": "FuturesHistorical",
+    "futures.price.quote": "FuturesQuote",
+    "futures.search": "FuturesSearch",
     "economy.calendar": "EconomicCalendar",
     "economy.available_indicators": "AvailableIndicators",
     "economy.indicators": "EconomicIndicators",
@@ -246,8 +249,42 @@ def _execute_provider_model(
         else:
             standard_values = _drop_none(standard_params or {})
             extra_values = extra_params if is_dataclass(extra_cls) else _drop_none(extra_params or {})
-        standard = standard_cls(**standard_values)
-        extra = extra_cls(**extra_values)
+        # The generated standard/extra dataclasses default unset optional fields
+        # to fastapi Query(...) markers; asdict() later feeds those markers to
+        # the fetcher's pydantic QueryParams and fails validation. Fill every
+        # field explicitly with its real default so no marker leaks through:
+        # extract the Query(marker).default value (None for truly optional
+        # fields, the declared default e.g. "1d"/False for fields that have one,
+        # and None for required fields whose default is PydanticUndefined).
+        from dataclasses import MISSING as DATACLASS_MISSING
+        from dataclasses import fields as dataclass_fields
+
+        def _query_marker_default(default: Any) -> tuple[bool, Any]:
+            """Return (is_fastapi_query_marker, real_default)."""
+            if type(default).__name__ == "Query" and hasattr(default, "default"):
+                real = default.default
+                if type(real).__name__ == "PydanticUndefined":
+                    return True, None
+                return True, real
+            return False, default
+
+        def _field_default(field: Any) -> Any:
+            if field.default_factory is not DATACLASS_MISSING:
+                try:
+                    return field.default_factory()
+                except Exception:
+                    return None
+            is_marker, real = _query_marker_default(field.default)
+            if is_marker:
+                return real
+            if field.default is DATACLASS_MISSING:
+                return None
+            return field.default
+
+        standard_defaults = {field.name: _field_default(field) for field in dataclass_fields(standard_cls)}
+        extra_defaults = {field.name: _field_default(field) for field in dataclass_fields(extra_cls)}
+        standard = standard_cls(**{**standard_defaults, **standard_values})
+        extra = extra_cls(**{**extra_defaults, **extra_values})
         query_obj = Query(CommandContext(), provider_choices, standard, extra)
 
         stdout = io.StringIO()
@@ -396,6 +433,7 @@ _HISTORICAL_ROUTES = {
     "equity.price.historical": {"interval": "1d", "adjusted": False},
     "index.price.historical": {},
     "etf.historical": {},
+    "futures.price.historical": {"interval": "1d", "adjusted": False},
 }
 
 _ROUTE_LIMIT_KEY = "__cli_limit__"
@@ -579,6 +617,9 @@ COMMAND_EXECUTORS: dict[str, RouteExecutor] = {
     "index.snapshots": _index_snapshots_executor,
     "etf.historical": _historical_executor("etf.historical"),
     "etf.search": _provider_executor("EtfSearch"),
+    "futures.price.historical": _historical_executor("futures.price.historical"),
+    "futures.price.quote": _route_executor("futures.price.quote"),
+    "futures.search": _route_executor("futures.search"),
     "economy.calendar": _route_executor("economy.calendar"),
     "economy.available-indicators": _route_executor("economy.available_indicators"),
     "economy.indicators": _route_executor("economy.indicators"),
@@ -1172,6 +1213,58 @@ def etf_historical(
 def etf_search(query: str) -> None:
     """Search ETFs."""
     _run_provider_model("EtfSearch", {"query": query})
+
+
+@app.command(name="futures.price.historical")
+def futures_price_historical(
+    symbol: str,
+    expiration: str | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    interval: str = "1d",
+    adjusted: bool = False,
+    limit: int | None = None,
+) -> None:
+    """Get futures historical price data.
+
+    symbol: variety code + exchange short code, e.g. rb.SHFE, IF.CFFEX,
+        GC.COMEX, AU.SGE. No --expiration means the main continuous contract;
+        pass --expiration YYYY-MM for a specific month contract.
+    """
+    try:
+        results = _execute_route(
+            "futures.price.historical",
+            symbol=symbol,
+            expiration=expiration,
+            start_date=start_date,
+            end_date=end_date,
+            interval=interval,
+            adjusted=adjusted,
+        )
+        _print_json(_apply_limit(results, limit))
+    except Exception as exc:
+        _print_json({"error": str(exc), "code": _error_code(exc)})
+        raise SystemExit(1) from exc
+
+
+@app.command(name="futures.price.quote")
+def futures_price_quote(symbol: str, expiration: str | None = None) -> None:
+    """Get a futures quote.
+
+    symbol: variety code + exchange short code, e.g. rb.SHFE, GC.COMEX,
+        AU.SGE. No --expiration means the main continuous contract.
+    """
+    _run_route("futures.price.quote", symbol=symbol, expiration=expiration)
+
+
+@app.command(name="futures.search")
+def futures_search(query: str, is_symbol: bool = False) -> None:
+    """Search futures contracts by variety code, user symbol, or Chinese name.
+
+    query: e.g. si / si.GFEX (symbol, pass --is-symbol) or 工业硅 / 沪深300
+        (Chinese product name).
+    """
+    _run_route("futures.search", query=query, is_symbol=is_symbol)
 
 
 @app.command(name="economy.calendar")

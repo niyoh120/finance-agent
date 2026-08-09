@@ -6,8 +6,8 @@ from dataclasses import dataclass
 from datetime import date
 from typing import Any, Literal, Protocol
 
-Market = Literal["cn", "us", "hk", "global"]
-DataType = Literal["price", "news", "calendar", "fundamental", "macro"]
+Market = Literal["cn", "us", "hk", "global", "future"]
+DataType = Literal["price", "news", "calendar", "fundamental", "macro", "search"]
 
 
 @dataclass(frozen=True)
@@ -24,6 +24,8 @@ class PriceQuery:
     end_date: date | None = None
     interval: str = "1d"
     adjusted: bool = False
+    # Contract expiration in YYYY-MM form; None means the main continuous contract.
+    expiration: str | None = None
 
 
 class DataSource(Protocol):

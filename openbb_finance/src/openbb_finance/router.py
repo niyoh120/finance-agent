@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import date, datetime, time, timedelta
 
 from openbb_finance.sources.base import Market, PriceQuery, is_intraday_interval, normalize_interval
+from openbb_finance.sources.symbols import INTL_FUTURES_EXCHANGES, futures_exchange
 
 
 def is_trading_day(day: date) -> bool:
@@ -89,3 +90,20 @@ def route_index_price_sources(query: PriceQuery, *, now: datetime | None = None)
     if market == "cn":
         return route_price_sources(query, now=now)
     return ["tdx"]
+
+
+def route_futures_price_sources(query: PriceQuery) -> list[str]:
+    """Route futures historical price sources: tdx primary, akshare fallback.
+
+    - SGE spot-deferred products are tdx-only (akshare sina daily does not cover
+      上海黄金交易所).
+    - International exchanges (COMEX/NYMEX/CBOT) are tdx-only: the akshare sina
+      daily endpoint only covers the five domestic commodity exchanges.
+    - Intraday intervals are tdx-only (the sina daily fallback is daily bars).
+    """
+    exchange = futures_exchange(query.symbol)
+    if is_intraday_interval(normalize_interval(query.interval)):
+        return ["tdx"]
+    if exchange in INTL_FUTURES_EXCHANGES or exchange == "SGE":
+        return ["tdx"]
+    return ["tdx", "akshare"]

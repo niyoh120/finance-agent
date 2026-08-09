@@ -127,3 +127,133 @@ async def test_equity_quote_us_routes_tdx_before_fallbacks():
     result = await FinanceEquityQuoteFetcher.aextract_data(query, credentials=None, registry=FakeRegistry())
 
     assert result == [{"symbol": "AAPL", "last_price": 297.28, "source": "tdx"}]
+
+
+def _akshare_fake(**methods):
+    return SimpleNamespace(**methods)
+
+
+@pytest.mark.anyio
+async def test_akshare_futures_price_uses_sina_main_continuous_code(monkeypatch):
+    def futures_zh_daily_sina(symbol):
+        assert symbol == "IF0"
+        return pd.DataFrame(
+            [
+                {"date": "2026-08-06", "open": 4585.2, "high": 4626.0, "low": 4570.8, "close": 4612.0,
+                 "volume": 64989, "hold": 146571, "settle": 0.0},
+                {"date": "2026-08-07", "open": 4620.0, "high": 4656.2, "low": 4604.6, "close": 4645.6,
+                 "volume": 65609, "hold": 151018, "settle": 0.0},
+            ]
+        )
+
+    monkeypatch.setitem(sys.modules, "akshare", _akshare_fake(futures_zh_daily_sina=futures_zh_daily_sina))
+    source = AkshareSource(SourceConfig(name="akshare", enabled=True))
+    result = await source.fetch_futures_price(PriceQuery(symbol="IF.CFFEX", market="future"))
+
+    assert result[-1]["symbol"] == "IF.CFFEX"
+    assert result[-1]["date"].isoformat() == "2026-08-07"
+    assert result[-1]["close"] == 4645.6
+    assert result[-1]["volume"] == 65609.0
+    assert result[-1]["source"] == "akshare"
+
+
+@pytest.mark.anyio
+async def test_akshare_futures_price_month_contract_code(monkeypatch):
+    def futures_zh_daily_sina(symbol):
+        assert symbol == "IF2609"
+        return pd.DataFrame(
+            [
+                {"date": "2026-08-07", "open": 4620.0, "high": 4656.2, "low": 4604.6, "close": 4645.6,
+                 "volume": 65609, "hold": 151018, "settle": 0.0},
+            ]
+        )
+
+    monkeypatch.setitem(sys.modules, "akshare", _akshare_fake(futures_zh_daily_sina=futures_zh_daily_sina))
+    source = AkshareSource(SourceConfig(name="akshare", enabled=True))
+    result = await source.fetch_futures_price(
+        PriceQuery(symbol="IF.CFFEX", market="future", expiration="2026-09")
+    )
+
+    assert result[0]["close"] == 4645.6
+
+
+@pytest.mark.anyio
+async def test_akshare_futures_price_rejects_sge(monkeypatch):
+    from openbb_finance.sources.base import SourceError
+
+    monkeypatch.setitem(sys.modules, "akshare", _akshare_fake())
+    source = AkshareSource(SourceConfig(name="akshare", enabled=True))
+    with pytest.raises(SourceError):
+        await source.fetch_futures_price(PriceQuery(symbol="AU.SGE", market="future"))
+
+
+@pytest.mark.anyio
+async def test_akshare_futures_search_maps_symbol_to_chinese_product(monkeypatch):
+    def futures_symbol_mark():
+        return pd.DataFrame(
+            [
+                {"exchange": "广州期货交易所", "symbol": "工业硅", "mark": "si_qh"},
+                {"exchange": "中国金融期货交易所", "symbol": "沪深300指数期货", "mark": "qz_qh"},
+            ]
+        )
+
+    def futures_zh_realtime(symbol):
+        if symbol == "工业硅":
+            return pd.DataFrame(
+                [
+                    {"symbol": "SI0", "exchange": "gfex", "name": "工业硅连续", "trade": 8550.0},
+                    {"symbol": "SI2609", "exchange": "gfex", "name": "工业硅2609", "trade": 8550.0},
+                ]
+            )
+        return pd.DataFrame(
+            [
+                {"symbol": "IF0", "exchange": "cffex", "name": "沪深300指数期货连续", "trade": 4645.6},
+                {"symbol": "IF2612", "exchange": "cffex", "name": "沪深300指数期货2612", "trade": 4565.6},
+            ]
+        )
+
+    monkeypatch.setitem(
+        sys.modules,
+        "akshare",
+        _akshare_fake(futures_symbol_mark=futures_symbol_mark, futures_zh_realtime=futures_zh_realtime),
+    )
+    source = AkshareSource(SourceConfig(name="akshare", enabled=True))
+
+    by_symbol = await source.fetch_futures_search("si", is_symbol=True)
+    assert [row["code"] for row in by_symbol] == ["SI0", "SI2609"]
+    assert by_symbol[0]["symbol"] == "SI.GFEX"
+    assert by_symbol[0]["expiration"] is None
+    assert by_symbol[1]["expiration"] == "2026-09"
+    assert by_symbol[1]["exchange"] == "GFEX"
+    assert by_symbol[1]["source"] == "akshare"
+
+    by_name = await source.fetch_futures_search("沪深300", is_symbol=False)
+    assert [row["code"] for row in by_name] == ["IF0", "IF2612"]
+    assert by_name[1]["expiration"] == "2026-12"
+
+
+@pytest.mark.anyio
+async def test_akshare_futures_search_dotted_symbol_suffix(monkeypatch):
+    def futures_symbol_mark():
+        return pd.DataFrame(
+            [
+                {"exchange": "广州期货交易所", "symbol": "工业硅", "mark": "si_qh"},
+            ]
+        )
+
+    def futures_zh_realtime(symbol):
+        return pd.DataFrame(
+            [
+                {"symbol": "SI0", "exchange": "gfex", "name": "工业硅连续", "trade": 8550.0},
+            ]
+        )
+
+    monkeypatch.setitem(
+        sys.modules,
+        "akshare",
+        _akshare_fake(futures_symbol_mark=futures_symbol_mark, futures_zh_realtime=futures_zh_realtime),
+    )
+    source = AkshareSource(SourceConfig(name="akshare", enabled=True))
+
+    results = await source.fetch_futures_search("si.GFEX", is_symbol=True)
+    assert [row["code"] for row in results] == ["SI0"]

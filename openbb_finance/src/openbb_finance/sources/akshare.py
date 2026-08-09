@@ -17,7 +17,12 @@ from openbb_finance.sources.base import (
     is_intraday_interval,
     normalize_interval,
 )
-from openbb_finance.sources.symbols import cn_plain_symbol, to_openbb_symbol
+from openbb_finance.sources.symbols import (
+    cn_plain_symbol,
+    futures_exchange,
+    futures_plain_code,
+    to_openbb_symbol,
+)
 
 
 class AkshareSource:
@@ -28,7 +33,8 @@ class AkshareSource:
 
     def supports(self, market: Market, data_type: DataType, **kwargs: Any) -> bool:
         del kwargs
-        return market == "cn" and data_type in {"price", "news", "calendar", "fundamental", "macro"}
+        supported_types = {"price", "news", "calendar", "fundamental", "macro", "search"}
+        return market in {"cn", "future"} and data_type in supported_types
 
     async def fetch_equity_search(self, query: str, is_symbol: bool | None = None) -> list[dict[str, Any]]:
         import akshare as ak
@@ -86,6 +92,84 @@ class AkshareSource:
 
         return await asyncio.to_thread(_fetch_individual_quote, ak, plain)
 
+    async def fetch_futures_price(self, query: PriceQuery) -> list[dict[str, Any]]:
+        """Sina futures daily history: main continuous <CODE>0, month <CODE><YYMM>.
+
+        Covers the five domestic commodity exchanges (SHFE/DCE/CZCE/CFFEX/GFEX).
+        SGE spot-deferred products are not exposed by the sina daily endpoint, so
+        they stay on the tdx source. Unlisted month contracts raise from the
+        underlying endpoint and are caught by the fetcher's fallback loop.
+        """
+        import akshare as ak
+
+        exchange = futures_exchange(query.symbol)
+        if query.market != "future" or exchange is None:
+            raise SourceError(f"AKShare futures price requires a futures symbol: {query.symbol}")
+        if exchange == "SGE":
+            raise SourceError(f"AKShare does not cover SGE spot-deferred products: {query.symbol}")
+        code = futures_plain_code(query.symbol)
+        if query.expiration:
+            year, month = _parse_futures_expiration(query.expiration)
+            symbol = f"{code}{year}{month:02d}"
+        else:
+            symbol = f"{code}0"
+        df = await asyncio.to_thread(ak.futures_zh_daily_sina, symbol=symbol)
+        return _normalize_futures_daily(df, query.symbol)
+
+    async def fetch_futures_search(self, query: str, is_symbol: bool | None = None) -> list[dict[str, Any]]:
+        """Search futures contracts via akshare.
+
+        futures_symbol_mark maps product Chinese names to sina mark codes; matched
+        products are expanded through futures_zh_realtime into per-contract rows.
+        is_symbol=True matches the mark code prefix (e.g. si -> 工业硅, si.GFEX);
+        otherwise the query matches the Chinese product name (e.g. 工业硅).
+        """
+        import akshare as ak
+
+        mark_df = await asyncio.to_thread(ak.futures_symbol_mark)
+        if mark_df.empty:
+            return []
+        text = query.strip().upper()
+        plain_text = text.partition(".")[0]
+        products: list[tuple[str, str]] = []
+        for _, row in mark_df.iterrows():
+            mark = str(row.get("mark") or "").strip()
+            chinese = str(row.get("symbol") or "").strip()
+            if not mark or not chinese:
+                continue
+            prefix = mark.split("_", 1)[0].upper()
+            if is_symbol:
+                matched = text in {prefix, mark.upper()} or plain_text == prefix
+            else:
+                matched = text in chinese.upper()
+            if matched:
+                products.append((prefix, chinese))
+        results: list[dict[str, Any]] = []
+        for _prefix, chinese in products:
+            try:
+                df = await asyncio.to_thread(ak.futures_zh_realtime, symbol=chinese)
+            except Exception:
+                continue
+            if df is None or df.empty:
+                continue
+            for _, row in df.iterrows():
+                code = str(row.get("symbol") or "").strip().upper()
+                exchange = str(row.get("exchange") or "").strip().lower()
+                if not code or not exchange:
+                    continue
+                symbol, expiration = _akshare_contract_symbol(exchange, code)
+                results.append(
+                    {
+                        "symbol": symbol,
+                        "expiration": expiration,
+                        "code": code,
+                        "name": str(row.get("name") or "").strip(),
+                        "exchange": exchange.upper(),
+                        "source": "akshare",
+                    }
+                )
+        return results
+
     async def fetch_price(self, query: PriceQuery) -> list[dict[str, Any]]:
         import akshare as ak
 
@@ -112,6 +196,7 @@ class AkshareSource:
                 adjust="qfq" if query.adjusted else "",
             )
         return _normalize_dataframe(df, query.symbol, preserve_datetime=is_intraday_interval(interval))
+
 
     async def fetch_macro_gdp(self) -> list[dict[str, Any]]:
         """Fetch China GDP quarterly data from AKShare."""
@@ -348,6 +433,49 @@ def _normalize_dataframe(df: pd.DataFrame, symbol: str, *, preserve_datetime: bo
                 "close": float(row["close"]),
                 "volume": _optional_float(row.get("volume")),
                 "amount": _optional_float(row.get("amount")),
+                "source": "akshare",
+            }
+        )
+    return rows
+
+
+def _parse_futures_expiration(expiration: str) -> tuple[str, int]:
+    """Parse YYYY-MM into (YY, month), e.g. 2026-10 -> ("26", 10)."""
+    year, month = expiration.split("-", 1)
+    return year[-2:], int(month)
+
+
+def _akshare_contract_symbol(exchange: str, code: str) -> tuple[str, str | None]:
+    """Map a sina realtime contract code to (user symbol, expiration YYYY-MM | None).
+
+    Sina codes are <CODE>0 for main continuous and <CODE><YYMM> for month
+    contracts; the realtime exchange column already matches our short codes
+    (shfe/dce/czce/cffex/gfex).
+    """
+    upper = code.upper()
+    exchange_upper = exchange.upper()
+    if len(upper) > 1 and upper.endswith("0") and upper[:-1].isalpha():
+        return f"{upper[:-1]}.{exchange_upper}", None
+    if len(upper) >= 5 and upper[-4:].isdigit():
+        return f"{upper[:-4]}.{exchange_upper}", f"20{upper[-4:-2]}-{upper[-2:]}"
+    return f"{upper}.{exchange_upper}", None
+
+
+def _normalize_futures_daily(df: pd.DataFrame, symbol: str) -> list[dict[str, Any]]:
+    if df is None or df.empty:
+        raise SourceError("AKShare futures returned empty data")
+    rows: list[dict[str, Any]] = []
+    for _, row in df.iterrows():
+        date_value = pd.to_datetime(row.get("date")).date()
+        rows.append(
+            {
+                "symbol": symbol.strip().upper(),
+                "date": date_value,
+                "open": _optional_float(row.get("open")),
+                "high": _optional_float(row.get("high")),
+                "low": _optional_float(row.get("low")),
+                "close": _optional_float(row.get("close")),
+                "volume": _optional_float(row.get("volume")),
                 "source": "akshare",
             }
         )

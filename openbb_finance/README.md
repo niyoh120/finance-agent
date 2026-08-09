@@ -201,6 +201,48 @@ technical = obb.technical.indicators(
 print(technical.to_df().head())
 ```
 
+## 期货 Futures
+
+期货 endpoint 通过 CLI 直接驱动 fetcher（未安装 openbb_futures router extension），命令为：
+
+```bash
+# 历史行情（无 --expiration = 主连合约）
+openbb-agent-cli futures.price.historical --symbol rb.SHFE
+openbb-agent-cli futures.price.historical --symbol rb.SHFE --expiration 2026-10
+openbb-agent-cli futures.price.historical --symbol GC.COMEX --expiration 2026-12
+# 实时报价
+openbb-agent-cli futures.price.quote --symbol GC.COMEX
+openbb-agent-cli futures.price.quote --symbol AU.SGE
+# 合约搜索（品种码 / 用户 symbol / 中文名）
+openbb-agent-cli futures.search --query 工业硅
+openbb-agent-cli futures.search --query si --is-symbol
+# 中金所品种请用中文名搜索（tdx goods_list 不枚举 CFFEX，akshare 按品种名匹配）
+openbb-agent-cli futures.search --query 沪深300
+```
+
+### Symbol 规则
+
+用户层 symbol 为 `<品种码>.<交易所短码>`：品种码小写、交易所短码大写，查询时大小写均可（standard model 会归一化为大写）。
+
+| 场景 | symbol | expiration | 说明 |
+|---|---|---|---|
+| 螺纹钢主连 | `rb.SHFE` | None | 无 expiration = 主连 |
+| 螺纹钢 2026-10 合约 | `rb.SHFE` | `2026-10` | 月份合约 |
+| 沪深300 主连 | `IF.CFFEX` | None | 中金所仅挂当月/次月/两季月 |
+| COMEX 黄金主连 | `GC.COMEX` | None | |
+| COMEX 黄金 2612 合约 | `GC.COMEX` | `2026-12` | 国际月份代码为 `GC26Z` |
+| 黄金递延（SGE 现货） | `AU.SGE` | — | SGE 无主连，固定递延品种 |
+
+支持交易所：国内 SHFE/DCE/CZCE/CFFEX/GFEX，国际 COMEX/NYMEX/CBOT。国际月份字母月：F/G/H/J/K/M/N/Q/U/V/X/Z 对应 1–12 月。
+
+搜索说明：tdx 按 goods_list 枚举匹配品种码/中文名（CFFEX 不在枚举内，需用中文名如“沪深300”）；搜索结果的次连（L7）/加权（L9）/连续（00Y）辅助合约码不返回，仅返回可直接查询的主连与月份合约。
+
+### 数据源
+
+- 全部交易所以 easy-tdx 为主源（国内主连 `<CODE>L8`、月份 `<CODE><YYMM>`；国际主连 `<CODE>00W`、月份 `<CODE><YY><字母月>`；SGE 用专用映射 `Au(T+D)`/`Ag(T+D)`/`Au99.99`）。
+- akshare 新浪兜底（`futures_zh_daily_sina`，`<CODE>0` 主连全历史、`<CODE><YYMM>` 月份合约），未挂牌月份返回 `EMPTY_DATA`。
+- SGE 现货递延产品与商品期货性质不同：无主连、无月份合约，仅 tdx 提供数据。
+
 ## 数据源路由
 
 K 线数据采用单源路由：

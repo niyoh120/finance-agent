@@ -224,3 +224,128 @@ def test_technical_indicators_openbb_route_respects_output_type(monkeypatch):
 
     assert result.iloc[0]["symbol"] == "600519.XSHG"
     assert result.iloc[0]["rsi"] == 55.0
+
+
+@pytest.mark.anyio
+async def test_futures_historical_fetcher_interface(monkeypatch):
+    from openbb_finance.models.futures_historical import FinanceFuturesHistoricalData
+
+    raw_payload = [
+        {
+            "date": date(2026, 4, 24),
+            "open": 1.0,
+            "high": 2.0,
+            "low": 0.5,
+            "close": 1.5,
+            "volume": 100,
+            "symbol": "RB.SHFE",
+            "source": "integration-test",
+        }
+    ]
+    extract_data = AsyncMock(return_value=raw_payload)
+    monkeypatch.setattr(provider.fetcher_dict["FuturesHistorical"], "extract_data", extract_data)
+
+    result = await provider.fetcher_dict["FuturesHistorical"].fetch_data(
+        {"symbol": "rb.SHFE", "expiration": "2026-10"},
+        credentials=None,
+    )
+
+    assert len(result) == 1
+    row = result[0]
+    assert isinstance(row, FinanceFuturesHistoricalData)
+    assert row.symbol == "RB.SHFE"
+    assert row.close == 1.5
+    assert row.source == "integration-test"
+    extract_data.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_futures_quote_fetcher_interface(monkeypatch):
+    from openbb_finance.models.futures_quote import FinanceFuturesQuoteData
+
+    extract_data = AsyncMock(
+        return_value=[
+            {
+                "symbol": "GC.COMEX",
+                "name": "COMEX黄金主连",
+                "last_price": 4401.3,
+                "source": "integration-test",
+            }
+        ]
+    )
+    monkeypatch.setattr(provider.fetcher_dict["FuturesQuote"], "extract_data", extract_data)
+
+    result = await provider.fetcher_dict["FuturesQuote"].fetch_data(
+        {"symbol": "GC.COMEX"},
+        credentials=None,
+    )
+
+    assert len(result) == 1
+    row = result[0]
+    assert isinstance(row, FinanceFuturesQuoteData)
+    assert row.symbol == "GC.COMEX"
+    assert row.last_price == 4401.3
+    extract_data.assert_awaited_once()
+
+
+@pytest.mark.anyio
+async def test_futures_search_fetcher_interface(monkeypatch):
+    from openbb_finance.models.futures_search import FinanceFuturesSearchData
+
+    extract_data = AsyncMock(
+        return_value=[
+            {
+                "symbol": "SI.GFEX",
+                "expiration": "2026-09",
+                "code": "SI2609",
+                "name": "工业硅2609",
+                "exchange": "GFEX",
+                "source": "integration-test",
+            }
+        ]
+    )
+    monkeypatch.setattr(provider.fetcher_dict["FuturesSearch"], "extract_data", extract_data)
+
+    result = await provider.fetcher_dict["FuturesSearch"].fetch_data(
+        {"query": "si", "is_symbol": True},
+        credentials=None,
+    )
+
+    assert len(result) == 1
+    row = result[0]
+    assert isinstance(row, FinanceFuturesSearchData)
+    assert row.symbol == "SI.GFEX"
+    assert row.expiration == "2026-09"
+    assert row.exchange == "GFEX"
+    extract_data.assert_awaited_once()
+
+
+def test_futures_models_registered_in_provider_interface():
+    from openbb_core.app.provider_interface import ProviderInterface
+
+    pi = ProviderInterface()
+    assert "FuturesHistorical" in pi.params
+    assert "FuturesQuote" in pi.params
+    assert "FuturesSearch" in pi.params
+    # The standard model fields are recognized for FuturesHistorical.
+    assert {"symbol", "start_date", "end_date", "expiration"} <= {
+        name for name in pi.params["FuturesHistorical"]["standard"].__dataclass_fields__
+    }
+
+
+@pytest.mark.anyio
+async def test_futures_historical_fetcher_unlisted_month_raises_empty(monkeypatch):
+    """An unlisted month contract must surface as EmptyDataError, not silent empty.
+
+    Unit-level check: transform_data([]) raises EmptyDataError so the CLI surfaces
+    EMPTY_DATA instead of an empty result list.
+    """
+
+    from openbb_core.provider.utils.errors import EmptyDataError
+    from openbb_finance.models.futures_historical import FinanceFuturesHistoricalFetcher
+
+    query = FinanceFuturesHistoricalFetcher.transform_query(
+        {"symbol": "IF.CFFEX", "expiration": "2026-10"}
+    )
+    with pytest.raises(EmptyDataError):
+        FinanceFuturesHistoricalFetcher.transform_data(query, [])

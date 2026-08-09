@@ -1,6 +1,6 @@
 ---
 name: openbb-agent-cli
-description: 使用 openbb-agent-cli 获取金融数据。支持股票历史价格、行情报价、搜索、筛选（支持3500+字段的高级过滤和自定义返回字段）、指数、ETF、经济日历、宏观经济数据、技术指标、新闻、期权链/筛选/历史K线/自由SQL聚合、财报三表/财务比率/分析师预测/内部人交易/参议院交易/SEC文件、ETF持仓与行业权重、批量查询。当用户需要查询股票价格、筛选股票、获取市场数据、查看宏观数据、计算技术指标、查看期权数据、获取财报/分析师预测/内部人交易、一次聚合多个金融查询时使用此 skill。
+description: 使用 openbb-agent-cli 获取金融数据。支持股票历史价格、行情报价、搜索、筛选（支持3500+字段的高级过滤和自定义返回字段）、指数、ETF、期货（历史K线/报价/合约搜索，含主连与月份合约）、经济日历、宏观经济数据、技术指标、新闻、期权链/筛选/历史K线/自由SQL聚合、财报三表/财务比率/分析师预测/内部人交易/参议院交易/SEC文件、ETF持仓与行业权重、批量查询。当用户需要查询股票价格、筛选股票、获取市场数据（含期货行情）、查看宏观数据、计算技术指标、查看期权数据、获取财报/分析师预测/内部人交易、一次聚合多个金融查询时使用此 skill。
 ---
 
 # OpenBB Agent CLI
@@ -34,6 +34,9 @@ openbb-agent-cli <command> [options]
 | `etf.search` | ETF 搜索 |
 | `etf.holdings` `CV` | ETF 持仓明细（本地排序+截断） |
 | `etf.sectors` `CV` | ETF 行业权重 |
+| `futures.price.historical` | 期货历史价格（主连/月份合约） |
+| `futures.price.quote` | 期货行情报价 |
+| `futures.search` | 期货合约搜索 |
 | `economy.calendar` | 经济日历 |
 | `economy.available-indicators` | 可用宏观指标 |
 | `economy.indicators` | 宏观经济指标 |
@@ -425,6 +428,112 @@ openbb-agent-cli etf.search QUERY
 **示例**:
 ```bash
 openbb-agent-cli etf.search "technology"
+```
+
+---
+
+## futures.price.historical
+
+获取期货历史价格。**无 `--expiration` 表示主连合约；`--expiration YYYY-MM` 表示指定月份合约。**
+
+```bash
+openbb-agent-cli futures.price.historical SYMBOL \
+  [--expiration YYYY-MM] \
+  [--start-date YYYY-MM-DD] \
+  [--end-date YYYY-MM-DD] \
+  [--interval INTERVAL] \
+  [--adjusted] \
+  [--limit N]
+```
+
+**参数**:
+- `SYMBOL`: 期货 symbol（必需），格式 `<品种码>.<交易所短码>`，如 `rb.SHFE`、`IF.CFFEX`、`GC.COMEX`、`AU.SGE`。支持位置参数与 `--symbol SYMBOL` 两种写法。
+- `--expiration`: 月份合约到期日 (YYYY-MM)，如 `2026-10`；不传即主连
+- `--start-date` / `--end-date`: 日期范围 (YYYY-MM-DD)
+- `--interval`: 时间间隔，默认 `1d`
+- `--limit`: 只保留最近的 N 条记录（CLI 侧裁剪）
+
+**支持交易所与 symbol 规则**:
+
+| 交易所 | 短码 | 示例 | 说明 |
+|---|---|---|---|
+| 上期所 | `SHFE` | `rb.SHFE` 螺纹钢 / `au.SHFE` 沪金 | 主连/月份 |
+| 大商所 | `DCE` | `M.DCE` 豆粕 | 主连/月份 |
+| 郑商所 | `CZCE` | `SR.CZCE` 白糖 | 主连/月份 |
+| 中金所 | `CFFEX` | `IF.CFFEX` 沪深300股指 | 主连/月份（仅挂当月/次月/两季月） |
+| 广期所 | `GFEX` | `si.GFEX` 工业硅 / `lc.GFEX` 碳酸锂 | 主连/月份 |
+| 纽约COMEX | `COMEX` | `GC.COMEX` 黄金 | 主连/月份（月份用字母月代码） |
+| 纽约NYMEX | `NYMEX` | `CL.NYMEX` 原油 | 主连/月份 |
+| 芝加哥CBOT | `CBOT` | `ZL.CBOT` 豆油 | 主连/月份 |
+| 上海黄金 | `SGE` | `AU.SGE` 黄金递延 / `AG.SGE` 白银递延 | **现货递延**，无主连无月份，固定品种 |
+
+国际交易所月份合约底层用 `<YY><字母月>`（F/G/H/J/K/M/N/Q/U/V/X/Z 对应 1-12 月，如 2026-12 → `GC26Z`），用户层只需传 `--expiration 2026-12`。
+
+**示例**:
+```bash
+# 螺纹钢主连日线
+openbb-agent-cli futures.price.historical rb.SHFE
+# 螺纹钢 2026-10 合约
+openbb-agent-cli futures.price.historical rb.SHFE --expiration 2026-10
+# COMEX 黄金 2026-12 合约
+openbb-agent-cli futures.price.historical GC.COMEX --expiration 2026-12
+# 沪深300 股指主连最近 10 条
+openbb-agent-cli futures.price.historical IF.CFFEX --limit 10
+```
+
+未挂牌月份（如 CFFEX 股指期货不存在的月份）返回 `EMPTY_DATA`。
+
+---
+
+## futures.price.quote
+
+获取期货实时行情报价。**无 `--expiration` 表示主连合约。**
+
+```bash
+openbb-agent-cli futures.price.quote SYMBOL [--expiration YYYY-MM]
+```
+
+**参数**:
+- `SYMBOL`: 期货 symbol（必需），格式同上，如 `rb.SHFE`、`GC.COMEX`、`AU.SGE`
+- `--expiration`: 月份合约到期日 (YYYY-MM)，不传即主连
+
+**示例**:
+```bash
+# COMEX 黄金主连报价
+openbb-agent-cli futures.price.quote GC.COMEX
+# 上海黄金递延报价
+openbb-agent-cli futures.price.quote AU.SGE
+```
+
+---
+
+## futures.search
+
+搜索期货合约。支持品种码、用户 symbol、中文品种名三种查询方式。
+
+```bash
+openbb-agent-cli futures.search QUERY [--is-symbol]
+```
+
+**参数**:
+- `QUERY`: 搜索关键词
+  - 中文品种名（默认模式）：`工业硅`、`沪深300`、`黄金`
+  - 品种码（`--is-symbol`）：`si`、`si.GFEX`、`GC`
+- `--is-symbol`: 将 QUERY 视为品种码进行匹配（默认按中文名匹配）
+
+**注意**:
+- 中金所（CFFEX）品种请用中文名搜索（如 `沪深300`），tdx 合约枚举不覆盖 CFFEX。
+- 搜索结果含 `expiration`（月份合约）与 `code`（数据源原生代码），可用 `futures.price.historical --symbol <结果.symbol> --expiration <结果.expiration>` 直接查询；`expiration=null` 即主连。
+- 次连（L7）/加权（L9）/连续（00Y）辅助合约码不返回，仅返回可直接查询的主连与月份合约。
+
+**示例**:
+```bash
+# 中文名搜索广期所工业硅合约
+openbb-agent-cli futures.search 工业硅
+# 品种码搜索
+openbb-agent-cli futures.search si --is-symbol
+# 中金所中文名搜索
+openbb-agent-cli futures.search 沪深300
 ```
 
 ---
@@ -1102,6 +1211,9 @@ openbb-agent-cli batch --queries '[
 | `etf.search` | `query` | - |
 | `etf.holdings` `CV` | `symbol` | `sort-by` (weight_percentage/market_value/shares_number), `sort-dir`, `limit` |
 | `etf.sectors` `CV` | `symbol` | - |
+| `futures.price.historical` | `symbol` | `expiration` (YYYY-MM), `start-date`, `end-date`, `interval`, `adjusted`, `limit` |
+| `futures.price.quote` | `symbol` | `expiration` (YYYY-MM) |
+| `futures.search` | `query` | `is-symbol` |
 | `economy.calendar` | - | `start-date`, `end-date` |
 | `economy.available-indicators` | - | - |
 | `economy.indicators` | `symbol` | `country`, `frequency`, `start-date`, `end-date` |
@@ -1210,3 +1322,6 @@ GROUP BY contract_type, strike_price ORDER BY oi DESC LIMIT 20
 | 政治交易信号 | `government.trades` |
 | 监管文件 | `stocks.filings` |
 | ETF 持仓变动 | `etf.holdings` + `etf.sectors` |
+| 期货主连/月份合约历史 | `futures.price.historical`（`--expiration` 指定月份） |
+| 期货实时行情 | `futures.price.quote` |
+| 期货合约/品种搜索 | `futures.search`（中文名或 `--is-symbol` 品种码） |

@@ -26,6 +26,9 @@ from openbb_finance.models.etf_holdings import FinanceEtfHoldingsFetcher
 from openbb_finance.models.etf_search import FinanceEtfSearchFetcher
 from openbb_finance.models.etf_sectors import FinanceEtfSectorsFetcher
 from openbb_finance.models.financial_ratios import FinanceFinancialRatiosFetcher
+from openbb_finance.models.futures_historical import FinanceFuturesHistoricalFetcher
+from openbb_finance.models.futures_quote import FinanceFuturesQuoteFetcher
+from openbb_finance.models.futures_search import FinanceFuturesSearchFetcher
 from openbb_finance.models.gdp_nominal import (
     FinanceGdpNominalFetcher,
     reset_gdp_nominal_country_context,
@@ -69,6 +72,13 @@ provider = Provider(
         "EtfSearch": FinanceEtfSearchFetcher,
         "EtfSectors": FinanceEtfSectorsFetcher,
         "FinancialRatios": FinanceFinancialRatiosFetcher,
+        # Futures endpoints are CLI-only: the openbb_futures router extension is
+        # not installed, so these are driven through _execute_provider_model. The
+        # openbb standard model names are FuturesInstruments/FuturesInfo; we
+        # register FuturesSearch (CLI naming) instead.
+        "FuturesHistorical": FinanceFuturesHistoricalFetcher,
+        "FuturesQuote": FinanceFuturesQuoteFetcher,
+        "FuturesSearch": FinanceFuturesSearchFetcher,
         "GdpNominal": FinanceGdpNominalFetcher,
         "GovernmentTrades": FinanceGovernmentTradesFetcher,
         "IncomeStatement": FinanceIncomeStatementFetcher,

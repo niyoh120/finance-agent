@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 from datetime import date, datetime
 from typing import Any
 
@@ -18,7 +19,19 @@ from openbb_finance.sources.base import (
     is_intraday_interval,
     normalize_interval,
 )
-from openbb_finance.sources.symbols import cn_exchange, cn_plain_symbol, split_symbol, to_openbb_symbol
+from openbb_finance.sources.symbols import (
+    FUTURES_EXCHANGES,
+    FUTURES_MONTH_LETTERS,
+    FUTURES_MONTH_NUMBERS,
+    INTL_FUTURES_EXCHANGES,
+    SGE_SPOT_MAP,
+    cn_exchange,
+    cn_plain_symbol,
+    futures_exchange,
+    futures_plain_code,
+    split_symbol,
+    to_openbb_symbol,
+)
 
 CN_MARKET_SZ = 0
 CN_MARKET_SH = 1
@@ -47,13 +60,24 @@ class TdxSource:
 
     def supports(self, market: Market, data_type: DataType, **kwargs: Any) -> bool:
         del kwargs
-        return market in {"cn", "hk", "us"} and data_type in {"price", "search"}
+        return market in {"cn", "hk", "us", "future"} and data_type in {"price", "search"}
 
     async def fetch_price(self, query: PriceQuery) -> list[dict[str, Any]]:
         return await asyncio.to_thread(self._fetch_price_sync, query)
 
-    async def fetch_quote(self, symbol: str) -> dict[str, Any]:
-        return await asyncio.to_thread(self._fetch_quote_sync, symbol)
+    async def fetch_quote(self, symbol: str, expiration: str | None = None) -> dict[str, Any]:
+        return await asyncio.to_thread(self._fetch_quote_sync, symbol, expiration)
+
+    async def fetch_futures_search(self, query: str, is_symbol: bool | None = None) -> list[dict[str, Any]]:
+        """Enumerate easy-tdx futures instruments and match code/name against query.
+
+        easy-tdx does not expose a futures keyword search API; the EX goods_list
+        enumerates each exchange's contracts (including L8/00W main continuous
+        codes). CFFEX contracts are not present in goods_list, so CFFEX results
+        fall through to the akshare fallback in the fetcher.
+        """
+
+        return await asyncio.to_thread(self._fetch_futures_search_sync, query, is_symbol)
 
     async def fetch_equity_search(self, query: str, is_symbol: bool | None = None) -> list[dict[str, Any]]:
         """Return exact-symbol metadata when easy-tdx can resolve it.
@@ -86,6 +110,10 @@ class TdxSource:
             easy_market, code = _to_ex_market_code(query.symbol, market)
             with MacExClient.from_best_host(timeout=self.timeout) as client:
                 frame = client.goods_kline(easy_market, code, period, 0, TDX_COUNT_LIMIT, adjust=adjust)
+        elif market == "future":
+            easy_market, code = _to_futures_market_code(query.symbol, query.expiration)
+            with MacExClient.from_best_host(timeout=self.timeout) as client:
+                frame = client.goods_kline(easy_market, code, period, 0, TDX_COUNT_LIMIT, adjust=adjust)
         else:
             raise SourceError(f"TDX unsupported market: {market}")
 
@@ -97,7 +125,7 @@ class TdxSource:
             and (query.end_date is None or _as_date(record["date"]) <= query.end_date)
         ]
 
-    def _fetch_quote_sync(self, symbol: str) -> dict[str, Any]:
+    def _fetch_quote_sync(self, symbol: str, expiration: str | None = None) -> dict[str, Any]:
         market = _infer_tdx_market(symbol)
         if market == "cn":
             easy_market, code = _to_cn_market_code(symbol)
@@ -107,13 +135,49 @@ class TdxSource:
             easy_market, code = _to_ex_market_code(symbol, market)
             with MacExClient.from_best_host(timeout=self.timeout) as client:
                 frame = client.goods_quotes([(easy_market, code)])
+        elif market == "future":
+            easy_market, code = _to_futures_market_code(symbol, expiration)
+            with MacExClient.from_best_host(timeout=self.timeout) as client:
+                frame = client.goods_quotes([(easy_market, code)])
         else:
             raise SourceError(f"TDX unsupported market: {market}")
 
         rows = list(_iter_frame_rows(frame))
         if not rows:
             raise SourceError(f"TDX quote returned no data for {symbol}")
+        if market == "future":
+            return _normalize_futures_quote(rows[0], symbol)
         return _normalize_quote(rows[0], symbol)
+
+    def _fetch_futures_search_sync(self, query: str, is_symbol: bool | None) -> list[dict[str, Any]]:
+        text = query.strip().upper()
+        results: list[dict[str, Any]] = []
+        with MacExClient.from_best_host(timeout=self.timeout) as client:
+            for exchange in FUTURES_EXCHANGES:
+                try:
+                    frame = client.goods_list(FUTURES_EXCHANGES[exchange], start=0, count=1000)
+                except Exception:
+                    continue
+                for row in _iter_frame_rows(frame):
+                    code = str(row.get("code") or "").strip()
+                    if not code:
+                        continue
+                    if not _is_queryable_futures_code(exchange, code):
+                        continue
+                    symbol, expiration = _futures_contract_symbol(exchange, code)
+                    name = str(row.get("name") or "").strip()
+                    if _futures_search_match(text, code.upper(), name.upper(), symbol.upper(), is_symbol):
+                        results.append(
+                            {
+                                "symbol": symbol,
+                                "expiration": expiration,
+                                "code": code,
+                                "name": name,
+                                "exchange": exchange,
+                                "source": "tdx",
+                            }
+                        )
+        return results
 
     def _fetch_exact_symbol_sync(self, query: str) -> list[dict[str, Any]]:
         market = _infer_tdx_market(query)
@@ -166,6 +230,118 @@ def _to_tdx_code(symbol: str) -> str:
     if code is None:
         raise SourceError(f"TDX only supports China A-share symbols: {symbol}")
     return code
+
+
+def _parse_expiration(expiration: str) -> tuple[str, int]:
+    """Parse YYYY-MM into (YY string, month int), e.g. 2026-10 -> ("26", 10)."""
+    year, month = expiration.split("-", 1)
+    return year[-2:], int(month)
+
+
+def _to_futures_market_code(symbol: str, expiration: str | None = None) -> tuple[int, str]:
+    """Translate a user futures symbol + optional YYYY-MM expiration to easy-tdx (ExMarket, code).
+
+    Three code families:
+    - SGE spot-deferred products use the fixed SGE_SPOT_MAP and ignore expiration.
+    - Domestic exchanges (SHFE/DCE/CZCE/CFFEX/GFEX): main continuous <CODE>L8,
+      month contract <CODE><YYMM>.
+    - International exchanges (COMEX/NYMEX/CBOT): main continuous <CODE>00W,
+      month contract <CODE><YY><month-letter>.
+    """
+    exchange = futures_exchange(symbol)
+    if exchange is None:
+        raise SourceError(f"TDX invalid futures symbol: {symbol}")
+    if exchange == "SGE":
+        code = SGE_SPOT_MAP.get(f"{futures_plain_code(symbol)}.SGE")
+        if code is None:
+            raise SourceError(f"TDX unknown SGE product: {symbol}")
+        return ExMarket.SH_GOLD, code
+    code = futures_plain_code(symbol)
+    if expiration is None:
+        code = f"{code}00W" if exchange in INTL_FUTURES_EXCHANGES else f"{code}L8"
+    else:
+        year, month = _parse_expiration(expiration)
+        if exchange in INTL_FUTURES_EXCHANGES:
+            code = f"{code}{year}{FUTURES_MONTH_LETTERS[month]}"
+        else:
+            code = f"{code}{year}{month:02d}"
+    return ExMarket(FUTURES_EXCHANGES[exchange]), code
+
+
+def _futures_contract_symbol(exchange: str, code: str) -> tuple[str, str | None]:
+    """Map a raw tdx contract code to (user symbol, expiration YYYY-MM | None).
+
+    Reverse of _to_futures_market_code: strips the L8/00W main-continuous suffix
+    or the YYMM / YY+month-letter suffix from the variety code and recomputes the
+    user-facing symbol and expiration.
+    """
+    raw = code.strip()
+    if exchange == "SGE":
+        reverse = {tdx_code: user_symbol for user_symbol, tdx_code in SGE_SPOT_MAP.items()}
+        user_symbol = reverse.get(raw)
+        if user_symbol:
+            return user_symbol, None
+        return f"{raw.replace('.', '').upper()}.SGE", None
+    upper = raw.upper()
+    if exchange in INTL_FUTURES_EXCHANGES:
+        if upper.endswith("00W"):
+            return f"{upper[:-3]}.{exchange}", None
+        # Month contract: <VARIETY><YY><month-letter>, e.g. GC26Z.
+        if len(upper) >= 4:
+            for index in range(len(upper) - 3, 0, -1):
+                suffix = upper[index:]
+                if suffix[0:2].isdigit() and suffix[2] in FUTURES_MONTH_NUMBERS:
+                    month = FUTURES_MONTH_NUMBERS[suffix[2]]
+                    return f"{upper[:index]}.{exchange}", f"20{suffix[0:2]}-{month:02d}"
+        return f"{upper}.{exchange}", None
+    # Domestic: main continuous <CODE>L8, month contract <CODE><YYMM>.
+    if upper.endswith("L8"):
+        return f"{upper[:-2]}.{exchange}", None
+    if len(upper) >= 5:
+        for index in range(len(upper) - 4, 0, -1):
+            suffix = upper[index:]
+            if suffix.isdigit() and len(suffix) == 4:
+                return f"{upper[:index]}.{exchange}", f"20{suffix[0:2]}-{suffix[2:4]}"
+    return f"{upper}.{exchange}", None
+
+
+def _is_queryable_futures_code(exchange: str, code: str) -> bool:
+    """Whether a tdx goods_list code maps back to a queryable user symbol.
+
+    Main continuous (L8 / 00W) and month contracts (YYMM / YY+month-letter) are
+    queryable through _to_futures_market_code; auxiliary continuous codes (次连
+    L7, 加权 L9, 连续 00Y) are not, so they are filtered from search results.
+    """
+    upper = code.strip().upper()
+    if exchange == "SGE":
+        return True
+    if exchange in INTL_FUTURES_EXCHANGES:
+        if re.fullmatch(r"[A-Z0-9]+00[A-Z]", upper):
+            return upper.endswith("00W")
+        return True
+    if re.fullmatch(r"[A-Z]+L\d", upper):
+        return upper.endswith("L8")
+    return True
+
+
+def _futures_search_match(
+    text: str, code: str, name: str, symbol: str, is_symbol: bool | None
+) -> bool:
+    """Match a futures search query against code/name/symbol.
+
+    With is_symbol=True the query is treated as a symbol fragment and matched
+    against the tdx code and the user-facing symbol. Otherwise it may also match
+    the Chinese product name.
+    """
+    if is_symbol:
+        return text in code or text in symbol
+    return text in code or text in symbol or text in name
+
+
+def _normalize_futures_quote(row: dict[str, Any], symbol: str) -> dict[str, Any]:
+    quote = _normalize_quote(row, symbol)
+    quote["name"] = str(row.get("name") or "").strip() or None
+    return quote
 
 
 def _to_tdx_period(interval: str) -> Period:
