@@ -18,6 +18,7 @@ QualityGrade = Literal["good", "stale", "no_trade", "outside_bounds", "no_conver
 # Standard US equity option cycle: monthly expirations on the third Friday
 # (Saturday historically). We compute the third Friday of a month here.
 
+
 def nearest_option_expiration(after: date) -> date:
     """Return the next standard monthly expiration on or after *after*.
 
@@ -43,26 +44,20 @@ def _third_friday(year: int, month: int) -> date:
     return first_friday + timedelta(days=14)
 
 
-def build_option_symbol(
-    underlying: str, expiration: date, side: Side, strike: float
-) -> str:
+def build_option_symbol(underlying: str, expiration: date, side: Side, strike: float) -> str:
     """Build an OCC-style option ticker understood by ConvexValue.
 
     Format: O:<UNDERLYING><YYMMDD><C/P><8-digit strike * 1000>
     e.g. O:AAPL260918C00100000 for AAPL 2026-09-18 call @ 100.00.
     """
     strike_int = int(round(strike * 1000))
-    return (
-        f"O:{underlying.upper()}"
-        f"{expiration.strftime('%y%m%d')}"
-        f"{side[0].upper()}"
-        f"{strike_int:08d}"
-    )
+    return f"O:{underlying.upper()}{expiration.strftime('%y%m%d')}{side[0].upper()}{strike_int:08d}"
 
 
 # --------------------------------------------------------------------------- #
 # Earnings IV Crush
 # --------------------------------------------------------------------------- #
+
 
 @dataclass(frozen=True)
 class EarningsEvent:
@@ -105,18 +100,14 @@ def summarize_crush(samples: Sequence[EarningsCrushSample]) -> CrushScenarios:
     to the user's strategy.
     """
     effective_samples = [
-        sample
-        for sample in samples
-        if sample.underlying_gap_pct is not None and sample.crush_pct is not None
+        sample for sample in samples if sample.underlying_gap_pct is not None and sample.crush_pct is not None
     ]
     gaps = [sample.underlying_gap_pct for sample in effective_samples]
     crushes = [sample.crush_pct for sample in effective_samples]
     sample_count = len(effective_samples)
 
     if sample_count < 4:
-        note = (
-            f"有效样本 {sample_count} < 4；仅作交互式参考，不输出统计置信结论。"
-        )
+        note = f"有效样本 {sample_count} < 4；仅作交互式参考，不输出统计置信结论。"
     else:
         note = f"基于 {sample_count} 次历史财报样本。"
 
@@ -151,9 +142,7 @@ def parse_earnings_rows(rows: Sequence[dict[str, Any]]) -> list[EarningsEvent]:
     return events
 
 
-def underlying_gap_pct(
-    closes: Sequence[tuple[date, float]], *, event_date: date, window: int = 1
-) -> float | None:
+def underlying_gap_pct(closes: Sequence[tuple[date, float]], *, event_date: date, window: int = 1) -> float | None:
     """Percentage change from ``window`` days before event to ``window`` days after."""
     before = [(d, c) for d, c in closes if d < event_date]
     after = [(d, c) for d, c in closes if d > event_date]
@@ -171,6 +160,7 @@ def underlying_gap_pct(
 # --------------------------------------------------------------------------- #
 # Small parse helpers
 # --------------------------------------------------------------------------- #
+
 
 def _parse_date(value: Any) -> date | None:
     if value is None:

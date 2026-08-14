@@ -34,6 +34,7 @@ pytestmark = pytest.mark.anyio
 
 # ---------- source client ----------
 
+
 class _StubResponse:
     def __init__(self, status_code: int, payload: Any) -> None:
         self.status_code = status_code
@@ -78,6 +79,24 @@ async def test_post_sets_bearer_auth_headers(monkeypatch: pytest.MonkeyPatch) ->
     assert call["url"].endswith("/chains")
 
 
+async def test_post_reuses_client_within_same_loop(monkeypatch: pytest.MonkeyPatch) -> None:
+    """同一事件循环内多次请求必须复用同一个 AsyncClient（连接池复用）。"""
+    monkeypatch.setenv("CV_API_KEY", "k")
+    created: list[_StubClient] = []
+
+    def counting_client(**_kwargs: Any) -> _StubClient:
+        stub = _StubClient([_StubResponse(200, {"ok": True}), _StubResponse(200, {"ok": True})])
+        created.append(stub)
+        return stub
+
+    monkeypatch.setattr(httpx, "AsyncClient", counting_client)
+
+    await cv._post("chains", {})
+    await cv._post("chains", {})
+
+    assert len(created) == 1
+
+
 async def test_post_raises_on_4xx(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CV_API_KEY", "k")
     monkeypatch.setattr(httpx, "AsyncClient", lambda **_: _StubClient([_StubResponse(422, {"error": "bad"})]))
@@ -93,10 +112,12 @@ async def test_post_retries_502_then_succeeds(monkeypatch: pytest.MonkeyPatch) -
         return None
 
     monkeypatch.setattr(cv.asyncio, "sleep", _no_sleep)
-    stub = _StubClient([
-        _StubResponse(502, "<html>error</html>"),
-        _StubResponse(200, {"rows": []}),
-    ])
+    stub = _StubClient(
+        [
+            _StubResponse(502, "<html>error</html>"),
+            _StubResponse(200, {"rows": []}),
+        ]
+    )
     monkeypatch.setattr(httpx, "AsyncClient", lambda **_: stub)
     result = await cv._post("query", {"sql": "SELECT 1"})
     assert result == {"rows": []}
@@ -111,7 +132,8 @@ async def test_post_raises_after_exhausting_retries(monkeypatch: pytest.MonkeyPa
 
     monkeypatch.setattr(cv.asyncio, "sleep", _no_sleep)
     monkeypatch.setattr(
-        httpx, "AsyncClient",
+        httpx,
+        "AsyncClient",
         lambda **_: _StubClient([_StubResponse(502, "x"), _StubResponse(502, "x"), _StubResponse(502, "x")]),
     )
     with pytest.raises(cv.ConvexValueError, match="502"):
@@ -125,6 +147,7 @@ async def test_post_raises_without_api_key(monkeypatch: pytest.MonkeyPatch) -> N
 
 
 # ---------- options chain flattening ----------
+
 
 def test_flatten_chain_expands_triplets() -> None:
     # Build field arrays in the real CHAIN_FIELDS order so indices line up.
@@ -171,6 +194,7 @@ def test_flatten_chain_empty_symbol_returns_empty() -> None:
 
 # ---------- options screener filter conversion ----------
 
+
 def test_build_filters_translates_predicates() -> None:
     q = FinanceOptionsScreenerQueryParams(
         underlying_symbol="spy",
@@ -206,6 +230,7 @@ def test_build_filters_empty_when_no_predicates() -> None:
 
 # ---------- options query ----------
 
+
 async def test_options_query_passthrough_shape(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CV_API_KEY", "k")
     captured: dict[str, Any] = {}
@@ -215,7 +240,9 @@ async def test_options_query_passthrough_shape(monkeypatch: pytest.MonkeyPatch) 
         captured["max_rows"] = max_rows
         return {
             "rows": [{"underlying_ticker": "SPY", "gex": 123.0}],
-            "row_count": 1, "truncated": False, "elapsed_ms": 5,
+            "row_count": 1,
+            "truncated": False,
+            "elapsed_ms": 5,
         }
 
     monkeypatch.setattr(cv, "fetch_query", fake_query)
@@ -229,6 +256,7 @@ async def test_options_query_passthrough_shape(monkeypatch: pytest.MonkeyPatch) 
 
 
 # ---------- income statement alias mapping ----------
+
 
 def test_income_statement_alias_camel_to_snake() -> None:
     raw_row = {
@@ -258,6 +286,7 @@ def test_income_statement_alias_camel_to_snake() -> None:
 
 # ---------- config registration ----------
 
+
 def test_config_registers_convexvalue_source() -> None:
     # convexvalue should be registered in the defaults and enabled, so CV
     # models work out of the box (get_source_config alone would default
@@ -275,6 +304,7 @@ def test_config_convexvalue_api_key_expands(monkeypatch: pytest.MonkeyPatch) -> 
 
 # ---------- chain aextract_data returns contract_count ----------
 
+
 async def test_chain_aextract_returns_records_and_total(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("CV_API_KEY", "k")
     # Build non-empty call/put rows so _flatten_chain actually emits records
@@ -290,10 +320,12 @@ async def test_chain_aextract_returns_records_and_total(monkeypatch: pytest.Monk
 
     fake_raw = {
         "symbol": "SPY",
-        "chain": [{
-            "expiration": "2026-07-17",
-            "strikes": [[500.0, call_row, put_row]],
-        }],
+        "chain": [
+            {
+                "expiration": "2026-07-17",
+                "strikes": [[500.0, call_row, put_row]],
+            }
+        ],
         "contract_count": 2,
     }
 
@@ -310,6 +342,7 @@ async def test_chain_aextract_returns_records_and_total(monkeypatch: pytest.Monk
 
 # ---------- insider trading server-side filters pass through ----------
 
+
 async def test_insider_trading_passes_transaction_type_and_after(monkeypatch: pytest.MonkeyPatch) -> None:
     captured: dict[str, Any] = {}
 
@@ -320,9 +353,15 @@ async def test_insider_trading_passes_transaction_type_and_after(monkeypatch: py
 
     monkeypatch.setattr(cv, "fetch_fmp", fake_fmp)
     from openbb_finance.models.insider_trading import FinanceInsiderTradingFetcher
-    q = FinanceInsiderTradingFetcher.transform_query({
-        "symbol": "AAPL", "transaction_type": "P-Purchase", "after": "2025-01-01", "limit": 10,
-    })
+
+    q = FinanceInsiderTradingFetcher.transform_query(
+        {
+            "symbol": "AAPL",
+            "transaction_type": "P-Purchase",
+            "after": "2025-01-01",
+            "limit": 10,
+        }
+    )
     await FinanceInsiderTradingFetcher.aextract_data(q, None)
     assert captured["transactionType"] == "P-Purchase"
     assert captured["after"] == "2025-01-01"
@@ -330,9 +369,11 @@ async def test_insider_trading_passes_transaction_type_and_after(monkeypatch: py
 
 # ---------- CLI helpers: _filter_sort_limit ----------
 
+
 def test_filter_sort_limit_truncates_and_reports_meta() -> None:
     pytest.importorskip("openbb_agent_cli")
     from openbb_agent_cli.cli import _filter_sort_limit
+
     records = [{"oi": 100}, {"oi": 50}, {"oi": 200}, {"oi": None}]
     out, meta = _filter_sort_limit(records, sort_by="oi", sort_dir="desc", limit=2)
     assert [r["oi"] for r in out] == [200, 100]

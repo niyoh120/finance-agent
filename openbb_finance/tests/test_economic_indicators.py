@@ -27,23 +27,23 @@ import openbb_finance  # noqa: F401
 
 class MockAkshareSource:
     """Mock AKShare source for testing."""
-    
+
     name = "akshare"
     enabled = True
 
     def __init__(self, data):
         self.data = data
-    
+
     async def fetch_macro_indicators(self, symbol, start_date=None, end_date=None):
         return self.data
 
 
 class MockRegistry:
     """Mock registry for testing."""
-    
+
     def __init__(self, source=None):
         self.source = source
-    
+
     def get(self, name):
         if name == "akshare" and self.source:
             return self.source
@@ -65,14 +65,12 @@ async def test_economic_indicators_china_gdp():
             "source": "akshare",
         }
     ]
-    
+
     query = FinanceEconomicIndicatorsQueryParams(symbol="GDP", country="china")
     data = await FinanceEconomicIndicatorsFetcher.aextract_data(
-        query,
-        credentials=None,
-        registry=MockRegistry(MockAkshareSource(mock_data))
+        query, credentials=None, registry=MockRegistry(MockAkshareSource(mock_data))
     )
-    
+
     assert len(data) == 1
     assert data[0]["symbol"] == "GDP_YOY"
     assert data[0]["country"] == "china"
@@ -94,14 +92,12 @@ async def test_economic_indicators_china_cpi():
             "source": "akshare",
         }
     ]
-    
+
     query = FinanceEconomicIndicatorsQueryParams(symbol="CPI", country="china")
     data = await FinanceEconomicIndicatorsFetcher.aextract_data(
-        query,
-        credentials=None,
-        registry=MockRegistry(MockAkshareSource(mock_data))
+        query, credentials=None, registry=MockRegistry(MockAkshareSource(mock_data))
     )
-    
+
     assert len(data) == 1
     assert data[0]["symbol"] == "CPI_YOY"
     assert data[0]["country"] == "china"
@@ -111,14 +107,12 @@ async def test_economic_indicators_china_cpi():
 async def test_economic_indicators_country_variants():
     """Test various China country name variants."""
     mock_data = [{"date": "2024-01-01", "symbol": "GDP", "country": "china", "value": 1.0}]
-    
+
     # Test different China country name variants
     for country in ["china", "CN", "中国", "Chinese"]:
         query = FinanceEconomicIndicatorsQueryParams(symbol="GDP", country=country)
         data = await FinanceEconomicIndicatorsFetcher.aextract_data(
-            query,
-            credentials=None,
-            registry=MockRegistry(MockAkshareSource(mock_data))
+            query, credentials=None, registry=MockRegistry(MockAkshareSource(mock_data))
         )
         assert len(data) == 1, f"Failed for country={country}"
 

@@ -103,9 +103,7 @@ class FinanceOptionsUnusualData(OptionsUnusualData):
         return value.replace(" ", "")
 
 
-class FinanceOptionsUnusualFetcher(
-    Fetcher[FinanceOptionsUnusualQueryParams, list[FinanceOptionsUnusualData]]
-):
+class FinanceOptionsUnusualFetcher(Fetcher[FinanceOptionsUnusualQueryParams, list[FinanceOptionsUnusualData]]):
     """Fetcher for finance unusual options data."""
 
     @staticmethod
@@ -192,9 +190,7 @@ class FinanceOptionsUnusualFetcher(
 #   Call @ Bid -> seller aggressor -> bearish
 #   Put  @ Ask -> buyer aggressor -> bearish
 #   Put  @ Bid -> seller aggressor -> bullish
-def _infer_sentiment(
-    side: str, option_type: str | None
-) -> Literal["bullish", "bearish", "neutral"]:
+def _infer_sentiment(side: str, option_type: str | None) -> Literal["bullish", "bearish", "neutral"]:
     is_call = option_type == "C"
     is_put = option_type == "P"
     if side == "Ask":

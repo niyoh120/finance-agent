@@ -28,6 +28,7 @@ from options_dashboard.data import (
 
 # ---------- run_async ----------
 
+
 def test_run_async_runs_simple_coroutine() -> None:
     async def coro() -> int:
         await asyncio.sleep(0)
@@ -59,6 +60,7 @@ def test_run_async_inside_running_loop_uses_worker_thread() -> None:
 
 
 # ---------- throttle ----------
+
 
 @pytest.mark.parametrize("unused", range(3))
 def test_throttle_enforces_min_interval(monkeypatch: pytest.MonkeyPatch, unused: int) -> None:
@@ -98,6 +100,7 @@ def test_throttle_stats_reports_cooldown() -> None:
 
 # ---------- error mapping ----------
 
+
 def test_fetch_fmp_maps_429_to_rate_limited(monkeypatch: pytest.MonkeyPatch) -> None:
     from openbb_finance.sources import convexvalue as cv
 
@@ -122,9 +125,7 @@ def test_fetch_fmp_maps_404_to_data_unavailable(monkeypatch: pytest.MonkeyPatch)
     from openbb_finance.sources import convexvalue as cv
 
     async def fake_fmp(endpoint: str, **params: Any) -> Any:
-        raise cv.ConvexValueError(
-            "ConvexValue fmp/stable/badendpoint returned HTTP 404: not found"
-        )
+        raise cv.ConvexValueError("ConvexValue fmp/stable/badendpoint returned HTTP 404: not found")
 
     monkeypatch.setattr(data_mod.throttle, "acquire", lambda: None)
     monkeypatch.setattr(cv, "fetch_fmp", fake_fmp)
@@ -136,10 +137,12 @@ def test_fetch_fmp_maps_404_to_data_unavailable(monkeypatch: pytest.MonkeyPatch)
 
 # ---------- semantic FMP wrappers ----------
 
+
 def test_fetch_profile_sync_unwraps_first_row(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(data_mod.throttle, "acquire", lambda: None)
     monkeypatch.setattr(
-        data_mod, "fetch_fmp_sync",
+        data_mod,
+        "fetch_fmp_sync",
         lambda endpoint, **params: [{"symbol": "AAPL", "lastDividend": 1.0, "price": 200.0}],
     )
     profile = data_mod.fetch_profile_sync("AAPL")
@@ -171,7 +174,8 @@ def test_fetch_treasury_rates_sync_passes_through(monkeypatch: pytest.MonkeyPatc
 def test_fetch_equity_eod_sync_handles_nested_historical(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(data_mod.throttle, "acquire", lambda: None)
     monkeypatch.setattr(
-        data_mod, "fetch_fmp_sync",
+        data_mod,
+        "fetch_fmp_sync",
         lambda endpoint, **params: {"historical": [{"date": "2026-07-10", "close": 316.0}]},
     )
     rows = data_mod.fetch_equity_eod_sync("AAPL", "2026-07-10", "2026-07-10")
@@ -180,9 +184,7 @@ def test_fetch_equity_eod_sync_handles_nested_historical(monkeypatch: pytest.Mon
 
 def test_fetch_equity_eod_sync_raises_on_empty(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(data_mod.throttle, "acquire", lambda: None)
-    monkeypatch.setattr(
-        data_mod, "fetch_fmp_sync", lambda endpoint, **params: {"historical": []}
-    )
+    monkeypatch.setattr(data_mod, "fetch_fmp_sync", lambda endpoint, **params: {"historical": []})
     with pytest.raises(DataUnavailableError):
         data_mod.fetch_equity_eod_sync("NOPE", "2026-07-10", "2026-07-10")
 
@@ -190,7 +192,8 @@ def test_fetch_equity_eod_sync_raises_on_empty(monkeypatch: pytest.MonkeyPatch) 
 def test_fetch_equity_quote_sync_unwraps_row(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(data_mod.throttle, "acquire", lambda: None)
     monkeypatch.setattr(
-        data_mod, "_run_or_classify",
+        data_mod,
+        "_run_or_classify",
         lambda coro_factory: [{"symbol": "AAPL", "last_price": 201.5}],
     )
     quote = data_mod.fetch_equity_quote_sync("AAPL")

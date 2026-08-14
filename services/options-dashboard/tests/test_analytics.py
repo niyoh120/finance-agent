@@ -17,12 +17,8 @@ from options_dashboard.analytics import (
 
 
 def test_build_option_symbol() -> None:
-    assert build_option_symbol(
-        "AAPL", date(2026, 9, 18), "call", 100.0
-    ) == "O:AAPL260918C00100000"
-    assert build_option_symbol(
-        "SPY", date(2026, 1, 17), "put", 450.5
-    ) == "O:SPY260117P00450500"
+    assert build_option_symbol("AAPL", date(2026, 9, 18), "call", 100.0) == "O:AAPL260918C00100000"
+    assert build_option_symbol("SPY", date(2026, 1, 17), "put", 450.5) == "O:SPY260117P00450500"
 
 
 def test_third_friday_basic() -> None:

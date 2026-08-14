@@ -42,9 +42,7 @@ class FinanceGdpNominalData(GdpNominalData):
     pass
 
 
-class FinanceGdpNominalFetcher(
-    Fetcher[FinanceGdpNominalQueryParams, list[FinanceGdpNominalData]]
-):
+class FinanceGdpNominalFetcher(Fetcher[FinanceGdpNominalQueryParams, list[FinanceGdpNominalData]]):
     """Fetcher for GDP nominal data with multi-source support."""
 
     @staticmethod
@@ -62,11 +60,11 @@ class FinanceGdpNominalFetcher(
     ) -> list[dict[str, Any]]:
         del credentials
         registry = kwargs.get("registry") or build_default_registry()
-        
+
         # Determine if this is a China data request
         country = (query.country or "").lower()
         is_china = country in {"china", "cn", "中国", "chinese"}
-        
+
         if is_china:
             # Use AKShare for China data
             akshare_source = registry.get("akshare")
@@ -84,7 +82,7 @@ class FinanceGdpNominalFetcher(
                 ]
                 return _filter_date_range(rows, query.start_date, query.end_date)
             return []
-        
+
         # For non-China data, try to use OpenBB built-in providers
         try:
             if "openbb_client" in kwargs:
@@ -98,7 +96,7 @@ class FinanceGdpNominalFetcher(
                 country=query.country,
                 provider="oecd",  # Use OECD as default provider for international data
             )
-            if result and hasattr(result, 'results'):
+            if result and hasattr(result, "results"):
                 return [
                     {
                         "date": item.date,
@@ -109,7 +107,7 @@ class FinanceGdpNominalFetcher(
                 ]
         except Exception:
             pass
-        
+
         return []
 
     @staticmethod

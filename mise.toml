@@ -19,19 +19,12 @@ run = "uvx pre-commit run --all-files"
 depends = ["install"]
 run = "uv run python -m options_scraper.main"
 
-[tasks.macro-scraper]
-depends = ["install"]
-run = "uv run python -m macro_scraper.main"
-
 [tasks.openbb-agent-cli]
 depends = ["install"]
 run = "uv run --package openbb-agent-cli openbb-agent-cli"
 
 [tasks.docker-build-migrate]
 run = "docker build -f migrate/Dockerfile -t {{vars.image_repo}}/finance-migrate:latest -t {{vars.image_repo}}/finance-migrate:{{exec(command='git rev-parse --short HEAD')}} ."
-
-[tasks.docker-build-macro-scraper]
-run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=macro-scraper --build-arg MODULE_ENTRY=macro_scraper.main -t {{vars.image_repo}}/finance-macro-scraper:latest -t {{vars.image_repo}}/finance-macro-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
 
 [tasks.docker-build-options-scraper]
 run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=options-scraper --build-arg MODULE_ENTRY=options_scraper.main -t {{vars.image_repo}}/finance-options-scraper:latest -t {{vars.image_repo}}/finance-options-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
@@ -47,7 +40,6 @@ run = "docker build -f services/options-dashboard/Dockerfile -t {{vars.image_rep
 run = [
   { tasks = [
     "docker-build-migrate",
-    "docker-build-macro-scraper",
     "docker-build-options-dashboard",
     "docker-build-options-scraper",
   ] },
@@ -57,12 +49,6 @@ run = [
 run = [
   "docker push {{vars.image_repo}}/finance-migrate:latest",
   "docker push {{vars.image_repo}}/finance-migrate:{{exec(command='git rev-parse --short HEAD')}}",
-]
-
-[tasks.docker-push-macro-scraper]
-run = [
-  "docker push {{vars.image_repo}}/finance-macro-scraper:latest",
-  "docker push {{vars.image_repo}}/finance-macro-scraper:{{exec(command='git rev-parse --short HEAD')}}",
 ]
 
 [tasks.docker-push-options-scraper]
@@ -81,7 +67,6 @@ run = [
 run = [
   { tasks = [
     "docker-push-migrate",
-    "docker-push-macro-scraper",
     "docker-push-options-dashboard",
     "docker-push-options-scraper",
   ] },
@@ -91,12 +76,6 @@ run = [
 run = [
   { tasks = ["docker-build-migrate"] },
   { tasks = ["docker-push-migrate"] },
-]
-
-[tasks.docker-build-push-macro-scraper]
-run = [
-  { tasks = ["docker-build-macro-scraper"] },
-  { tasks = ["docker-push-macro-scraper"] },
 ]
 
 [tasks.docker-build-push-options-scraper]

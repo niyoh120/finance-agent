@@ -291,14 +291,16 @@ async def test_tdx_futures_search_filters_auxiliary_continuous_codes():
 async def test_tdx_futures_search_includes_sge_fixed_products():
     results = await make_source().fetch_futures_search("AU", is_symbol=True)
     sge_rows = [row for row in results if row["exchange"] == "SGE"]
-    assert sge_rows == [{
-        "symbol": "AU.SGE",
-        "expiration": None,
-        "code": "Au(T+D)",
-        "name": "Au(T+D)",
-        "exchange": "SGE",
-        "source": "tdx",
-    }]
+    assert sge_rows == [
+        {
+            "symbol": "AU.SGE",
+            "expiration": None,
+            "code": "Au(T+D)",
+            "name": "Au(T+D)",
+            "exchange": "SGE",
+            "source": "tdx",
+        }
+    ]
 
 
 def test_tdx_period_mapping():
@@ -340,9 +342,7 @@ async def test_tdx_cn_price_uses_mac_client_and_native_adjust():
 
 
 async def test_tdx_hk_price_zero_pads_code_and_preserves_intraday_datetime():
-    result = await make_source().fetch_price(
-        PriceQuery(symbol="700.HK", market="hk", interval="1m", adjusted=False)
-    )
+    result = await make_source().fetch_price(PriceQuery(symbol="700.HK", market="hk", interval="1m", adjusted=False))
 
     assert FakeMacExClient.calls[1] == (
         "goods_kline",

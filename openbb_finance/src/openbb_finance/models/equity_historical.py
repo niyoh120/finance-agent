@@ -33,9 +33,7 @@ class FinanceEquityHistoricalData(EquityHistoricalData):
     source: str | None = Field(default=None, description="Selected data source.")
 
 
-class FinanceEquityHistoricalFetcher(
-    Fetcher[FinanceEquityHistoricalQueryParams, list[FinanceEquityHistoricalData]]
-):
+class FinanceEquityHistoricalFetcher(Fetcher[FinanceEquityHistoricalQueryParams, list[FinanceEquityHistoricalData]]):
     """Fetcher for routed historical price data."""
 
     @staticmethod

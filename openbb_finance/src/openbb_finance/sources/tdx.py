@@ -324,9 +324,7 @@ def _is_queryable_futures_code(exchange: str, code: str) -> bool:
     return True
 
 
-def _futures_search_match(
-    text: str, code: str, name: str, symbol: str, is_symbol: bool | None
-) -> bool:
+def _futures_search_match(text: str, code: str, name: str, symbol: str, is_symbol: bool | None) -> bool:
     """Match a futures search query against code/name/symbol.
 
     With is_symbol=True the query is treated as a symbol fragment and matched

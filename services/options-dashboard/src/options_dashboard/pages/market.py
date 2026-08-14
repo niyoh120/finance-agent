@@ -39,6 +39,7 @@ from .earnings import render_earnings_crush_scenario
 
 _CHAIN_TTL_SECONDS = 60.0
 _PROFILE_TTL_SECONDS = 3600.0
+_QUOTE_TTL_SECONDS = 10.0
 _DEFAULT_STRIKE_WINDOW = 10
 
 
@@ -61,6 +62,15 @@ def _load_treasury(limit: int = 10) -> list[dict[str, Any]]:
         return data.fetch_treasury_rates_sync(limit=limit)
     except data.DataUnavailableError:
         return []
+
+
+@st.cache_data(ttl=_QUOTE_TTL_SECONDS, show_spinner=False)
+def _load_quote(symbol: str) -> dict[str, Any]:
+    """实时报价短 TTL 缓存：页面重渲染不打上游，重置按钮仍绕过缓存取最新。"""
+    try:
+        return data.fetch_equity_quote_sync(symbol)
+    except (data.DataUnavailableError, data.RateLimitedError):
+        return {}
 
 
 # --------------------------------------------------------------------------- #
@@ -105,11 +115,10 @@ def _days_to_expiry(expiration_str: str, *, now: date | None = None) -> int | No
 # Main render
 # --------------------------------------------------------------------------- #
 
+
 def render_chain_strategy() -> None:
     st.title("期权策略")
-    st.caption(
-        "当前 Research Plan 不提供实时 NBBO bid/ask；价格与风险指标来自 ConvexValue 估值快照。"
-    )
+    st.caption("当前 Research Plan 不提供实时 NBBO bid/ask；价格与风险指标来自 ConvexValue 估值快照。")
 
     symbol = st.session_state.get(SYMBOL_KEY, "").strip().upper()
     if not symbol:
@@ -151,13 +160,10 @@ def render_chain_strategy() -> None:
     chain_spot = float(records[0].get("underlying_price") or 0.0) if records else 0.0
     profile = _load_profile(symbol)
     default_spot = chain_spot
-    try:
-        quote = data.fetch_equity_quote_sync(symbol)
-        lp = quote.get("last_price")
-        if lp:
-            default_spot = float(lp)
-    except (data.DataUnavailableError, data.RateLimitedError):
-        pass
+    quote = _load_quote(symbol)
+    lp = quote.get("last_price")
+    if lp:
+        default_spot = float(lp)
     if default_spot <= 0:
         default_spot = float(profile.get("price") or 0.0)
 
@@ -170,11 +176,11 @@ def render_chain_strategy() -> None:
     if prev_symbol != symbol:
         st.session_state["_ctx_symbol"] = symbol
         st.session_state["_ctx_defaults"] = {
-            "spot": default_spot, "r": default_r, "q": default_q,
+            "spot": default_spot,
+            "r": default_r,
+            "q": default_q,
         }
-    defaults = st.session_state.get(
-        "_ctx_defaults", {"spot": default_spot, "r": default_r, "q": default_q}
-    )
+    defaults = st.session_state.get("_ctx_defaults", {"spot": default_spot, "r": default_r, "q": default_q})
 
     df = pd.DataFrame(records)
     if df.empty:
@@ -203,6 +209,7 @@ def render_chain_strategy() -> None:
 # --------------------------------------------------------------------------- #
 # 5-second auto-refresh fragment
 # --------------------------------------------------------------------------- #
+
 
 @st.fragment(run_every=5.0)
 def _render_auto_refresh(symbol: str) -> None:
@@ -271,15 +278,19 @@ def _refresh_leg_fmvs(records: list[dict[str, Any]]) -> bool:
 # Chain — control bar + table; selecting a row auto-adds the leg
 # --------------------------------------------------------------------------- #
 
+
 def _render_chain(df: pd.DataFrame, symbol: str, spot: float, style: str) -> None:
     st.markdown("#### 期权链")
 
     symbol_col, fetch_col = st.columns([3, 1], gap="small")
     typed = symbol_col.text_input(
-        "标的", value=symbol, key="symbol_text_input", label_visibility="collapsed",
+        "标的",
+        value=symbol,
+        key="symbol_text_input",
+        label_visibility="collapsed",
         placeholder="AAPL / SPY",
     )
-    if fetch_col.button("查询", type="primary", width="stretch"): 
+    if fetch_col.button("查询", type="primary", width="stretch"):
         new_sym = (typed or "").strip().upper()
         if new_sym and new_sym != symbol:
             st.session_state[SYMBOL_KEY] = new_sym
@@ -288,21 +299,34 @@ def _render_chain(df: pd.DataFrame, symbol: str, spot: float, style: str) -> Non
     expirations = sorted(df["expiration"].astype(str).unique())
     filters = st.columns([2.2, 1, 1, 0.8], gap="small")
     sel_exp = filters[0].selectbox(
-        "到期日", options=expirations, key="chain_expiry_sel",
+        "到期日",
+        options=expirations,
+        key="chain_expiry_sel",
         label_visibility="collapsed",
     )
     side_filter = filters[1].selectbox(
-        "侧", options=["全部", "call", "put"], key="chain_side_filter",
+        "侧",
+        options=["全部", "call", "put"],
+        key="chain_side_filter",
         format_func={"全部": "全部", "call": "C", "put": "P"}.__getitem__,
         label_visibility="collapsed",
     )
-    window = int(filters[2].number_input(
-        "ATM 窗口", min_value=1, value=_DEFAULT_STRIKE_WINDOW, step=1,
-        key="chain_strike_window", label_visibility="collapsed",
-        help="显示 ATM 附近的行权价数量。",
-    ))
+    window = int(
+        filters[2].number_input(
+            "ATM 窗口",
+            min_value=1,
+            value=_DEFAULT_STRIKE_WINDOW,
+            step=1,
+            key="chain_strike_window",
+            label_visibility="collapsed",
+            help="显示 ATM 附近的行权价数量。",
+        )
+    )
     show_all = filters[3].checkbox(
-        "全", value=False, key="chain_show_all", help="显示所有行权价。",
+        "全",
+        value=False,
+        key="chain_show_all",
+        help="显示所有行权价。",
     )
 
     exp_view = df[df["expiration"].astype(str) == sel_exp]
@@ -312,8 +336,7 @@ def _render_chain(df: pd.DataFrame, symbol: str, spot: float, style: str) -> Non
     strikes = sorted(view["strike"].astype(float).unique())
     if not show_all and spot > 0 and strikes:
         atm = min(strikes, key=lambda s: abs(s - spot))
-        view = view[(view["strike"].astype(float) >= atm - window) &
-                    (view["strike"].astype(float) <= atm + window)]
+        view = view[(view["strike"].astype(float) >= atm - window) & (view["strike"].astype(float) <= atm + window)]
     if view.empty:
         st.warning("该筛选下无合约。")
         return
@@ -335,7 +358,7 @@ def _render_chain(df: pd.DataFrame, symbol: str, spot: float, style: str) -> Non
             return "—"
         try:
             n = float(v)
-            return f"{n/1000:.1f}k" if n >= 1000 else f"{int(n)}"
+            return f"{n / 1000:.1f}k" if n >= 1000 else f"{int(n)}"
         except (TypeError, ValueError):
             return "—"
 
@@ -384,22 +407,24 @@ def _auto_add_leg(picked: dict[str, Any], style: str) -> None:
     contract = picked["symbol"]
     if any(leg.get("kind_symbol") == contract for leg in legs):
         return
-    legs.append({
-        "kind": "option",
-        "direction": "buy",
-        "quantity": 1.0,
-        "kind_symbol": contract,
-        "underlying": _underlying_from_occ(contract),
-        "strike": picked["strike"],
-        "expiration": picked["expiration"],
-        "option_side": picked["side"],
-        "style": style,
-        "iv": picked["iv"] if picked["iv"] > 0 else None,
-        "iv_default": picked["iv"] if picked["iv"] > 0 else None,
-        "cost": picked["fmv"] if picked["fmv"] > 0 else None,
-        "cost_default": picked["fmv"] if picked["fmv"] > 0 else None,
-        "fmv": picked["fmv"] if picked["fmv"] > 0 else None,
-    })
+    legs.append(
+        {
+            "kind": "option",
+            "direction": "buy",
+            "quantity": 1.0,
+            "kind_symbol": contract,
+            "underlying": _underlying_from_occ(contract),
+            "strike": picked["strike"],
+            "expiration": picked["expiration"],
+            "option_side": picked["side"],
+            "style": style,
+            "iv": picked["iv"] if picked["iv"] > 0 else None,
+            "iv_default": picked["iv"] if picked["iv"] > 0 else None,
+            "cost": picked["fmv"] if picked["fmv"] > 0 else None,
+            "cost_default": picked["fmv"] if picked["fmv"] > 0 else None,
+            "fmv": picked["fmv"] if picked["fmv"] > 0 else None,
+        }
+    )
     st.session_state[STRATEGY_LEGS_KEY] = legs
     st.toast(f"已加入 {fmt_contract(contract)}", icon="✅")
     st.rerun()
@@ -413,6 +438,7 @@ def _underlying_from_occ(occ: str) -> str:
 # --------------------------------------------------------------------------- #
 # Market parameters (spot/r/q) — each with independent reset
 # --------------------------------------------------------------------------- #
+
 
 def _reset_spot_to_latest(symbol: str) -> None:
     """Refresh the spot input from the quote source before the next render."""
@@ -448,14 +474,18 @@ def _render_market_params(
     # widget 默认值只在首次渲染时写入 session_state，重置回调随后覆盖；
     # 同时传 value= 和 key= 且 key 已存在会触发 Streamlit widget 警告。
     st.session_state.setdefault(
-        "ctx_spot", float(defaults["spot"]) if defaults["spot"] > 0 else 0.0,
+        "ctx_spot",
+        float(defaults["spot"]) if defaults["spot"] > 0 else 0.0,
     )
     st.session_state.setdefault("ctx_r", float(defaults["r"]))
     st.session_state.setdefault("ctx_q", float(defaults["q"]))
     st.session_state.setdefault("ctx_val_date", date.today())
     spot = first_row[0].number_input(
-        "标的价格", min_value=0.0,
-        step=0.5, format="%.2f", key="ctx_spot",
+        "标的价格",
+        min_value=0.0,
+        step=0.5,
+        format="%.2f",
+        key="ctx_spot",
     )
     first_row[1].button(
         "重置",
@@ -466,8 +496,11 @@ def _render_market_params(
         args=(symbol,),
     )
     r = first_row[2].number_input(
-        "无风险利率", min_value=0.0,
-        step=0.005, format="%.4f", key="ctx_r",
+        "无风险利率",
+        min_value=0.0,
+        step=0.005,
+        format="%.4f",
+        key="ctx_r",
         help="使用小数输入，例如 0.04 表示 4%。",
     )
     first_row[3].button(
@@ -479,8 +512,11 @@ def _render_market_params(
 
     second_row = st.columns([3, 1, 3, 1], gap="small", vertical_alignment="bottom")
     q = second_row[0].number_input(
-        "股息率", min_value=0.0,
-        step=0.005, format="%.4f", key="ctx_q",
+        "股息率",
+        min_value=0.0,
+        step=0.005,
+        format="%.4f",
+        key="ctx_q",
         help="使用连续股息率小数，例如 0.01 表示 1%。",
     )
     second_row[1].button(
@@ -490,7 +526,8 @@ def _render_market_params(
         on_click=lambda: st.session_state.update(ctx_q=float(defaults["q"])),
     )
     val_date = second_row[2].date_input(
-        "估值日期", key="ctx_val_date",
+        "估值日期",
+        key="ctx_val_date",
     )
     second_row[3].button(
         "重置",
@@ -516,8 +553,14 @@ def _render_market_params(
 # Strategy — editable table with per-leg IV/cost/qty, net Greeks, payoff
 # --------------------------------------------------------------------------- #
 
+
 def _render_strategy(
-    symbol: str, spot: float, r: float, q: float, style: str, val_now: datetime,
+    symbol: str,
+    spot: float,
+    r: float,
+    q: float,
+    style: str,
+    val_now: datetime,
 ) -> None:
     st.divider()
     legs_state = get_strategy_legs()
@@ -563,21 +606,33 @@ def _render_strategy(
                 key=f"leg_dir_{i}",
                 label_visibility="collapsed",
             )
-            leg["quantity"] = float(rc[2].number_input(
-                "张数", min_value=1, value=int(leg.get("quantity", 1)), step=1,
-                key=f"leg_qty_{i}", label_visibility="collapsed",
-            ))
+            leg["quantity"] = float(
+                rc[2].number_input(
+                    "张数",
+                    min_value=1,
+                    value=int(leg.get("quantity", 1)),
+                    step=1,
+                    key=f"leg_qty_{i}",
+                    label_visibility="collapsed",
+                )
+            )
             leg["cost"] = rc[3].number_input(
-                "建仓价", min_value=0.0,
+                "建仓价",
+                min_value=0.0,
                 value=float(leg.get("cost") or leg.get("cost_default") or 0.0),
-                step=0.5, format="%.2f", key=f"leg_cost_{i}",
+                step=0.5,
+                format="%.2f",
+                key=f"leg_cost_{i}",
                 label_visibility="collapsed",
                 help="每股建仓价格，用于计算策略损益。",
             )
             leg["iv"] = rc[4].number_input(
-                "IV", min_value=0.0,
+                "IV",
+                min_value=0.0,
                 value=float(leg.get("iv") or leg.get("iv_default") or 0.0),
-                step=0.01, format="%.3f", key=f"leg_iv_{i}",
+                step=0.01,
+                format="%.3f",
+                key=f"leg_iv_{i}",
                 label_visibility="collapsed",
             )
             days = _days_to_expiry(leg.get("expiration", ""), now=val_now.date())
@@ -615,10 +670,7 @@ def _render_strategy(
 
     # Net valuation.
     legs = [_dict_to_leg(d) for d in legs_state]
-    iv_overrides = {
-        d["kind_symbol"]: float(d["iv"])
-        for d in legs_state if d.get("kind") == "option" and d.get("iv")
-    }
+    iv_overrides = {d["kind_symbol"]: float(d["iv"]) for d in legs_state if d.get("kind") == "option" and d.get("iv")}
     ctx = PricingContext(spot=spot, r=r, q=q, default_iv=None, now=val_now)
     valuation = value_strategy(legs, ctx, iv_overrides=iv_overrides)
 
@@ -650,8 +702,12 @@ def _render_strategy(
 
 
 def _render_payoff_chart(
-    legs: list[Leg], spot: float, r: float, q: float,
-    val_now: datetime, iv_overrides: dict[str, float],
+    legs: list[Leg],
+    spot: float,
+    r: float,
+    q: float,
+    val_now: datetime,
+    iv_overrides: dict[str, float],
 ) -> None:
     """Interactive payoff chart with unified price/PnL hover details."""
     st.markdown("#### 策略盈亏")
@@ -665,26 +721,38 @@ def _render_payoff_chart(
 
     fig = go.Figure()
     # Expiry payoff (solid line).
-    fig.add_trace(go.Scatter(
-        x=curves.xs, y=curves.expiry_points,
-        mode="lines", name="到期损益",
-        line={"color": "#2196F3", "width": 2},
-        hovertemplate="到期损益 %{y:+.2f}<extra></extra>",
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=curves.xs,
+            y=curves.expiry_points,
+            mode="lines",
+            name="到期损益",
+            line={"color": "#2196F3", "width": 2},
+            hovertemplate="到期损益 %{y:+.2f}<extra></extra>",
+        )
+    )
     # Current payoff (dashed line).
-    fig.add_trace(go.Scatter(
-        x=curves.xs, y=curves.current_points,
-        mode="lines", name="当前损益",
-        line={"color": "#FF9800", "width": 2, "dash": "dash"},
-        hovertemplate="当前损益 %{y:+.2f}<extra></extra>",
-    ))
+    fig.add_trace(
+        go.Scatter(
+            x=curves.xs,
+            y=curves.current_points,
+            mode="lines",
+            name="当前损益",
+            line={"color": "#FF9800", "width": 2, "dash": "dash"},
+            hovertemplate="当前损益 %{y:+.2f}<extra></extra>",
+        )
+    )
     # Zero line.
     fig.add_hline(y=0, line_dash="solid", line_color="gray", line_width=1)
     # Current spot marker.
     if spot > 0:
         fig.add_vline(
-            x=spot, line_dash="dot", line_color="green", line_width=2,
-            annotation_text=f"现价 {spot:.2f}", annotation_position="top",
+            x=spot,
+            line_dash="dot",
+            line_color="green",
+            line_width=2,
+            annotation_text=f"现价 {spot:.2f}",
+            annotation_position="top",
         )
     # Breakeven markers: find zero-crossings on the expiry curve.
     be_list: list[float] = []
@@ -695,8 +763,14 @@ def _render_payoff_chart(
             frac = -exp[i] / (exp[i + 1] - exp[i]) if exp[i + 1] != exp[i] else 0
             be_list.append(xs[i] + frac * (xs[i + 1] - xs[i]))
     for be in be_list:
-        fig.add_vline(x=be, line_dash="dash", line_color="red", line_width=1,
-                      annotation_text=f"平衡 {be:.2f}", annotation_position="bottom")
+        fig.add_vline(
+            x=be,
+            line_dash="dash",
+            line_color="red",
+            line_width=1,
+            annotation_text=f"平衡 {be:.2f}",
+            annotation_position="bottom",
+        )
 
     fig.update_layout(
         xaxis_title="标的价格",

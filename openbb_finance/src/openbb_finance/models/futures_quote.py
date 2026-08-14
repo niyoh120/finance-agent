@@ -22,9 +22,7 @@ from openbb_finance.registry import build_default_registry
 class FinanceFuturesQuoteQueryParams(QueryParams):
     """Futures quote query."""
 
-    symbol: str = Field(
-        description="Futures symbol, e.g. rb.SHFE, GC.COMEX, AU.SGE. No expiration = main continuous."
-    )
+    symbol: str = Field(description="Futures symbol, e.g. rb.SHFE, GC.COMEX, AU.SGE. No expiration = main continuous.")
     expiration: str | None = Field(
         default=None,
         description="Contract expiration in YYYY-MM form; None for the main continuous contract.",

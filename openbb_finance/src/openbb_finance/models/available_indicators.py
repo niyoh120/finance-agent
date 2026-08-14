@@ -70,15 +70,9 @@ def _normalize_indicator_row(row: Any) -> dict[str, Any]:
     elif isinstance(row, dict):
         values = row
     else:
-        values = {
-            field: getattr(row, field, None)
-            for field in AvailableIndicatorsData.model_fields
-        }
+        values = {field: getattr(row, field, None) for field in AvailableIndicatorsData.model_fields}
 
-    return {
-        field: values.get(field)
-        for field in AvailableIndicatorsData.model_fields
-    }
+    return {field: values.get(field) for field in AvailableIndicatorsData.model_fields}
 
 
 def _dedupe_indicator_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:

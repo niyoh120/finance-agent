@@ -44,11 +44,11 @@ class FinanceConsumerPriceIndexFetcher(
     ) -> list[dict[str, Any]]:
         del credentials
         registry = kwargs.get("registry") or build_default_registry()
-        
+
         # Determine if this is a China data request
         country = (query.country or "").lower()
         is_china = country in {"china", "cn", "中国", "chinese"}
-        
+
         if is_china:
             # Use AKShare for China data
             akshare_source = registry.get("akshare")
@@ -68,10 +68,11 @@ class FinanceConsumerPriceIndexFetcher(
                     rows = _aggregate_annual(rows)
                 return _filter_date_range(rows, query.start_date, query.end_date)
             return []
-        
+
         # For non-China data, try to use OpenBB built-in providers
         try:
             from openbb import obb
+
             result = obb.economy.cpi(
                 country=query.country,
                 transform=query.transform,
@@ -81,7 +82,7 @@ class FinanceConsumerPriceIndexFetcher(
                 end_date=query.end_date,
                 provider="oecd",  # Use OECD as default provider for international data
             )
-            if result and hasattr(result, 'results'):
+            if result and hasattr(result, "results"):
                 return [
                     {
                         "date": item.date,
@@ -92,7 +93,7 @@ class FinanceConsumerPriceIndexFetcher(
                 ]
         except Exception:
             pass
-        
+
         return []
 
     @staticmethod
@@ -150,11 +151,7 @@ def _aggregate_annual(data: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
     rows: list[dict[str, Any]] = []
     for year in sorted(by_year):
-        values = [
-            row.get("value")
-            for row in by_year[year]
-            if row.get("value") is not None
-        ]
+        values = [row.get("value") for row in by_year[year] if row.get("value") is not None]
         rows.append(
             {
                 **by_year[year][-1],

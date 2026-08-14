@@ -70,8 +70,18 @@ def test_futures_exchange_table_covers_all_supported_exchanges():
 
 def test_futures_month_letters_match_industry_convention():
     assert FUTURES_MONTH_LETTERS == {
-        1: "F", 2: "G", 3: "H", 4: "J", 5: "K", 6: "M",
-        7: "N", 8: "Q", 9: "U", 10: "V", 11: "X", 12: "Z",
+        1: "F",
+        2: "G",
+        3: "H",
+        4: "J",
+        5: "K",
+        6: "M",
+        7: "N",
+        8: "Q",
+        9: "U",
+        10: "V",
+        11: "X",
+        12: "Z",
     }
 
 

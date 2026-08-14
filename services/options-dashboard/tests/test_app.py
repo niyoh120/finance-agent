@@ -11,7 +11,8 @@ Validates:
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, timedelta
+from pathlib import Path
 from typing import Any
 
 import pytest
@@ -22,6 +23,9 @@ AppTest = pytest.importorskip("streamlit.testing.v1").AppTest  # type: ignore[at
 import options_dashboard.data as data_mod  # noqa: E402
 from options_dashboard.pages.market import fmt_contract  # noqa: E402
 from options_dashboard.state import STRATEGY_LEGS_KEY  # noqa: E402
+
+# AppTest 相对路径以调用文件为基准解析；用绝对路径保证从仓库根/包目录运行均可。
+APP_PATH = Path(__file__).resolve().parents[1] / "app.py"
 
 
 @pytest.fixture(autouse=True)
@@ -39,15 +43,25 @@ def _fake_chain(symbol: str) -> list[dict[str, Any]]:
     rows = []
     for side in ("call", "put"):
         for strike in (100.0, 105.0):
-            rows.append({
-                "contract_symbol": f"O:{symbol}260918{side[0].upper()}{int(strike*1000):08d}",
-                "option_type": side,
-                "strike": strike, "expiration": "2026-09-18", "dte": 66,
-                "implied_volatility": 0.30, "delta": 0.50 if side == "call" else -0.50,
-                "gamma": 0.01, "theta": -0.02, "vega": 0.1, "mark": 5.1,
-                "theoretical_price": 5.0, "open_interest": 1000, "volume": 10,
-                "underlying_price": 100.0,
-            })
+            rows.append(
+                {
+                    "contract_symbol": f"O:{symbol}260918{side[0].upper()}{int(strike * 1000):08d}",
+                    "option_type": side,
+                    "strike": strike,
+                    "expiration": "2026-09-18",
+                    "dte": 66,
+                    "implied_volatility": 0.30,
+                    "delta": 0.50 if side == "call" else -0.50,
+                    "gamma": 0.01,
+                    "theta": -0.02,
+                    "vega": 0.1,
+                    "mark": 5.1,
+                    "theoretical_price": 5.0,
+                    "open_interest": 1000,
+                    "volume": 10,
+                    "underlying_price": 100.0,
+                }
+            )
     return rows
 
 
@@ -64,12 +78,14 @@ def _fake_treasury(limit: int = 10) -> list[dict[str, Any]]:
 
 
 def _fake_earnings(symbol: str, limit: int = 8) -> list[dict[str, Any]]:
+    # 末条是相对今天的未来财报，避免测试随日历漂移（future_dates 为空会退化到 warning 分支）。
+    upcoming = (date.today() + timedelta(days=7)).isoformat()
     return [
         {"date": "2026-02-10"},
         {"date": "2026-03-10"},
         {"date": "2026-04-10"},
         {"date": "2026-05-10"},
-        {"date": "2026-08-10"},
+        {"date": upcoming},
     ]
 
 
@@ -85,6 +101,7 @@ def _fake_equity_eod(symbol: str, start: str, end: str) -> list[dict[str, Any]]:
 
 # ---------- contract symbol formatting ----------
 
+
 def test_fmt_contract_trader_friendly() -> None:
     assert fmt_contract("O:AAPL260918C00100000") == "AAPL 260918 100C"
     assert fmt_contract("O:NVDA260717P00450000") == "NVDA 260717 450P"
@@ -95,6 +112,7 @@ def test_fmt_contract_trader_friendly() -> None:
 
 # ---------- auto-refresh fmv update ----------
 
+
 class _FakeSessionState(dict):
     """Minimal stand-in for st.session_state used by _refresh_leg_fmvs."""
 
@@ -103,17 +121,24 @@ def test_refresh_leg_fmvs_updates_changed_fmv(monkeypatch: pytest.MonkeyPatch) -
     """_refresh_leg_fmvs rewrites fmv when the chain snapshot changed."""
     from options_dashboard.pages import market as market_mod
 
-    legs = [{
-        "kind": "option", "direction": "buy", "quantity": 1.0,
-        "kind_symbol": "O:AAPL260918C00100000",
-        "iv": 0.30, "fmv": 5.0,  # user-set iv preserved; fmv refreshed
-    }]
+    legs = [
+        {
+            "kind": "option",
+            "direction": "buy",
+            "quantity": 1.0,
+            "kind_symbol": "O:AAPL260918C00100000",
+            "iv": 0.30,
+            "fmv": 5.0,  # user-set iv preserved; fmv refreshed
+        }
+    ]
     monkeypatch.setattr(streamlit, "session_state", _FakeSessionState({STRATEGY_LEGS_KEY: legs}))
 
-    records = [{
-        "contract_symbol": "O:AAPL260918C00100000",
-        "theoretical_price": 6.25,
-    }]
+    records = [
+        {
+            "contract_symbol": "O:AAPL260918C00100000",
+            "theoretical_price": 6.25,
+        }
+    ]
     changed = market_mod._refresh_leg_fmvs(records)
 
     assert changed is True
@@ -125,35 +150,48 @@ def test_refresh_leg_fmvs_noop_when_unchanged(monkeypatch: pytest.MonkeyPatch) -
     """_refresh_leg_fmvs returns False and does not write state when unchanged."""
     from options_dashboard.pages import market as market_mod
 
-    legs = [{
-        "kind": "option", "direction": "buy", "quantity": 1.0,
-        "kind_symbol": "O:AAPL260918C00100000", "fmv": 5.0,
-    }]
+    legs = [
+        {
+            "kind": "option",
+            "direction": "buy",
+            "quantity": 1.0,
+            "kind_symbol": "O:AAPL260918C00100000",
+            "fmv": 5.0,
+        }
+    ]
     fake_state = _FakeSessionState({STRATEGY_LEGS_KEY: legs})
     monkeypatch.setattr(streamlit, "session_state", fake_state)
 
     legs_before = [dict(legs[0])]
-    changed = market_mod._refresh_leg_fmvs([
-        {"contract_symbol": "O:AAPL260918C00100000", "theoretical_price": 5.0},
-    ])
+    changed = market_mod._refresh_leg_fmvs(
+        [
+            {"contract_symbol": "O:AAPL260918C00100000", "theoretical_price": 5.0},
+        ]
+    )
     assert changed is False
     assert legs == legs_before  # untouched
-
 
 
 def test_refresh_leg_fmvs_skips_malformed_price(monkeypatch: pytest.MonkeyPatch) -> None:
     """A non-numeric theoretical_price is skipped, not raised."""
     from options_dashboard.pages import market as market_mod
 
-    legs = [{
-        "kind": "option", "direction": "buy", "quantity": 1.0,
-        "kind_symbol": "O:AAPL260918C00100000", "fmv": 5.0,
-    }]
+    legs = [
+        {
+            "kind": "option",
+            "direction": "buy",
+            "quantity": 1.0,
+            "kind_symbol": "O:AAPL260918C00100000",
+            "fmv": 5.0,
+        }
+    ]
     monkeypatch.setattr(streamlit, "session_state", _FakeSessionState({STRATEGY_LEGS_KEY: legs}))
 
-    changed = market_mod._refresh_leg_fmvs([
-        {"contract_symbol": "O:AAPL260918C00100000", "theoretical_price": "N/A"},
-    ])
+    changed = market_mod._refresh_leg_fmvs(
+        [
+            {"contract_symbol": "O:AAPL260918C00100000", "theoretical_price": "N/A"},
+        ]
+    )
     assert changed is False
     assert legs[0]["fmv"] == 5.0
 
@@ -162,29 +200,37 @@ def test_refresh_leg_fmvs_clears_stale_fmv_on_zero(monkeypatch: pytest.MonkeyPat
     """When CV reports 0/None, a stale positive fmv is cleared to None (shows —)."""
     from options_dashboard.pages import market as market_mod
 
-    legs = [{
-        "kind": "option", "direction": "buy", "quantity": 1.0,
-        "kind_symbol": "O:AAPL260918C00100000", "fmv": 5.0,
-    }]
+    legs = [
+        {
+            "kind": "option",
+            "direction": "buy",
+            "quantity": 1.0,
+            "kind_symbol": "O:AAPL260918C00100000",
+            "fmv": 5.0,
+        }
+    ]
     monkeypatch.setattr(streamlit, "session_state", _FakeSessionState({STRATEGY_LEGS_KEY: legs}))
 
-    changed = market_mod._refresh_leg_fmvs([
-        {"contract_symbol": "O:AAPL260918C00100000", "theoretical_price": 0},
-    ])
+    changed = market_mod._refresh_leg_fmvs(
+        [
+            {"contract_symbol": "O:AAPL260918C00100000", "theoretical_price": 0},
+        ]
+    )
     assert changed is True
     assert legs[0]["fmv"] is None
 
 
 # ---------- page render flows ----------
 
+
 def test_page_prompts_before_symbol_submit() -> None:
-    at = AppTest.from_file("services/options-dashboard/app.py", default_timeout=30).run()
+    at = AppTest.from_file(str(APP_PATH), default_timeout=30).run()
     assert not at.exception
     assert any("输入标的" in i.value for i in at.info)
 
 
 def test_page_renders_chain_when_symbol_set() -> None:
-    at = AppTest.from_file("services/options-dashboard/app.py", default_timeout=30)
+    at = AppTest.from_file(str(APP_PATH), default_timeout=30)
     at.session_state["od_symbol"] = "AAPL"
     at = at.run()
     assert not at.exception
@@ -195,7 +241,7 @@ def test_page_renders_chain_when_symbol_set() -> None:
 
 def test_clicking_add_button_adds_leg() -> None:
     """Clicking a 加入 button on a chain row adds a leg."""
-    at = AppTest.from_file("services/options-dashboard/app.py", default_timeout=30)
+    at = AppTest.from_file(str(APP_PATH), default_timeout=30)
     at.session_state["od_symbol"] = "AAPL"
     at = at.run()
     assert not at.exception
@@ -211,19 +257,39 @@ def test_clicking_add_button_adds_leg() -> None:
 
 def test_strategy_table_is_editable() -> None:
     """Strategy section shows each leg as an editable card with a remove button."""
-    at = AppTest.from_file("services/options-dashboard/app.py", default_timeout=30)
+    at = AppTest.from_file(str(APP_PATH), default_timeout=30)
     at.session_state["od_symbol"] = "AAPL"
     at.session_state[STRATEGY_LEGS_KEY] = [
-        {"kind": "option", "direction": "buy", "quantity": 1.0,
-         "kind_symbol": "O:AAPL260918C00100000", "underlying": "AAPL",
-         "strike": 100.0, "expiration": "2026-09-18", "option_side": "call",
-         "style": "american", "iv": 0.3, "cost": 5.0,
-         "iv_default": 0.3, "cost_default": 5.0},
-        {"kind": "option", "direction": "sell", "quantity": 1.0,
-         "kind_symbol": "O:AAPL260918C00105000", "underlying": "AAPL",
-         "strike": 105.0, "expiration": "2026-09-18", "option_side": "call",
-         "style": "american", "iv": 0.28, "cost": 2.0,
-         "iv_default": 0.28, "cost_default": 2.0},
+        {
+            "kind": "option",
+            "direction": "buy",
+            "quantity": 1.0,
+            "kind_symbol": "O:AAPL260918C00100000",
+            "underlying": "AAPL",
+            "strike": 100.0,
+            "expiration": "2026-09-18",
+            "option_side": "call",
+            "style": "american",
+            "iv": 0.3,
+            "cost": 5.0,
+            "iv_default": 0.3,
+            "cost_default": 5.0,
+        },
+        {
+            "kind": "option",
+            "direction": "sell",
+            "quantity": 1.0,
+            "kind_symbol": "O:AAPL260918C00105000",
+            "underlying": "AAPL",
+            "strike": 105.0,
+            "expiration": "2026-09-18",
+            "option_side": "call",
+            "style": "american",
+            "iv": 0.28,
+            "cost": 2.0,
+            "iv_default": 0.28,
+            "cost_default": 2.0,
+        },
     ]
     at = at.run()
     assert not at.exception
@@ -242,15 +308,27 @@ def test_strategy_table_is_editable() -> None:
 
 def test_earnings_crush_panel_shows_strategy_price_difference() -> None:
     """Post-earnings valuation shows before/after strategy model prices."""
-    at = AppTest.from_file("services/options-dashboard/app.py", default_timeout=30)
+    at = AppTest.from_file(str(APP_PATH), default_timeout=30)
     at.session_state["od_symbol"] = "AAPL"
-    at.session_state["ctx_val_date"] = date(2026, 8, 11)
+    # 估值日期设在未来财报之后（today+30 > today+7），保证 IV Crush 情景可估值。
+    at.session_state["ctx_val_date"] = date.today() + timedelta(days=30)
     at.session_state[STRATEGY_LEGS_KEY] = [
-        {"kind": "option", "direction": "buy", "quantity": 1.0,
-         "kind_symbol": "O:AAPL260918C00100000", "underlying": "AAPL",
-         "strike": 100.0, "expiration": "2026-09-18", "option_side": "call",
-         "style": "american", "iv": 0.3, "cost": 5.0,
-         "iv_default": 0.3, "cost_default": 5.0, "fmv": 5.0},
+        {
+            "kind": "option",
+            "direction": "buy",
+            "quantity": 1.0,
+            "kind_symbol": "O:AAPL260918C00100000",
+            "underlying": "AAPL",
+            "strike": 100.0,
+            "expiration": "2026-09-18",
+            "option_side": "call",
+            "style": "american",
+            "iv": 0.3,
+            "cost": 5.0,
+            "iv_default": 0.3,
+            "cost_default": 5.0,
+            "fmv": 5.0,
+        },
     ]
     at = at.run()
     assert not at.exception
@@ -263,7 +341,7 @@ def test_earnings_crush_panel_shows_strategy_price_difference() -> None:
 
 def test_market_params_independent_reset(monkeypatch: pytest.MonkeyPatch) -> None:
     """Each market param has its own reset button; overriding spot doesn't reset r."""
-    at = AppTest.from_file("services/options-dashboard/app.py", default_timeout=30)
+    at = AppTest.from_file(str(APP_PATH), default_timeout=30)
     at.session_state["od_symbol"] = "AAPL"
     at = at.run()
     assert not at.exception

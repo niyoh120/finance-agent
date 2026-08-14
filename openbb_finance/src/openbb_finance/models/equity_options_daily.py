@@ -43,9 +43,7 @@ class FinanceOptionDailyData(EquityHistoricalData):
     after_hours: float | None = Field(default=None, description="After-hours price.")
 
 
-class FinanceOptionDailyFetcher(
-    Fetcher[FinanceOptionDailyQueryParams, list[FinanceOptionDailyData]]
-):
+class FinanceOptionDailyFetcher(Fetcher[FinanceOptionDailyQueryParams, list[FinanceOptionDailyData]]):
     """Fetcher for ConvexValue option single-day open/close."""
 
     @staticmethod
@@ -84,17 +82,19 @@ class FinanceOptionDailyFetcher(
         del query, kwargs
         if not data:
             raise EmptyDataError()
-        return [FinanceOptionDailyData(
-            symbol=data.get("symbol"),
-            date=_parse_date(data.get("from") or data.get("date")),
-            open=_num(data.get("open")),
-            high=_num(data.get("high")),
-            low=_num(data.get("low")),
-            close=_num(data.get("close")),
-            volume=_num(data.get("volume")),
-            pre_market=_num(data.get("preMarket")),
-            after_hours=_num(data.get("afterHours")),
-        )]
+        return [
+            FinanceOptionDailyData(
+                symbol=data.get("symbol"),
+                date=_parse_date(data.get("from") or data.get("date")),
+                open=_num(data.get("open")),
+                high=_num(data.get("high")),
+                low=_num(data.get("low")),
+                close=_num(data.get("close")),
+                volume=_num(data.get("volume")),
+                pre_market=_num(data.get("preMarket")),
+                after_hours=_num(data.get("afterHours")),
+            )
+        ]
 
 
 def _iso(value: Any) -> str | None:

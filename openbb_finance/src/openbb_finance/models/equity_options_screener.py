@@ -25,9 +25,21 @@ from openbb_finance.sources import convexvalue as cv
 
 # Default output columns cover the fields a screening caller typically wants.
 DEFAULT_COLUMNS: tuple[str, ...] = (
-    "ticker", "underlying_ticker", "expiration_date", "strike_price",
-    "contract_type", "implied_volatility", "delta", "gamma", "theta", "vega",
-    "open_interest", "day_volume", "bid", "ask", "underlying_price",
+    "ticker",
+    "underlying_ticker",
+    "expiration_date",
+    "strike_price",
+    "contract_type",
+    "implied_volatility",
+    "delta",
+    "gamma",
+    "theta",
+    "vega",
+    "open_interest",
+    "day_volume",
+    "bid",
+    "ask",
+    "underlying_price",
 )
 
 
@@ -38,12 +50,8 @@ class FinanceOptionsScreenerQueryParams(ConvexValueQueryParams):
     with any explicit `extra_filters`. Leave a predicate unset to skip it.
     """
 
-    underlying_symbol: str | None = Field(
-        default=None, description="Restrict to one underlying ticker (e.g. SPY)."
-    )
-    option_type: str | None = Field(
-        default=None, description="'call' or 'put'."
-    )
+    underlying_symbol: str | None = Field(default=None, description="Restrict to one underlying ticker (e.g. SPY).")
+    option_type: str | None = Field(default=None, description="'call' or 'put'.")
     min_open_interest: float | None = Field(default=None)
     max_open_interest: float | None = Field(default=None)
     min_volume: float | None = Field(default=None, description="Min day volume.")
@@ -51,17 +59,11 @@ class FinanceOptionsScreenerQueryParams(ConvexValueQueryParams):
     max_iv: float | None = Field(default=None, description="Max implied volatility.")
     delta_min: float | None = Field(default=None)
     delta_max: float | None = Field(default=None)
-    expiration_date: str | None = Field(
-        default=None, description="YYYY-MM-DD expiration filter."
-    )
-    sort_by: str | None = Field(
-        default="open_interest", description="CV field name to sort by."
-    )
+    expiration_date: str | None = Field(default=None, description="YYYY-MM-DD expiration filter.")
+    sort_by: str | None = Field(default="open_interest", description="CV field name to sort by.")
     sort_dir: str = Field(default="desc", description="'asc' or 'desc'.")
     limit: int = Field(default=50, ge=1, le=1000)
-    columns: list[str] | None = Field(
-        default=None, description="CV fields to return. Defaults to DEFAULT_COLUMNS."
-    )
+    columns: list[str] | None = Field(default=None, description="CV fields to return. Defaults to DEFAULT_COLUMNS.")
     extra_filters: list[dict[str, Any]] | None = Field(
         default=None,
         description=(
@@ -71,6 +73,7 @@ class FinanceOptionsScreenerQueryParams(ConvexValueQueryParams):
             '"value": <number|string>}.'
         ),
     )
+
 
 class FinanceOptionsScreenerData(Data):
     """One contract row from an options screen."""
@@ -94,9 +97,7 @@ class FinanceOptionsScreenerData(Data):
     model_config = {"extra": "allow"}
 
 
-class FinanceOptionsScreenerFetcher(
-    Fetcher[FinanceOptionsScreenerQueryParams, list[FinanceOptionsScreenerData]]
-):
+class FinanceOptionsScreenerFetcher(Fetcher[FinanceOptionsScreenerQueryParams, list[FinanceOptionsScreenerData]]):
     """Fetcher for ConvexValue options screens."""
 
     @staticmethod
@@ -111,11 +112,7 @@ class FinanceOptionsScreenerFetcher(
     ) -> dict[str, Any]:
         del credentials, kwargs
         filters = _build_filters(query)
-        sort = (
-            [{"field": query.sort_by, "direction": query.sort_dir}]
-            if query.sort_by
-            else None
-        )
+        sort = [{"field": query.sort_by, "direction": query.sort_dir}] if query.sort_by else None
         return await cv.fetch_screen(
             columns=query.columns or list(DEFAULT_COLUMNS),
             filters=filters,
@@ -134,10 +131,7 @@ class FinanceOptionsScreenerFetcher(
         rows = data.get("rows", [])
         if not rows:
             raise EmptyDataError()
-        return [
-            FinanceOptionsScreenerData.model_validate(dict(zip(columns, row, strict=False)))
-            for row in rows
-        ]
+        return [FinanceOptionsScreenerData.model_validate(dict(zip(columns, row, strict=False))) for row in rows]
 
 
 def _build_filters(query: FinanceOptionsScreenerQueryParams) -> list[dict[str, Any]]:

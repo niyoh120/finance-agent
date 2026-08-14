@@ -44,11 +44,11 @@ class FinanceEconomicIndicatorsFetcher(
     ) -> list[dict[str, Any]]:
         del credentials
         registry = kwargs.get("registry") or build_default_registry()
-        
+
         # Determine if this is a China data request
         country = (query.country or "").lower()
         is_china = country in {"china", "cn", "中国", "chinese"}
-        
+
         if is_china:
             # Use AKShare for China data
             akshare_source = registry.get("akshare")
@@ -62,7 +62,7 @@ class FinanceEconomicIndicatorsFetcher(
                 )
                 return data
             return []
-        
+
         # For non-China data, try to use OpenBB built-in providers
         # This requires the openbb package to be installed with relevant extensions
         try:
@@ -79,7 +79,7 @@ class FinanceEconomicIndicatorsFetcher(
                 end_date=query.end_date,
                 provider="econdb",  # Use econdb as default provider
             )
-            if result and hasattr(result, 'results'):
+            if result and hasattr(result, "results"):
                 return [
                     {
                         "date": item.date,
@@ -92,7 +92,7 @@ class FinanceEconomicIndicatorsFetcher(
                 ]
         except Exception:
             pass
-        
+
         return []
 
     @staticmethod

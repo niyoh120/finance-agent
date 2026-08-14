@@ -14,7 +14,6 @@ on:
         options:
           - all
           - migrate
-          - macro-scraper
           - options-scraper
           - options-dashboard
       push:
@@ -42,12 +41,6 @@ jobs:
             image: finance-migrate
             dockerfile: migrate/Dockerfile
             build_args: ""
-          - service: macro-scraper
-            image: finance-macro-scraper
-            dockerfile: services/Dockerfile
-            build_args: |
-              MODULE_NAME=macro-scraper
-              MODULE_ENTRY=macro_scraper.main
           - service: options-scraper
             image: finance-options-scraper
             dockerfile: services/Dockerfile

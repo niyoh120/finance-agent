@@ -32,9 +32,7 @@ class FinanceOptionHistoricalQueryParams(ConvexValueQueryParams):
     start_date: str | None = Field(default=None)
     end_date: str | None = Field(default=None)
     multiplier: int = Field(default=1, ge=1, description="Bar multiplier (e.g. 1, 5).")
-    timespan: Literal[
-        "second", "minute", "hour", "day", "week", "month", "quarter", "year"
-    ] = Field(
+    timespan: Literal["second", "minute", "hour", "day", "week", "month", "quarter", "year"] = Field(
         default="day",
         description="Bar timespan: second|minute|hour|day|week|month|quarter|year.",
     )
@@ -47,9 +45,7 @@ class FinanceOptionHistoricalData(EquityHistoricalData):
     transactions: int | None = Field(default=None, description="Trade count (CV n).")
 
 
-class FinanceOptionHistoricalFetcher(
-    Fetcher[FinanceOptionHistoricalQueryParams, list[FinanceOptionHistoricalData]]
-):
+class FinanceOptionHistoricalFetcher(Fetcher[FinanceOptionHistoricalQueryParams, list[FinanceOptionHistoricalData]]):
     """Fetcher for ConvexValue option aggregate bars."""
 
     @staticmethod

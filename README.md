@@ -6,7 +6,6 @@ Python monorepo for finance data ingestion, shared database models, and the Open
 
 | 服务 | 目录 | 描述 |
 | :--- | :--- | :--- |
-| macro-scraper | `services/macro-scraper` | 抓取宏观金融数据并写入数据库 |
 | options-scraper | `services/options-scraper` | 抓取 Discord `UW Live Options Flow` 消息并写入数据库 |
 | options-dashboard | `services/options-dashboard` | 内网 Streamlit 期权交易辅助面板（期权链、策略构建器、财报 IV Crush） |
 | migrate | `migrate/Dockerfile` | 运行 Alembic 数据库迁移 |
@@ -49,7 +48,6 @@ mise run db-upgrade
 启动服务：
 
 ```bash
-mise run macro-scraper
 mise run options-scraper
 mise run openbb-agent-cli
 mise run options-dashboard
@@ -78,7 +76,6 @@ mise run docker-build-push-all
 当前镜像：
 
 - `finance-migrate`
-- `finance-macro-scraper`
 - `finance-options-scraper`
 
 ## OpenBB Finance Provider
@@ -95,7 +92,6 @@ mise run docker-build-push-all
 ├── openbb-agent-cli/      # JSON CLI
 ├── openbb_finance/        # OpenBB provider
 ├── services/
-│   ├── macro-scraper/     # 宏观抓取
 │   ├── options-dashboard/ # 期权面板
 │   └── options-scraper/   # Discord 期权流抓取
 ├── shared/                # 共享 Python 模块

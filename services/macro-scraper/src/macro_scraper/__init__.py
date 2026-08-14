@@ -1,1 +1,0 @@
-"""Macro data scraper service."""

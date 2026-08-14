@@ -344,8 +344,6 @@ async def test_futures_historical_fetcher_unlisted_month_raises_empty(monkeypatc
     from openbb_core.provider.utils.errors import EmptyDataError
     from openbb_finance.models.futures_historical import FinanceFuturesHistoricalFetcher
 
-    query = FinanceFuturesHistoricalFetcher.transform_query(
-        {"symbol": "IF.CFFEX", "expiration": "2026-10"}
-    )
+    query = FinanceFuturesHistoricalFetcher.transform_query({"symbol": "IF.CFFEX", "expiration": "2026-10"})
     with pytest.raises(EmptyDataError):
         FinanceFuturesHistoricalFetcher.transform_data(query, [])

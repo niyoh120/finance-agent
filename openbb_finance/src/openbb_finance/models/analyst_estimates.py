@@ -51,9 +51,7 @@ class FinanceAnalystEstimatesData(AnalystEstimatesData):
     }
 
 
-class FinanceAnalystEstimatesFetcher(
-    Fetcher[FinanceAnalystEstimatesQueryParams, list[FinanceAnalystEstimatesData]]
-):
+class FinanceAnalystEstimatesFetcher(Fetcher[FinanceAnalystEstimatesQueryParams, list[FinanceAnalystEstimatesData]]):
     """Fetcher for ConvexValue/FMP analyst estimates."""
 
     @staticmethod

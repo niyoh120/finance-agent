@@ -112,9 +112,7 @@ class FinanceIncomeStatementData(IncomeStatementData):
     weighted_average_diluted_shares_outstanding: int | None = Field(default=None)
 
 
-class FinanceIncomeStatementFetcher(
-    Fetcher[FinanceIncomeStatementQueryParams, list[FinanceIncomeStatementData]]
-):
+class FinanceIncomeStatementFetcher(Fetcher[FinanceIncomeStatementQueryParams, list[FinanceIncomeStatementData]]):
     """Fetcher for ConvexValue/FMP income statements."""
 
     @staticmethod

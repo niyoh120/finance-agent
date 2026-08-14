@@ -3,7 +3,7 @@
 ## Commands
 - Use `mise tasks ls` to discover the current task list before running project commands.
 - Install workspace dependencies with `mise run install`.
-- Start services through `mise run <task-name>` for app tasks such as `macro-scraper` and `options-scraper`.
+- Start services through `mise run <task-name>` for app tasks such as `options-scraper`.
 - Manage database migrations with `mise run db-upgrade`, `mise run db-downgrade <revision>`, `mise run db-revision <message>`, `mise run db-revision-manual <message>`, `mise run db-current`, and `mise run db-history`.
 - Install and run hooks with `mise run hooks-install` and `mise run hooks-run`.
 - Build and publish container images with the `mise run docker-build-*`, `mise run docker-push-*`, and `mise run docker-build-push-*` tasks when relevant.
@@ -28,7 +28,7 @@
 
 ## Commit Convention
 - Follow the existing Conventional Commit style such as `feat(scope): ...`, `fix(scope): ...`, and `chore(scope): ...`.
-- Use a concise scope that matches the changed service or subsystem, such as `openbb`, `macro-scraper`, `options-scraper`, or `db`.
+- Use a concise scope that matches the changed service or subsystem, such as `openbb`, `options-scraper`, or `db`.
 - Write commit messages in Chinese, using imperative mood and describing the intent of the change.
 - Keep each commit focused on one logical change so history stays easy to review and revert.
 

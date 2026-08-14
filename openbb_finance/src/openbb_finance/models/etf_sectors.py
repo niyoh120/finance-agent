@@ -32,9 +32,7 @@ class FinanceEtfSectorsData(EtfSectorsData):
     weight: float = Field(description="Sector weight (percentage).")
 
 
-class FinanceEtfSectorsFetcher(
-    Fetcher[FinanceEtfSectorsQueryParams, list[FinanceEtfSectorsData]]
-):
+class FinanceEtfSectorsFetcher(Fetcher[FinanceEtfSectorsQueryParams, list[FinanceEtfSectorsData]]):
     """Fetcher for ConvexValue/FMP ETF sector weightings."""
 
     @staticmethod

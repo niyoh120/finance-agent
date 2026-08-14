@@ -171,23 +171,24 @@ class EastmoneySource:
         for item in items:
             if not isinstance(item, dict):
                 continue
-            results.append({
-                "symbol": str(item.get("f12", "")),
-                "name": str(item.get("f14", "")),
-                "price": item.get("f2"),
-                "change_percent": item.get("f3"),
-                "change": item.get("f4"),
-                "high": item.get("f15"),
-                "low": item.get("f16"),
-                "open": item.get("f17"),
-                "prev_close": item.get("f18"),
-                "volume": item.get("f5"),
-                "amount": item.get("f6"),
-                "source": "eastmoney",
-            })
+            results.append(
+                {
+                    "symbol": str(item.get("f12", "")),
+                    "name": str(item.get("f14", "")),
+                    "price": item.get("f2"),
+                    "change_percent": item.get("f3"),
+                    "change": item.get("f4"),
+                    "high": item.get("f15"),
+                    "low": item.get("f16"),
+                    "open": item.get("f17"),
+                    "prev_close": item.get("f18"),
+                    "volume": item.get("f5"),
+                    "amount": item.get("f6"),
+                    "source": "eastmoney",
+                }
+            )
 
         return results
-
 
     async def fetch_etf_search(self, query: str) -> list[dict[str, Any]]:
         """Search ETFs via Eastmoney API.
@@ -236,7 +237,7 @@ class EastmoneySource:
         """Check if the item is an index."""
         classify = item.get("Classify", "")
         security_type = item.get("SecurityType")
-        
+
         # A股指数
         if classify == "Index":
             return True
@@ -258,12 +259,11 @@ class EastmoneySource:
             return code
         return code
 
-
     def _is_etf(self, item: dict[str, Any]) -> bool:
         """Check if the item is an ETF."""
         classify = item.get("Classify", "")
         security_type = item.get("SecurityType")
-        
+
         # A股 ETF (Fund 类型，SecurityType=8)
         if classify == "Fund" and security_type == "8":
             return True
@@ -282,7 +282,6 @@ class EastmoneySource:
         if classify == "UsStock":
             return code
         return code
-
 
     def _normalize_symbol(self, code: str, classify: str) -> str:
         """Normalize symbol to standard format."""
@@ -338,23 +337,22 @@ class EastmoneySource:
                 return True
         return False
 
-
     async def fetch_price(self, query: PriceQuery) -> list[dict[str, Any]]:
         """Fetch ETF price data via Eastmoney API.
-        
+
         Supports A-share ETFs only.
         """
         symbol = query.symbol
         plain = cn_plain_symbol(symbol)
-        
+
         # Only support A-share ETFs
         if plain is None:
             raise SourceError(f"Eastmoney price only supports A-share ETF symbols: {symbol}")
-        
+
         exchange = cn_exchange(symbol)
         market_code = "1" if exchange == "sh" else "0"
         secid = f"{market_code}.{plain}"
-        
+
         # Map interval to Eastmoney klt parameter
         interval = normalize_interval(query.interval)
         klt_map = {
@@ -365,11 +363,11 @@ class EastmoneySource:
         if interval not in klt_map:
             raise SourceError(f"Eastmoney unsupported interval: {query.interval}")
         klt = klt_map[interval]
-        
+
         # Map adjustment to Eastmoney fqt parameter
         # 0: No adjustment, 1: Forward adjustment (qfq), 2: Backward adjustment (hfq)
         fqt = "1" if query.adjusted else "0"
-        
+
         url = "https://push2his.eastmoney.com/api/qt/stock/kline/get"
         params = {
             "secid": secid,
@@ -381,40 +379,43 @@ class EastmoneySource:
             "end": query.end_date.strftime("%Y%m%d") if query.end_date else "20500101",
         }
         headers = {"User-Agent": "Mozilla/5.0", "Referer": "https://www.eastmoney.com/"}
-        
+
         async with httpx.AsyncClient(timeout=10.0) as client:
             response = await client.get(url, params=params, headers=headers)
-        
+
         if response.is_error:
             raise SourceError(f"Eastmoney price request failed: {response.status_code}")
-        
+
         try:
             data = json.loads(response.text)
         except json.JSONDecodeError as exc:
             raise SourceError(f"Eastmoney returned invalid JSON: {exc}") from exc
-        
+
         klines = data.get("data", {}).get("klines", [])
         if not isinstance(klines, list) or not klines:
             return []
-        
+
         results: list[dict[str, Any]] = []
         for kline in klines:
             parts = kline.split(",")
             if len(parts) < 6:
                 continue
             date_str, open_p, close_p, high_p, low_p, volume = parts[:6]
-            results.append({
-                "symbol": symbol,
-                "date": datetime.strptime(date_str, "%Y-%m-%d").date(),
-                "open": float(open_p),
-                "high": float(high_p),
-                "low": float(low_p),
-                "close": float(close_p),
-                "volume": float(volume) if volume else None,
-                "source": "eastmoney",
-            })
-        
+            results.append(
+                {
+                    "symbol": symbol,
+                    "date": datetime.strptime(date_str, "%Y-%m-%d").date(),
+                    "open": float(open_p),
+                    "high": float(high_p),
+                    "low": float(low_p),
+                    "close": float(close_p),
+                    "volume": float(volume) if volume else None,
+                    "source": "eastmoney",
+                }
+            )
+
         return results
+
 
 def normalize_hk_symbol(code: str) -> str:
     """Normalize HK symbol to XXXX.HK format.
@@ -426,5 +427,3 @@ def normalize_hk_symbol(code: str) -> str:
     stripped = code.lstrip("0") or "0"
     padded = stripped.zfill(4)
     return f"{padded}.HK"
-
-

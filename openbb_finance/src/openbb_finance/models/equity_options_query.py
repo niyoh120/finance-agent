@@ -29,13 +29,10 @@ class FinanceOptionsQueryQueryParams(ConvexValueQueryParams):
 
     sql: str = Field(
         description=(
-            "Read-only SELECT or WITH query against the options_snapshots table. "
-            "DDL/DML are rejected server-side."
+            "Read-only SELECT or WITH query against the options_snapshots table. DDL/DML are rejected server-side."
         )
     )
-    max_rows: int = Field(
-        default=5000, ge=1, le=50000, description="Result row cap."
-    )
+    max_rows: int = Field(default=5000, ge=1, le=50000, description="Result row cap.")
 
 
 class FinanceOptionsQueryData(Data):
@@ -49,9 +46,7 @@ class FinanceOptionsQueryData(Data):
     model_config = {"extra": "allow"}
 
 
-class FinanceOptionsQueryFetcher(
-    Fetcher[FinanceOptionsQueryQueryParams, list[FinanceOptionsQueryData]]
-):
+class FinanceOptionsQueryFetcher(Fetcher[FinanceOptionsQueryQueryParams, list[FinanceOptionsQueryData]]):
     """Fetcher for ConvexValue /query (aggregate result wrapped in a list)."""
 
     @staticmethod
@@ -75,16 +70,16 @@ class FinanceOptionsQueryFetcher(
     ) -> list[FinanceOptionsQueryData]:
         del query, kwargs
         if not isinstance(data, dict) or not isinstance(data.get("rows"), list):
-            raise cv.ConvexValueError(
-                f"ConvexValue query returned unexpected response shape: {data!r}"
-            )
+            raise cv.ConvexValueError(f"ConvexValue query returned unexpected response shape: {data!r}")
         rows = data["rows"]
         # Empty rows is a legitimate successful result (e.g. a SELECT that
         # matches nothing). Return the wrapper so route consumers get a
         # consistent empty-success shape.
-        return [FinanceOptionsQueryData(
-            rows=rows,
-            row_count=data.get("row_count", len(rows)),
-            truncated=data.get("truncated", False),
-            elapsed_ms=data.get("elapsed_ms"),
-        )]
+        return [
+            FinanceOptionsQueryData(
+                rows=rows,
+                row_count=data.get("row_count", len(rows)),
+                truncated=data.get("truncated", False),
+                elapsed_ms=data.get("elapsed_ms"),
+            )
+        ]

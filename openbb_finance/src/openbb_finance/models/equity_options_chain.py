@@ -67,9 +67,7 @@ class FinanceOptionsChainData(Data):
     ask: float | None = Field(default=None)
     ask_size: float | None = Field(default=None)
     mark: float | None = Field(default=None, description="Mid-price (CV midpoint).")
-    theoretical_price: float | None = Field(
-        default=None, description="Model price (CV fair_market_value)."
-    )
+    theoretical_price: float | None = Field(default=None, description="Model price (CV fair_market_value).")
     break_even_price: float | None = Field(default=None)
     # open interest + volume
     open_interest: float | None = Field(default=None)
@@ -85,23 +83,17 @@ class FinanceOptionsChainData(Data):
     vwap: float | None = Field(default=None, description="Day VWAP (CV day_vwap).")
     # contract metadata
     exercise_style: str | None = Field(default=None)
-    contract_size: float | None = Field(
-        default=None, description="Shares per contract (CV shares_per_contract)."
-    )
+    contract_size: float | None = Field(default=None, description="Shares per contract (CV shares_per_contract).")
     # underlying
     underlying_symbol: str | None = Field(default=None)
     underlying_price: float | None = Field(default=None)
     underlying_change_to_break_even: float | None = Field(default=None)
-    last_trade_price: float | None = Field(
-        default=None, description="CV trade_price."
-    )
+    last_trade_price: float | None = Field(default=None, description="CV trade_price.")
     dte: int | None = Field(default=None, description="Days to expiration (computed).")
     fetched_at: datetime | None = Field(default=None)
 
 
-class FinanceOptionsChainFetcher(
-    Fetcher[FinanceOptionsChainQueryParams, list[FinanceOptionsChainData]]
-):
+class FinanceOptionsChainFetcher(Fetcher[FinanceOptionsChainQueryParams, list[FinanceOptionsChainData]]):
     """Fetcher for ConvexValue options chains."""
 
     @staticmethod
@@ -160,15 +152,25 @@ def _flatten_chain(raw: dict[str, Any]) -> list[dict[str, Any]]:
             put_fields = strike_row[2]
             if isinstance(call_fields, list) and _has_data(call_fields):
                 records.append(
-                    _row_to_dict(call_fields, query_symbol=str(raw.get("symbol", "")),
-                                 strike=strike, expiration=expiration, dte=dte,
-                                 fallback_option_type="call")
+                    _row_to_dict(
+                        call_fields,
+                        query_symbol=str(raw.get("symbol", "")),
+                        strike=strike,
+                        expiration=expiration,
+                        dte=dte,
+                        fallback_option_type="call",
+                    )
                 )
             if isinstance(put_fields, list) and _has_data(put_fields):
                 records.append(
-                    _row_to_dict(put_fields, query_symbol=str(raw.get("symbol", "")),
-                                 strike=strike, expiration=expiration, dte=dte,
-                                 fallback_option_type="put")
+                    _row_to_dict(
+                        put_fields,
+                        query_symbol=str(raw.get("symbol", "")),
+                        strike=strike,
+                        expiration=expiration,
+                        dte=dte,
+                        fallback_option_type="put",
+                    )
                 )
     return records
 

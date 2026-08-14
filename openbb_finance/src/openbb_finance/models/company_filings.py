@@ -45,9 +45,7 @@ class FinanceCompanyFilingsData(CompanyFilingsData):
     link: str | None = Field(default=None, description="Standard filing URL.")
 
 
-class FinanceCompanyFilingsFetcher(
-    Fetcher[FinanceCompanyFilingsQueryParams, list[FinanceCompanyFilingsData]]
-):
+class FinanceCompanyFilingsFetcher(Fetcher[FinanceCompanyFilingsQueryParams, list[FinanceCompanyFilingsData]]):
     """Fetcher for ConvexValue/FMP SEC 8-K filings."""
 
     @staticmethod

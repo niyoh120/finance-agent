@@ -43,10 +43,12 @@ def test_stock_leg_sign_and_delta() -> None:
 
 def test_short_option_negates_greeks() -> None:
     ctx = PricingContext(spot=100.0, r=0.04, q=0.0, default_iv=0.3)
-    long_call = Leg("option", "buy", 1, "AAPL", strike=100.0,
-                    expiration=date(2026, 9, 18), option_side="call", cost=5.0)
-    short_call = Leg("option", "sell", 1, "AAPL", strike=100.0,
-                     expiration=date(2026, 9, 18), option_side="call", cost=5.0)
+    long_call = Leg(
+        "option", "buy", 1, "AAPL", strike=100.0, expiration=date(2026, 9, 18), option_side="call", cost=5.0
+    )
+    short_call = Leg(
+        "option", "sell", 1, "AAPL", strike=100.0, expiration=date(2026, 9, 18), option_side="call", cost=5.0
+    )
     both = value_strategy([long_call, short_call], ctx)
     # Delta should cancel out.
     assert both.net_greeks["delta"] == pytest.approx(0.0, abs=1e-9)
@@ -55,8 +57,12 @@ def test_short_option_negates_greeks() -> None:
 def test_bull_call_spread_bounded_payoff() -> None:
     expiration = date(2026, 9, 18)
     legs = template_bull_call_spread(
-        "AAPL", long_strike=100.0, short_strike=110.0, expiration=expiration,
-        long_cost=5.0, short_cost=2.0,
+        "AAPL",
+        long_strike=100.0,
+        short_strike=110.0,
+        expiration=expiration,
+        long_cost=5.0,
+        short_cost=2.0,
     )
     payoff = terminal_payoff(legs)
     # Max profit = (110-100) - net debit (5-2) = 7.
@@ -69,9 +75,7 @@ def test_bull_call_spread_bounded_payoff() -> None:
 
 def test_long_straddle_two_breakevens() -> None:
     expiration = date(2026, 9, 18)
-    legs = template_straddle(
-        "AAPL", strike=100.0, expiration=expiration, call_cost=5.0, put_cost=5.0
-    )
+    legs = template_straddle("AAPL", strike=100.0, expiration=expiration, call_cost=5.0, put_cost=5.0)
     payoff = terminal_payoff(legs)
     assert len(payoff.breakevens) >= 2
     assert payoff.max_loss == pytest.approx(10.0, abs=0.05)  # total premium
@@ -80,10 +84,16 @@ def test_long_straddle_two_breakevens() -> None:
 def test_iron_condor_bounded() -> None:
     expiration = date(2026, 9, 18)
     legs = template_iron_condor(
-        "AAPL", expiration,
-        put_long=85.0, put_short=90.0, call_short=110.0, call_long=115.0,
-        put_long_cost=0.5, put_short_cost=1.0,
-        call_short_cost=1.0, call_long_cost=0.5,
+        "AAPL",
+        expiration,
+        put_long=85.0,
+        put_short=90.0,
+        call_short=110.0,
+        call_long=115.0,
+        put_long_cost=0.5,
+        put_short_cost=1.0,
+        call_short_cost=1.0,
+        call_long_cost=0.5,
     )
     payoff = terminal_payoff(legs)
     # Both max profit and max loss should be finite for an iron condor.
@@ -96,8 +106,7 @@ def test_iron_condor_bounded() -> None:
 def test_covered_call_stock_plus_option() -> None:
     expiration = date(2026, 9, 18)
     stock = Leg("stock", "buy", 100, "AAPL", cost=200.0)
-    short_call = Leg("option", "sell", 1, "AAPL", strike=210.0,
-                     expiration=expiration, option_side="call", cost=3.0)
+    short_call = Leg("option", "sell", 1, "AAPL", strike=210.0, expiration=expiration, option_side="call", cost=3.0)
     payoff = terminal_payoff([stock, short_call])
     # At very high prices the stock keeps making money, so payoff is not capped
     # from above (max_profit finite at scan boundary, but strategy is bullish).
@@ -105,20 +114,23 @@ def test_covered_call_stock_plus_option() -> None:
 
 
 def test_multi_expiry_rejected() -> None:
-    a = Leg("option", "buy", 1, "AAPL", strike=100.0,
-            expiration=date(2026, 9, 18), option_side="call", cost=5.0)
-    b = Leg("option", "buy", 1, "AAPL", strike=100.0,
-            expiration=date(2026, 10, 16), option_side="call", cost=5.0)
+    a = Leg("option", "buy", 1, "AAPL", strike=100.0, expiration=date(2026, 9, 18), option_side="call", cost=5.0)
+    b = Leg("option", "buy", 1, "AAPL", strike=100.0, expiration=date(2026, 10, 16), option_side="call", cost=5.0)
     with pytest.raises(MixedExpiryError):
         terminal_payoff([a, b])
 
 
 # ---------- suggested limit price ----------
 
+
 def test_suggest_limit_price_buy_direction() -> None:
     s = suggest_limit_price(
-        fmv=5.0, model_price=5.2, day_vwap=5.1, day_close=5.15,
-        open_interest=500, volume=200,
+        fmv=5.0,
+        model_price=5.2,
+        day_vwap=5.1,
+        day_close=5.15,
+        open_interest=500,
+        volume=200,
     )
     directional = s.as_directional("buy")
     assert directional["conservative"] < directional["neutral"] < directional["aggressive"]
@@ -126,8 +138,12 @@ def test_suggest_limit_price_buy_direction() -> None:
 
 def test_suggest_limit_price_sell_direction_reversed() -> None:
     s = suggest_limit_price(
-        fmv=5.0, model_price=5.2, day_vwap=5.1, day_close=5.15,
-        open_interest=500, volume=200,
+        fmv=5.0,
+        model_price=5.2,
+        day_vwap=5.1,
+        day_close=5.15,
+        open_interest=500,
+        volume=200,
     )
     directional = s.as_directional("sell")
     keys = list(directional)
@@ -137,8 +153,12 @@ def test_suggest_limit_price_sell_direction_reversed() -> None:
 
 def test_suggest_limit_price_sparse_anchors_returns_none_tiers() -> None:
     s = suggest_limit_price(
-        fmv=None, model_price=5.0, day_vwap=None, day_close=None,
-        open_interest=None, volume=None,
+        fmv=None,
+        model_price=5.0,
+        day_vwap=None,
+        day_close=None,
+        open_interest=None,
+        volume=None,
     )
     assert s.conservative is None
     assert s.neutral is None
@@ -148,8 +168,13 @@ def test_suggest_limit_price_sparse_anchors_returns_none_tiers() -> None:
 
 def test_suggest_limit_price_0dte_forces_low_confidence() -> None:
     s = suggest_limit_price(
-        fmv=5.0, model_price=5.1, day_vwap=5.05, day_close=5.05,
-        open_interest=1000, volume=500, is_0dte=True,
+        fmv=5.0,
+        model_price=5.1,
+        day_vwap=5.05,
+        day_close=5.05,
+        open_interest=1000,
+        volume=500,
+        is_0dte=True,
     )
     assert s.confidence == "low"
     # Tiers may still be returned, but note must flag the caveat.
@@ -158,10 +183,10 @@ def test_suggest_limit_price_0dte_forces_low_confidence() -> None:
 
 # ---------- current_payoff_curve ----------
 
+
 def test_current_payoff_curve_long_call_shape() -> None:
     """Long call: expiry PnL is flat-then-linear; current PnL is curved above."""
-    leg = Leg("option", "buy", 1, "AAPL", strike=100.0,
-              expiration=date(2026, 9, 18), option_side="call", cost=5.0)
+    leg = Leg("option", "buy", 1, "AAPL", strike=100.0, expiration=date(2026, 9, 18), option_side="call", cost=5.0)
     ctx = PricingContext(spot=100.0, r=0.04, q=0.0, default_iv=0.3)
     curves = current_payoff_curve([leg], ctx=ctx)
     assert len(curves.xs) == len(curves.expiry_points) == len(curves.current_points)
@@ -275,10 +300,8 @@ def test_current_payoff_curve_bull_spread_no_negative_expiry() -> None:
     """Bull call spread: expiry PnL bounded between -net_debit and +max_profit."""
     expiration = date(2026, 9, 18)
     legs = [
-        Leg("option", "buy", 1, "AAPL", strike=100.0, expiration=expiration,
-            option_side="call", cost=5.0),
-        Leg("option", "sell", 1, "AAPL", strike=110.0, expiration=expiration,
-            option_side="call", cost=2.0),
+        Leg("option", "buy", 1, "AAPL", strike=100.0, expiration=expiration, option_side="call", cost=5.0),
+        Leg("option", "sell", 1, "AAPL", strike=110.0, expiration=expiration, option_side="call", cost=2.0),
     ]
     ctx = PricingContext(spot=100.0, r=0.04, q=0.0, default_iv=0.3)
     curves = current_payoff_curve(legs, ctx=ctx)
@@ -290,10 +313,10 @@ def test_current_payoff_curve_bull_spread_no_negative_expiry() -> None:
 
 # ---------- effective_leverage ----------
 
+
 def test_effective_leverage_long_call_matches_lambda_definition() -> None:
     """For a single long call, effective leverage == delta * spot / price."""
-    leg = Leg("option", "buy", 1, "AAPL", strike=100.0,
-              expiration=date(2026, 9, 18), option_side="call", cost=5.0)
+    leg = Leg("option", "buy", 1, "AAPL", strike=100.0, expiration=date(2026, 9, 18), option_side="call", cost=5.0)
     ctx = PricingContext(spot=100.0, r=0.04, q=0.0, default_iv=0.3)
     val = value_strategy([leg], ctx)
     expected = val.net_greeks["delta"] * 100.0 / val.net_price
@@ -304,8 +327,7 @@ def test_effective_leverage_long_call_matches_lambda_definition() -> None:
 
 def test_effective_leverage_short_call_is_negative() -> None:
     """Short call: negative delta-equivalent exposure over positive credit."""
-    leg = Leg("option", "sell", 1, "AAPL", strike=100.0,
-              expiration=date(2026, 9, 18), option_side="call", cost=5.0)
+    leg = Leg("option", "sell", 1, "AAPL", strike=100.0, expiration=date(2026, 9, 18), option_side="call", cost=5.0)
     ctx = PricingContext(spot=100.0, r=0.04, q=0.0, default_iv=0.3)
     val = value_strategy([leg], ctx)
     lev = effective_leverage(val, spot=100.0)
@@ -314,10 +336,12 @@ def test_effective_leverage_short_call_is_negative() -> None:
 
 def test_effective_leverage_zero_cost_structure_is_none() -> None:
     """Delta-hedged or zero-net-price structure -> leverage undefined."""
-    long_call = Leg("option", "buy", 1, "AAPL", strike=100.0,
-                    expiration=date(2026, 9, 18), option_side="call", cost=5.0)
-    short_call = Leg("option", "sell", 1, "AAPL", strike=100.0,
-                     expiration=date(2026, 9, 18), option_side="call", cost=5.0)
+    long_call = Leg(
+        "option", "buy", 1, "AAPL", strike=100.0, expiration=date(2026, 9, 18), option_side="call", cost=5.0
+    )
+    short_call = Leg(
+        "option", "sell", 1, "AAPL", strike=100.0, expiration=date(2026, 9, 18), option_side="call", cost=5.0
+    )
     ctx = PricingContext(spot=100.0, r=0.04, q=0.0, default_iv=0.3)
     val = value_strategy([long_call, short_call], ctx)
     assert effective_leverage(val, spot=100.0) is None

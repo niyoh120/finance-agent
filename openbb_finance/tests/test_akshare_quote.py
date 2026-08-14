@@ -76,9 +76,7 @@ async def test_akshare_adjusted_intraday_uses_qfq(monkeypatch):
     monkeypatch.setitem(sys.modules, "akshare", SimpleNamespace(stock_zh_a_hist_min_em=stock_zh_a_hist_min_em))
 
     source = AkshareSource(SourceConfig(name="akshare", enabled=True))
-    result = await source.fetch_price(
-        PriceQuery(symbol="600000.XSHG", market="cn", interval="5m", adjusted=True)
-    )
+    result = await source.fetch_price(PriceQuery(symbol="600000.XSHG", market="cn", interval="5m", adjusted=True))
 
     assert captured == {"symbol": "600000", "period": "5", "adjust": "qfq"}
     assert result[0]["date"] == datetime(2026, 5, 8, 9, 35)
@@ -139,10 +137,26 @@ async def test_akshare_futures_price_uses_sina_main_continuous_code(monkeypatch)
         assert symbol == "IF0"
         return pd.DataFrame(
             [
-                {"date": "2026-08-06", "open": 4585.2, "high": 4626.0, "low": 4570.8, "close": 4612.0,
-                 "volume": 64989, "hold": 146571, "settle": 0.0},
-                {"date": "2026-08-07", "open": 4620.0, "high": 4656.2, "low": 4604.6, "close": 4645.6,
-                 "volume": 65609, "hold": 151018, "settle": 0.0},
+                {
+                    "date": "2026-08-06",
+                    "open": 4585.2,
+                    "high": 4626.0,
+                    "low": 4570.8,
+                    "close": 4612.0,
+                    "volume": 64989,
+                    "hold": 146571,
+                    "settle": 0.0,
+                },
+                {
+                    "date": "2026-08-07",
+                    "open": 4620.0,
+                    "high": 4656.2,
+                    "low": 4604.6,
+                    "close": 4645.6,
+                    "volume": 65609,
+                    "hold": 151018,
+                    "settle": 0.0,
+                },
             ]
         )
 
@@ -163,16 +177,22 @@ async def test_akshare_futures_price_month_contract_code(monkeypatch):
         assert symbol == "IF2609"
         return pd.DataFrame(
             [
-                {"date": "2026-08-07", "open": 4620.0, "high": 4656.2, "low": 4604.6, "close": 4645.6,
-                 "volume": 65609, "hold": 151018, "settle": 0.0},
+                {
+                    "date": "2026-08-07",
+                    "open": 4620.0,
+                    "high": 4656.2,
+                    "low": 4604.6,
+                    "close": 4645.6,
+                    "volume": 65609,
+                    "hold": 151018,
+                    "settle": 0.0,
+                },
             ]
         )
 
     monkeypatch.setitem(sys.modules, "akshare", _akshare_fake(futures_zh_daily_sina=futures_zh_daily_sina))
     source = AkshareSource(SourceConfig(name="akshare", enabled=True))
-    result = await source.fetch_futures_price(
-        PriceQuery(symbol="IF.CFFEX", market="future", expiration="2026-09")
-    )
+    result = await source.fetch_futures_price(PriceQuery(symbol="IF.CFFEX", market="future", expiration="2026-09"))
 
     assert result[0]["close"] == 4645.6
 

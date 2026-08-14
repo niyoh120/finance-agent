@@ -54,9 +54,7 @@ class FinanceInsiderTradingData(InsiderTradingData):
     form_type: str | None = Field(default=None)
 
 
-class FinanceInsiderTradingFetcher(
-    Fetcher[FinanceInsiderTradingQueryParams, list[FinanceInsiderTradingData]]
-):
+class FinanceInsiderTradingFetcher(Fetcher[FinanceInsiderTradingQueryParams, list[FinanceInsiderTradingData]]):
     """Fetcher for ConvexValue/FMP insider trades."""
 
     @staticmethod

@@ -60,6 +60,7 @@ _DAYS_PER_YEAR = 365.0
 # Normal CDF (pure stdlib)
 # --------------------------------------------------------------------------- #
 
+
 def _norm_cdf(x: float) -> float:
     # Abramowitz & Stegun 26.2.17 — max abs error ~7.5e-8, ample for pricing.
     if x < 0:
@@ -83,6 +84,7 @@ def _norm_pdf(x: float) -> float:
 # --------------------------------------------------------------------------- #
 # Black–Scholes–Merton
 # --------------------------------------------------------------------------- #
+
 
 def bsm_price(
     *,
@@ -141,14 +143,10 @@ def bsm_greeks(
     # Per-day theta.
     term1 = -(spot * q_disc * pdf_d1 * iv) / (2.0 * sqrt_t)
     if side == "call":
-        theta_daily = (
-            term1 - r * strike * disc * _norm_cdf(d2) + q * spot * q_disc * _norm_cdf(d1)
-        ) / _DAYS_PER_YEAR
+        theta_daily = (term1 - r * strike * disc * _norm_cdf(d2) + q * spot * q_disc * _norm_cdf(d1)) / _DAYS_PER_YEAR
         greeks["rho"] = strike * t * disc * _norm_cdf(d2) / 100.0
     else:
-        theta_daily = (
-            term1 + r * strike * disc * _norm_cdf(-d2) - q * spot * q_disc * _norm_cdf(-d1)
-        ) / _DAYS_PER_YEAR
+        theta_daily = (term1 + r * strike * disc * _norm_cdf(-d2) - q * spot * q_disc * _norm_cdf(-d1)) / _DAYS_PER_YEAR
         greeks["rho"] = -strike * t * disc * _norm_cdf(-d2) / 100.0
     greeks["theta"] = theta_daily
     # Vega is the same for call/put; scale to per-1%-vol.
@@ -165,6 +163,7 @@ def _bsm_intrinsic_delta(spot: float, strike: float, side: Side) -> float:
 # --------------------------------------------------------------------------- #
 # Cox–Ross–Rubinstein binomial tree
 # --------------------------------------------------------------------------- #
+
 
 def crr_price(
     *,
@@ -198,21 +197,19 @@ def crr_price(
     p_up = (growth - down) / (up - down)
     if not (0.0 < p_up < 1.0):
         # No arbitrage violated at this step size: degenerate to forward intrinsic.
-        return max(_intrinsic(spot, strike, side), bsm_price(
-            spot=spot, strike=strike, t=t, iv=max(iv, 1e-6), r=r, q=q, side=side
-        ))
+        return max(
+            _intrinsic(spot, strike, side),
+            bsm_price(spot=spot, strike=strike, t=t, iv=max(iv, 1e-6), r=r, q=q, side=side),
+        )
     disc = math.exp(-r * dt)
     # Terminal payoffs at step n.
-    prices = [spot * (up ** (n - j)) * (down ** j) for j in range(n + 1)]
-    values = [
-        max(0.0, (1.0 if side == "call" else -1.0) * (price - strike))
-        for price in prices
-    ]
+    prices = [spot * (up ** (n - j)) * (down**j) for j in range(n + 1)]
+    values = [max(0.0, (1.0 if side == "call" else -1.0) * (price - strike)) for price in prices]
 
     # Backward induction.
     for i in range(n - 1, -1, -1):
         for j in range(i + 1):
-            s = spot * (up ** (i - j)) * (down ** j)
+            s = spot * (up ** (i - j)) * (down**j)
             cont = disc * (p_up * values[j] + (1.0 - p_up) * values[j + 1])
             if american:
                 exercise = max(0.0, (1.0 if side == "call" else -1.0) * (s - strike))
@@ -245,28 +242,38 @@ def crr_greeks(
         out["delta"] = _bsm_intrinsic_delta(spot, strike, side)
         return out
 
-    base = crr_price(spot=spot, strike=strike, t=t, iv=iv, r=r, q=q, side=side,
-                     steps=steps, american=american)
+    base = crr_price(spot=spot, strike=strike, t=t, iv=iv, r=r, q=q, side=side, steps=steps, american=american)
     h_s = max(spot * 1e-3, 1e-4)
-    up_price = crr_price(spot=spot + h_s, strike=strike, t=t, iv=iv, r=r, q=q,
-                         side=side, steps=steps, american=american)
-    dn_price = crr_price(spot=spot - h_s, strike=strike, t=t, iv=iv, r=r, q=q,
-                         side=side, steps=steps, american=american)
+    up_price = crr_price(
+        spot=spot + h_s, strike=strike, t=t, iv=iv, r=r, q=q, side=side, steps=steps, american=american
+    )
+    dn_price = crr_price(
+        spot=spot - h_s, strike=strike, t=t, iv=iv, r=r, q=q, side=side, steps=steps, american=american
+    )
     delta = (up_price - dn_price) / (2.0 * h_s)
     gamma = (up_price - 2.0 * base + dn_price) / (h_s * h_s) if h_s > 0 else 0.0
 
     h_v = max(iv * 1e-2, 1e-4)
-    v_up = crr_price(spot=spot, strike=strike, t=t, iv=iv + h_v, r=r, q=q,
-                     side=side, steps=steps, american=american)
-    v_dn = crr_price(spot=spot, strike=strike, t=t, iv=iv - h_v if iv - h_v > 0 else 1e-4,
-                     r=r, q=q, side=side, steps=steps, american=american)
+    v_up = crr_price(spot=spot, strike=strike, t=t, iv=iv + h_v, r=r, q=q, side=side, steps=steps, american=american)
+    v_dn = crr_price(
+        spot=spot,
+        strike=strike,
+        t=t,
+        iv=iv - h_v if iv - h_v > 0 else 1e-4,
+        r=r,
+        q=q,
+        side=side,
+        steps=steps,
+        american=american,
+    )
     vega = (v_up - v_dn) / (2.0 * h_v) / 100.0
 
     # Theta: reprice with T shrunk by one calendar day.
     t_minus_day = max(t - 1.0 / _DAYS_PER_YEAR, 1e-6)
-    t_next = crr_price(spot=spot, strike=strike, t=t_minus_day, iv=iv, r=r, q=q,
-                       side=side, steps=steps, american=american)
-    theta = (t_next - base)  # per-day (one-day-forward minus today)
+    t_next = crr_price(
+        spot=spot, strike=strike, t=t_minus_day, iv=iv, r=r, q=q, side=side, steps=steps, american=american
+    )
+    theta = t_next - base  # per-day (one-day-forward minus today)
 
     out.update({"delta": delta, "gamma": gamma, "theta": theta, "vega": vega})
     return out
@@ -275,6 +282,7 @@ def crr_greeks(
 # --------------------------------------------------------------------------- #
 # Unified pricing entry points
 # --------------------------------------------------------------------------- #
+
 
 @dataclass(frozen=True)
 class OptionResult:
@@ -310,6 +318,7 @@ def price_option(
 # Intrinsic / bounds helpers
 # --------------------------------------------------------------------------- #
 
+
 def _intrinsic(spot: float, strike: float, side: Side) -> float:
     if side == "call":
         return max(0.0, spot - strike)
@@ -320,9 +329,7 @@ def intrinsic_value(spot: float, strike: float, side: Side) -> float:
     return _intrinsic(spot, strike, side)
 
 
-def no_arb_bounds(
-    *, spot: float, strike: float, t: float, r: float, q: float, side: Side
-) -> tuple[float, float]:
+def no_arb_bounds(*, spot: float, strike: float, t: float, r: float, q: float, side: Side) -> tuple[float, float]:
     """Lower/upper no-arbitrage bounds for a vanilla option.
 
     Used by the IV solver to reject market prices that cannot come from any
@@ -342,6 +349,7 @@ def no_arb_bounds(
 # --------------------------------------------------------------------------- #
 # Implied volatility solver
 # --------------------------------------------------------------------------- #
+
 
 @dataclass(frozen=True)
 class IVResult:
@@ -371,17 +379,14 @@ def solve_iv(
     if price <= 0:
         return IVResult(iv=None, status="no_trade", iterations=0)
 
-    lower, upper_bound = no_arb_bounds(
-        spot=spot, strike=strike, t=t, r=r, q=q, side=side
-    )
+    lower, upper_bound = no_arb_bounds(spot=spot, strike=strike, t=t, r=r, q=q, side=side)
     if not (lower - 1e-9 <= price <= upper_bound + 1e-9):
         return IVResult(iv=None, status="outside_bounds", iterations=0)
 
     def model(iv: float) -> float:
         if style == "european":
             return bsm_price(spot=spot, strike=strike, t=t, iv=iv, r=r, q=q, side=side)
-        return crr_price(spot=spot, strike=strike, t=t, iv=iv, r=r, q=q,
-                         side=side, steps=steps)
+        return crr_price(spot=spot, strike=strike, t=t, iv=iv, r=r, q=q, side=side, steps=steps)
 
     lo, hi = _IV_MIN, _IV_MAX
     p_lo = model(lo)
@@ -408,9 +413,8 @@ def solve_iv(
 # Time-to-expiry (calendar + 0DTE intraday)
 # --------------------------------------------------------------------------- #
 
-def years_to_expiry(
-    expiry: datetime, *, now: datetime | None = None
-) -> tuple[float, bool]:
+
+def years_to_expiry(expiry: datetime, *, now: datetime | None = None) -> tuple[float, bool]:
     """Calendar years from *now* to *expiry*.
 
     Returns ``(T, is_intraday)``. ``is_intraday`` is True when expiry is today

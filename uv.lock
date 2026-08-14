@@ -11,7 +11,6 @@ resolution-markers = [
 members = [
     "finance-shared",
     "finance-workspace",
-    "macro-scraper",
     "openbb-agent-cli",
     "openbb-finance",
     "options-dashboard",
@@ -1283,21 +1282,6 @@ wheels = [
     { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/e6/fb/8ab3845fe046ba4cbf74536bcf6801a774b7caf4350de1c5d37f1f0a9e90/lxml-6.1.1-pp311-pypy311_pp73-manylinux_2_26_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:f6f0ce10945fab9c4c06ce14e22af9059d1a87493a9af4501a5b0b9187e21cf2", size = 4250945, upload-time = "2026-05-18T19:20:47.385Z" },
     { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/68/1b/7553ab136894374ffae8851ec06f98f511cd8e66246e41b6be059d0a7289/lxml-6.1.1-pp311-pypy311_pp73-manylinux_2_26_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:f8844cd288697c6425c9beba919302241e3278871dc6519515e72b04e987abcf", size = 4401664, upload-time = "2026-05-18T19:20:50.489Z" },
     { url = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/packages/db/a4/441aee36c6f6b249823d20fd91f9be9ab89d7c5a8ae542a4a4ca6d342d56/lxml-6.1.1-pp311-pypy311_pp73-win_amd64.whl", hash = "sha256:ed21202aec73cda4d55d1ce57b389aadb90ffb044e6cd1080b8347efe1b1ec84", size = 3508989, upload-time = "2026-05-18T19:18:38.158Z" },
-]
-
-[[package]]
-name = "macro-scraper"
-version = "0.1.0"
-source = { editable = "services/macro-scraper" }
-dependencies = [
-    { name = "finance-shared" },
-    { name = "httpx" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "finance-shared", editable = "shared" },
-    { name = "httpx", specifier = ">=0.27.0" },
 ]
 
 [[package]]

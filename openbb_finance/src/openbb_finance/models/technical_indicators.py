@@ -138,11 +138,14 @@ def _compute_indicators(frame: pd.DataFrame, query: FinanceTechnicalIndicatorsQu
         frame["rsi"] = _rsi(close, query.rsi_length)
 
     if "macd" in query.indicators:
-        macd = close.ewm(span=query.macd_fast, adjust=False, min_periods=query.macd_fast).mean() - close.ewm(
-            span=query.macd_slow,
-            adjust=False,
-            min_periods=query.macd_slow,
-        ).mean()
+        macd = (
+            close.ewm(span=query.macd_fast, adjust=False, min_periods=query.macd_fast).mean()
+            - close.ewm(
+                span=query.macd_slow,
+                adjust=False,
+                min_periods=query.macd_slow,
+            ).mean()
+        )
         signal = macd.ewm(span=query.macd_signal, adjust=False, min_periods=query.macd_signal).mean()
         frame["macd"] = macd
         frame["macd_signal"] = signal

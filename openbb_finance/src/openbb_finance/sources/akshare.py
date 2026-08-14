@@ -197,7 +197,6 @@ class AkshareSource:
             )
         return _normalize_dataframe(df, query.symbol, preserve_datetime=is_intraday_interval(interval))
 
-
     async def fetch_macro_gdp(self) -> list[dict[str, Any]]:
         """Fetch China GDP quarterly data from AKShare."""
         import akshare as ak
@@ -205,18 +204,20 @@ class AkshareSource:
         df = await asyncio.to_thread(ak.macro_china_gdp)
         if df.empty:
             return []
-        
+
         results: list[dict[str, Any]] = []
         for _, row in df.iterrows():
             date_val = _normalize_macro_date(row.get("季度", row.get("日期", "")))
-            results.append({
-                "date": date_val,
-                "symbol": "GDP",
-                "symbol_root": "GDP",
-                "country": "china",
-                "value": _optional_float(row.get("国内生产总值-绝对值", row.get("GDP"))),
-                "source": "akshare",
-            })
+            results.append(
+                {
+                    "date": date_val,
+                    "symbol": "GDP",
+                    "symbol_root": "GDP",
+                    "country": "china",
+                    "value": _optional_float(row.get("国内生产总值-绝对值", row.get("GDP"))),
+                    "source": "akshare",
+                }
+            )
         return results
 
     async def fetch_macro_gdp_yearly(self) -> list[dict[str, Any]]:
@@ -226,19 +227,21 @@ class AkshareSource:
         df = await asyncio.to_thread(ak.macro_china_gdp_yearly)
         if df.empty:
             return []
-        
+
         results: list[dict[str, Any]] = []
         for _, row in df.iterrows():
-            results.append({
-                "date": _normalize_macro_date(row.get("日期", "")),
-                "symbol": "GDP_YOY",
-                "symbol_root": "GDP",
-                "country": "china",
-                "value": _optional_float(row.get("今值")),
-                "consensus": _optional_float(row.get("预测值")),
-                "previous": _optional_float(row.get("前值")),
-                "source": "akshare",
-            })
+            results.append(
+                {
+                    "date": _normalize_macro_date(row.get("日期", "")),
+                    "symbol": "GDP_YOY",
+                    "symbol_root": "GDP",
+                    "country": "china",
+                    "value": _optional_float(row.get("今值")),
+                    "consensus": _optional_float(row.get("预测值")),
+                    "previous": _optional_float(row.get("前值")),
+                    "source": "akshare",
+                }
+            )
         return results
 
     async def fetch_macro_cpi(self, transform: str = "index") -> list[dict[str, Any]]:
@@ -258,14 +261,16 @@ class AkshareSource:
         results: list[dict[str, Any]] = []
         for _, row in df.iterrows():
             date_val = _normalize_macro_date(row.get("月份", row.get("日期", "")))
-            results.append({
-                "date": date_val,
-                "symbol": "CPI",
-                "symbol_root": "CPI",
-                "country": "china",
-                "value": _optional_float(row.get(primary_column, row.get(fallback_column))),
-                "source": "akshare",
-            })
+            results.append(
+                {
+                    "date": date_val,
+                    "symbol": "CPI",
+                    "symbol_root": "CPI",
+                    "country": "china",
+                    "value": _optional_float(row.get(primary_column, row.get(fallback_column))),
+                    "source": "akshare",
+                }
+            )
         return results
 
     async def fetch_macro_cpi_yearly(self) -> list[dict[str, Any]]:
@@ -275,19 +280,21 @@ class AkshareSource:
         df = await asyncio.to_thread(ak.macro_china_cpi_yearly)
         if df.empty:
             return []
-        
+
         results: list[dict[str, Any]] = []
         for _, row in df.iterrows():
-            results.append({
-                "date": _normalize_macro_date(row.get("日期", "")),
-                "symbol": "CPI_YOY",
-                "symbol_root": "CPI",
-                "country": "china",
-                "value": _optional_float(row.get("今值")),
-                "consensus": _optional_float(row.get("预测值")),
-                "previous": _optional_float(row.get("前值")),
-                "source": "akshare",
-            })
+            results.append(
+                {
+                    "date": _normalize_macro_date(row.get("日期", "")),
+                    "symbol": "CPI_YOY",
+                    "symbol_root": "CPI",
+                    "country": "china",
+                    "value": _optional_float(row.get("今值")),
+                    "consensus": _optional_float(row.get("预测值")),
+                    "previous": _optional_float(row.get("前值")),
+                    "source": "akshare",
+                }
+            )
         return results
 
     async def fetch_macro_ppi(self) -> list[dict[str, Any]]:
@@ -297,18 +304,20 @@ class AkshareSource:
         df = await asyncio.to_thread(ak.macro_china_ppi)
         if df.empty:
             return []
-        
+
         results: list[dict[str, Any]] = []
         for _, row in df.iterrows():
             date_val = _normalize_macro_date(row.get("月份", row.get("日期", "")))
-            results.append({
-                "date": date_val,
-                "symbol": "PPI",
-                "symbol_root": "PPI",
-                "country": "china",
-                "value": _optional_float(row.get("当月", row.get("当月同比"))),
-                "source": "akshare",
-            })
+            results.append(
+                {
+                    "date": date_val,
+                    "symbol": "PPI",
+                    "symbol_root": "PPI",
+                    "country": "china",
+                    "value": _optional_float(row.get("当月", row.get("当月同比"))),
+                    "source": "akshare",
+                }
+            )
         return results
 
     async def fetch_macro_pmi(self) -> list[dict[str, Any]]:
@@ -318,18 +327,20 @@ class AkshareSource:
         df = await asyncio.to_thread(ak.macro_china_pmi)
         if df.empty:
             return []
-        
+
         results: list[dict[str, Any]] = []
         for _, row in df.iterrows():
             date_val = _normalize_macro_date(row.get("月份", row.get("日期", "")))
-            results.append({
-                "date": date_val,
-                "symbol": "PMI",
-                "symbol_root": "PMI",
-                "country": "china",
-                "value": _optional_float(row.get("制造业-指数", row.get("制造业"))),
-                "source": "akshare",
-            })
+            results.append(
+                {
+                    "date": date_val,
+                    "symbol": "PMI",
+                    "symbol_root": "PMI",
+                    "country": "china",
+                    "value": _optional_float(row.get("制造业-指数", row.get("制造业"))),
+                    "source": "akshare",
+                }
+            )
         return results
 
     async def fetch_macro_indicators(
@@ -337,7 +348,7 @@ class AkshareSource:
     ) -> list[dict[str, Any]]:
         """Fetch macroeconomic indicators by symbol."""
         symbol_upper = symbol.upper()
-        
+
         if symbol_upper == "GDP":
             data = await self.fetch_macro_gdp()
         elif symbol_upper == "GDP_YOY":
@@ -352,7 +363,7 @@ class AkshareSource:
             data = await self.fetch_macro_pmi()
         else:
             return []
-        
+
         # Filter by date range if provided
         if start_date or end_date:
             filtered = []
@@ -365,7 +376,7 @@ class AkshareSource:
                 item = {**item, "date": item_date}
                 filtered.append(item)
             return filtered
-        
+
         return data
 
 

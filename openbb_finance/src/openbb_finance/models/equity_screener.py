@@ -78,9 +78,7 @@ class FinanceEquityScreenerData(EquityScreenerData):
     rsi: float | None = Field(default=None)
 
 
-class FinanceEquityScreenerFetcher(
-    Fetcher[FinanceEquityScreenerQueryParams, list[FinanceEquityScreenerData]]
-):
+class FinanceEquityScreenerFetcher(Fetcher[FinanceEquityScreenerQueryParams, list[FinanceEquityScreenerData]]):
     """Fetcher for equity screener data."""
 
     @staticmethod

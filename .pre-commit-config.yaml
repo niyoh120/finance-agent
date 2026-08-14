@@ -19,9 +19,9 @@ repos:
     hooks:
       - id: ruff-check
         args: [--fix]
-        files: ^(shared|services|alembic)/.*\.py$
+        files: ^(shared|services|alembic|openbb_finance|openbb-agent-cli)/.*\.py$
       - id: ruff-format
-        files: ^(shared|services|alembic)/.*\.py$
+        files: ^(shared|services|alembic|openbb_finance|openbb-agent-cli)/.*\.py$
 
   - repo: https://github.com/gitleaks/gitleaks
     rev: v8.30.0
@@ -64,4 +64,4 @@ repos:
         name: python compile staged files
         entry: python scripts/hooks/python_compile_staged.py
         language: system
-        files: ^(shared|services|alembic)/.*\.py$
+        files: ^(shared|services|alembic|openbb_finance|openbb-agent-cli)/.*\.py$

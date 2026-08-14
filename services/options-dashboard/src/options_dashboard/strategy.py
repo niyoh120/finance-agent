@@ -106,9 +106,7 @@ class StrategyValuation:
         self.unrealized = self.net_price - self.net_cost
 
 
-def value_leg(
-    leg: Leg, ctx: PricingContext, *, scenario_iv: float | None = None
-) -> LegValuation:
+def value_leg(leg: Leg, ctx: PricingContext, *, scenario_iv: float | None = None) -> LegValuation:
     """Value a single leg under *ctx*; ``scenario_iv`` overrides per-leg IV."""
     if leg.kind == "stock":
         greeks = {"delta": 1.0, "gamma": 0.0, "theta": 0.0, "vega": 0.0, "rho": 0.0}
@@ -175,16 +173,14 @@ def value_strategy(
     legs: Sequence[Leg], ctx: PricingContext, *, iv_overrides: dict[str, float] | None = None
 ) -> StrategyValuation:
     overrides = iv_overrides or {}
-    leg_vals = [
-        value_leg(leg, ctx, scenario_iv=overrides.get(leg.kind_symbol))
-        for leg in legs
-    ]
+    leg_vals = [value_leg(leg, ctx, scenario_iv=overrides.get(leg.kind_symbol)) for leg in legs]
     return StrategyValuation(leg_vals)
 
 
 # --------------------------------------------------------------------------- #
 # Single-expiry terminal P&L
 # --------------------------------------------------------------------------- #
+
 
 @dataclass(frozen=True)
 class ExpiryPayoff:
@@ -205,17 +201,12 @@ def terminal_payoff(
     """
     expirations = {leg.expiration for leg in legs if leg.kind == "option"}
     if len(expirations) > 1:
-        raise MixedExpiryError(
-            "多到期日组合没有单一最终盈亏；请按关键到期日分别调用 scenario_payoff。"
-        )
+        raise MixedExpiryError("多到期日组合没有单一最终盈亏；请按关键到期日分别调用 scenario_payoff。")
 
     # Underlying scan range. Default to strike +/- 3x the total option
     # premium (plus a fixed floor), so common breakevens are captured.
     strikes = [leg.strike for leg in legs if leg.strike is not None]
-    total_premium = sum(
-        (leg.cost or 0.0) * leg.signed_quantity()
-        for leg in legs if leg.kind == "option"
-    )
+    total_premium = sum((leg.cost or 0.0) * leg.signed_quantity() for leg in legs if leg.kind == "option")
     if spot_range is None:
         if strikes:
             center = float(sum(strikes) / len(strikes))
@@ -257,6 +248,7 @@ class PayoffCurves:
     ``current_points``: (price, pnl) at the valuation time — model-priced.
     ``xs``: the shared price axis.
     """
+
     xs: list[float]
     expiry_points: list[float]
     current_points: list[float]
@@ -281,10 +273,7 @@ def current_payoff_curve(
     """
     overrides = iv_overrides or {}
     strikes = [leg.strike for leg in legs if leg.strike is not None]
-    total_premium = sum(
-        (leg.cost or 0.0) * leg.signed_quantity()
-        for leg in legs if leg.kind == "option"
-    )
+    total_premium = sum((leg.cost or 0.0) * leg.signed_quantity() for leg in legs if leg.kind == "option")
     if spot_range is None:
         if strikes:
             center = float(sum(strikes) / len(strikes))
@@ -305,7 +294,11 @@ def current_payoff_curve(
 
     for price in xs:
         scenario_ctx = PricingContext(
-            spot=price, r=ctx.r, q=ctx.q, default_iv=ctx.default_iv, now=ctx.now,
+            spot=price,
+            r=ctx.r,
+            q=ctx.q,
+            default_iv=ctx.default_iv,
+            now=ctx.now,
         )
         exp_total = 0.0
         cur_total = 0.0
@@ -367,9 +360,7 @@ def _find_zero_crossings(xs: list[float], ys: list[float]) -> list[float]:
     return out
 
 
-def _bounded_extremes(
-    ys: list[float], legs: Sequence[Leg]
-) -> tuple[float | None, float | None]:
+def _bounded_extremes(ys: list[float], legs: Sequence[Leg]) -> tuple[float | None, float | None]:
     """Estimate max profit/loss from sampled payoff.
 
     Returns ``(max_profit, max_loss)``; ``None`` marks an unbounded direction.
@@ -377,26 +368,19 @@ def _bounded_extremes(
     underlying rises. Other strategies are bounded within the sampled range.
     """
     short_calls = [
-        leg for leg in legs
-        if leg.kind == "option" and leg.option_side == "call" and leg.direction == "sell"
+        leg for leg in legs if leg.kind == "option" and leg.option_side == "call" and leg.direction == "sell"
     ]
     long_call_contracts = sum(
-        leg.quantity
-        for leg in legs
-        if leg.kind == "option" and leg.option_side == "call" and leg.direction == "buy"
+        leg.quantity for leg in legs if leg.kind == "option" and leg.option_side == "call" and leg.direction == "buy"
     )
     long_stock_contracts = sum(
-        leg.quantity / _OPTION_CONTRACT_SHARES
-        for leg in legs
-        if leg.kind == "stock" and leg.direction == "buy"
+        leg.quantity / _OPTION_CONTRACT_SHARES for leg in legs if leg.kind == "stock" and leg.direction == "buy"
     )
     short_call_contracts = sum(leg.quantity for leg in short_calls)
     # One listed equity option contract represents 100 shares. A residual short
     # call quantity has unbounded upside loss even when part of the position is
     # covered by stock or long calls.
-    naked_short_call = short_call_contracts > (
-        long_call_contracts + long_stock_contracts
-    )
+    naked_short_call = short_call_contracts > (long_call_contracts + long_stock_contracts)
     max_y = max(ys) if ys else 0.0
     min_y = min(ys) if ys else 0.0
     max_profit = max_y
@@ -408,6 +392,7 @@ def _bounded_extremes(
 # Templates
 # --------------------------------------------------------------------------- #
 
+
 def template_long_call(symbol: str, strike: float, expiration: date, *, cost: float, qty: float = 1.0) -> Leg:
     return Leg("option", "buy", qty, symbol, strike, expiration, "call", cost=cost)
 
@@ -417,8 +402,14 @@ def template_long_put(symbol: str, strike: float, expiration: date, *, cost: flo
 
 
 def template_bull_call_spread(
-    symbol: str, long_strike: float, short_strike: float, expiration: date,
-    *, long_cost: float, short_cost: float, qty: float = 1.0,
+    symbol: str,
+    long_strike: float,
+    short_strike: float,
+    expiration: date,
+    *,
+    long_cost: float,
+    short_cost: float,
+    qty: float = 1.0,
 ) -> list[Leg]:
     return [
         template_long_call(symbol, long_strike, expiration, cost=long_cost, qty=qty),
@@ -436,10 +427,18 @@ def template_straddle(
 
 
 def template_iron_condor(
-    symbol: str, expiration: date, *,
-    put_short: float, put_long: float, call_short: float, call_long: float,
-    put_short_cost: float, put_long_cost: float,
-    call_short_cost: float, call_long_cost: float, qty: float = 1.0,
+    symbol: str,
+    expiration: date,
+    *,
+    put_short: float,
+    put_long: float,
+    call_short: float,
+    call_long: float,
+    put_short_cost: float,
+    put_long_cost: float,
+    call_short_cost: float,
+    call_long_cost: float,
+    qty: float = 1.0,
 ) -> list[Leg]:
     return [
         Leg("option", "buy", qty, symbol, put_long, expiration, "put", cost=put_long_cost),
@@ -452,6 +451,7 @@ def template_iron_condor(
 # --------------------------------------------------------------------------- #
 # Suggested limit price (three tiers + confidence)
 # --------------------------------------------------------------------------- #
+
 
 @dataclass(frozen=True)
 class LimitPriceSuggestion:
@@ -494,16 +494,17 @@ def suggest_limit_price(
     rule).
     """
     anchors: dict[str, float] = {}
-    for name, value in (
-        ("fmv", fmv), ("model", model_price), ("vwap", day_vwap), ("close", day_close)
-    ):
+    for name, value in (("fmv", fmv), ("model", model_price), ("vwap", day_vwap), ("close", day_close)):
         if value is not None and math.isfinite(value) and value > 0:
             anchors[name] = value
 
     if len(anchors) < 2:
         return LimitPriceSuggestion(
-            conservative=None, neutral=None, aggressive=None,
-            confidence="low", anchors=anchors,
+            conservative=None,
+            neutral=None,
+            aggressive=None,
+            confidence="low",
+            anchors=anchors,
             note="锚点不足，仅展示原始值。" + model_confidence_note,
         )
 
@@ -541,6 +542,7 @@ def suggest_limit_price(
 # --------------------------------------------------------------------------- #
 # Effective leverage (lambda)
 # --------------------------------------------------------------------------- #
+
 
 def effective_leverage(valuation: "StrategyValuation", spot: float) -> float | None:
     """Portfolio effective leverage: % change in portfolio value per 1% move in spot.

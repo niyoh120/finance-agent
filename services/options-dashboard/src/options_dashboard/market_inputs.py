@@ -70,9 +70,7 @@ def interpolate_rate(
     return _linear_interp(pillars, tenor_years), "treasury-interp"
 
 
-def _select_curve(
-    rows: Sequence[dict[str, Any]], as_of: str | None
-) -> dict[str, Any] | None:
+def _select_curve(rows: Sequence[dict[str, Any]], as_of: str | None) -> dict[str, Any] | None:
     sorted_rows = sorted(
         rows,
         key=lambda row: str(row.get("date", "")),
@@ -107,9 +105,7 @@ def _is_number(value: Any) -> bool:
         return False
 
 
-def dividend_yield_from_profile(
-    profile: dict[str, Any] | None, *, spot: float
-) -> tuple[float, str]:
+def dividend_yield_from_profile(profile: dict[str, Any] | None, *, spot: float) -> tuple[float, str]:
     """Estimate a continuous dividend yield from FMP profile ``lastDividend``.
 
     Returns ``(q, note)``. ``q`` is a continuous annual yield estimated from
@@ -144,9 +140,7 @@ def infer_style(symbol: str) -> Style:
     return "american"
 
 
-def itm_call_dividend_warning(
-    *, q: float, delta: float, dte: int, side: str
-) -> str | None:
+def itm_call_dividend_warning(*, q: float, delta: float, dte: int, side: str) -> str | None:
     """Return a warning string when early-exercise / dividend risk is material.
 
     Trigger: long calls with real dividend yield, deep ITM, short DTE — the
@@ -156,12 +150,8 @@ def itm_call_dividend_warning(
     if side != "call" or q <= 0:
         return None
     if delta >= 0.8 and dte <= 45:
-        return (
-            "深度 ITM 美式 Call 且存在股息：当前连续股息率近似可能低估提前行权价值，"
-            "建议结合实际除息日人工核对。"
-        )
+        return "深度 ITM 美式 Call 且存在股息：当前连续股息率近似可能低估提前行权价值，建议结合实际除息日人工核对。"
     return None
-
 
 
 __all__ = [

@@ -5,7 +5,7 @@ import sys
 from typing import Any
 
 import pytest
-from openbb_agent_cli import cli
+from openbb_agent_cli import cli, executors
 
 
 class DummyResult:
@@ -23,7 +23,7 @@ def test_run_route_outputs_results_only(monkeypatch: pytest.MonkeyPatch, capsys:
         }
         return [{"symbol": "AAPL"}]
 
-    monkeypatch.setattr(cli, "_execute_route", fake_execute_route)
+    monkeypatch.setattr(executors, "_execute_route", fake_execute_route)
 
     cli._run_route("equity.search", query="AAPL", is_symbol=False, start_date=None)
 
@@ -56,7 +56,7 @@ def test_run_route_outputs_json_error(monkeypatch: pytest.MonkeyPatch, capsys: p
     def command(provider: str, **params: Any) -> DummyResult:
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(cli, "_execute_route", lambda route, **params: command(provider="finance", **params))
+    monkeypatch.setattr(executors, "_execute_route", lambda route, **params: command(provider="finance", **params))
 
     with pytest.raises(SystemExit) as exc_info:
         cli._run_route("equity.search")
@@ -148,7 +148,7 @@ def test_technical_indicators_executor_supports_batch_limit(monkeypatch: pytest.
         captured["extra_params"] = extra_params
         return [{"i": 1}, {"i": 2}, {"i": 3}]
 
-    monkeypatch.setattr(cli, "_execute_provider_model", execute_provider_model)
+    monkeypatch.setattr(executors, "_execute_provider_model", execute_provider_model)
 
     result = cli.COMMAND_EXECUTORS["technical.indicators"](
         {"symbol": "AAPL", "indicators": "rsi", "limit": 1},
@@ -251,7 +251,10 @@ def test_equity_screener_no_args_returns_help(
     [
         ({"filters": '{"PE_RATIO_TTM":{"max":20}}'}, {"filters": '{"PE_RATIO_TTM":{"max":20}}'}),
         ({"sector": ["Technology"]}, {"sector": ["Technology"]}),
-        ({"market": "america", "change_percent_min": 5.0, "fields": '["SYMBOL","PRICE"]'}, {"market": "america", "change_percent_min": 5.0, "fields": '["SYMBOL","PRICE"]'}),
+        (
+            {"market": "america", "change_percent_min": 5.0, "fields": '["SYMBOL","PRICE"]'},
+            {"market": "america", "change_percent_min": 5.0, "fields": '["SYMBOL","PRICE"]'},
+        ),
         ({"market": "america", "volume_min": 1}, {"market": "america", "volume_min": 1}),
     ],
 )
@@ -659,7 +662,7 @@ def test_historical_executor_applies_limit() -> None:
         return [{"symbol": "AAPL", "i": i} for i in range(10)]
 
     monkeypatch_local = pytest.MonkeyPatch()
-    monkeypatch_local.setattr(cli, "_execute_route", fake_execute_route)
+    monkeypatch_local.setattr(executors, "_execute_route", fake_execute_route)
 
     executor = cli._historical_executor("index.price.historical")
     params = {"symbol": "000001.XSHG", "start_date": "2026-01-01", "end_date": "2026-01-31", "__cli_limit__": 3}
@@ -680,7 +683,7 @@ def test_historical_executor_no_limit_returns_all() -> None:
         return [{"symbol": "AAPL", "i": i} for i in range(5)]
 
     monkeypatch_local = pytest.MonkeyPatch()
-    monkeypatch_local.setattr(cli, "_execute_route", fake_execute_route)
+    monkeypatch_local.setattr(executors, "_execute_route", fake_execute_route)
 
     executor = cli._historical_executor("etf.historical")
     result = executor({"symbol": "510300.XSHG"})
@@ -748,7 +751,7 @@ def test_historical_limit_not_forwarded_to_provider(monkeypatch: pytest.MonkeyPa
         called_params.update(params)
         return [{"symbol": "AAPL"}]
 
-    monkeypatch.setattr(cli, "_execute_route", fake_execute_route)
+    monkeypatch.setattr(executors, "_execute_route", fake_execute_route)
     monkeypatch.setitem(
         cli.COMMAND_EXECUTORS,
         "equity.price.historical",
@@ -801,9 +804,13 @@ def test_is_market_open_returns_false_on_weekend() -> None:
 
     # Saturday 2026-07-04 10:00 Beijing, all three markets closed.
     saturday = datetime(2026, 7, 4, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
-    monkeypatch_dt = type("DT", (), {"now": staticmethod(lambda tz=None: saturday.astimezone(tz) if tz else saturday.replace(tzinfo=None))})
+    monkeypatch_dt = type(
+        "DT",
+        (),
+        {"now": staticmethod(lambda tz=None: saturday.astimezone(tz) if tz else saturday.replace(tzinfo=None))},
+    )
     monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr(cli, "datetime", monkeypatch_dt)
+    monkeypatch.setattr(executors, "datetime", monkeypatch_dt)
     try:
         assert cli._is_market_open("cn") is False
         assert cli._is_market_open("hk") is False
@@ -818,9 +825,11 @@ def test_is_market_open_cn_during_session() -> None:
 
     # Wednesday 2026-07-01 10:00 Beijing -> CN session (9:30-11:30).
     morning = datetime(2026, 7, 1, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
-    monkeypatch_dt = type("DT", (), {"now": staticmethod(lambda tz=None: morning.astimezone(tz) if tz else morning.replace(tzinfo=None))})
+    monkeypatch_dt = type(
+        "DT", (), {"now": staticmethod(lambda tz=None: morning.astimezone(tz) if tz else morning.replace(tzinfo=None))}
+    )
     mp = pytest.MonkeyPatch()
-    mp.setattr(cli, "datetime", monkeypatch_dt)
+    mp.setattr(executors, "datetime", monkeypatch_dt)
     try:
         assert cli._is_market_open("cn") is True
     finally:
@@ -830,19 +839,19 @@ def test_is_market_open_cn_during_session() -> None:
 def test_historical_executor_skips_intraday_tag_when_symbol_missing(monkeypatch: pytest.MonkeyPatch) -> None:
     rows = [{"date": "2026-07-03", "close": 100.0}]
 
-    monkeypatch.setattr(cli, "_execute_route", lambda route, **params: rows)
+    monkeypatch.setattr(executors, "_execute_route", lambda route, **params: rows)
 
     def fail_tag(symbol: str, results: list[dict[str, Any]]) -> list[dict[str, Any]]:
         raise AssertionError("tagging should be skipped when symbol is missing")
 
-    monkeypatch.setattr(cli, "_tag_intraday_last_bar", fail_tag)
+    monkeypatch.setattr(executors, "_tag_intraday_last_bar", fail_tag)
 
     executor = cli._historical_executor("equity.price.historical")
     assert executor({}) is rows
 
 
 def test_tag_intraday_last_bar_passthrough_when_market_closed(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(cli, "_is_market_open", lambda market: False)
+    monkeypatch.setattr(executors, "_is_market_open", lambda market: False)
     rows = [{"date": "2026-07-03", "close": 100.0}, {"date": "2026-07-04", "close": 101.0}]
     result = cli._tag_intraday_last_bar("AAPL", rows)
     assert result is rows  # no copy when market closed
@@ -853,11 +862,17 @@ def test_tag_intraday_last_bar_tags_today_bar_when_market_open(monkeypatch: pyte
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
-    monkeypatch.setattr(cli, "_is_market_open", lambda market: True)
-    monkeypatch.setattr(cli, "infer_market_from_symbol", lambda symbol: "cn")
+    monkeypatch.setattr(executors, "_is_market_open", lambda market: True)
+    monkeypatch.setattr(executors, "infer_market_from_symbol", lambda symbol: "cn")
     # Fix "now" to 2026-07-04 10:00 Beijing so today == last bar's date.
     fixed = datetime(2026, 7, 4, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
-    monkeypatch.setattr(cli, "datetime", type("DT", (), {"now": staticmethod(lambda tz=None: fixed.astimezone(tz) if tz else fixed.replace(tzinfo=None))}))
+    monkeypatch.setattr(
+        executors,
+        "datetime",
+        type(
+            "DT", (), {"now": staticmethod(lambda tz=None: fixed.astimezone(tz) if tz else fixed.replace(tzinfo=None))}
+        ),
+    )
 
     rows = [{"date": "2026-07-03", "close": 100.0}, {"date": "2026-07-04", "close": 101.0}]
     result = cli._tag_intraday_last_bar("510300.XSHG", rows)
@@ -872,13 +887,16 @@ def test_tag_intraday_last_bar_no_tag_when_last_bar_not_today(monkeypatch: pytes
     from datetime import datetime
     from zoneinfo import ZoneInfo
 
-    monkeypatch.setattr(cli, "_is_market_open", lambda market: True)
-    monkeypatch.setattr(cli, "infer_market_from_symbol", lambda symbol: "cn")
+    monkeypatch.setattr(executors, "_is_market_open", lambda market: True)
+    monkeypatch.setattr(executors, "infer_market_from_symbol", lambda symbol: "cn")
     # Freeze "now" so the test is deterministic regardless of the real wall-clock date.
     fixed = datetime(2026, 7, 3, 10, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
     monkeypatch.setattr(
-        cli, "datetime",
-        type("DT", (), {"now": staticmethod(lambda tz=None: fixed.astimezone(tz) if tz else fixed.replace(tzinfo=None))}),
+        executors,
+        "datetime",
+        type(
+            "DT", (), {"now": staticmethod(lambda tz=None: fixed.astimezone(tz) if tz else fixed.replace(tzinfo=None))}
+        ),
     )
     rows = [{"date": "2026-07-01", "close": 100.0}, {"date": "2026-07-02", "close": 101.0}]
     result = cli._tag_intraday_last_bar("510300.XSHG", rows)
@@ -896,8 +914,11 @@ def test_is_market_open_us_session_on_beijing_saturday(monkeypatch: pytest.Monke
 
     fixed = datetime(2026, 7, 11, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
     monkeypatch.setattr(
-        cli, "datetime",
-        type("DT", (), {"now": staticmethod(lambda tz=None: fixed.astimezone(tz) if tz else fixed.replace(tzinfo=None))}),
+        executors,
+        "datetime",
+        type(
+            "DT", (), {"now": staticmethod(lambda tz=None: fixed.astimezone(tz) if tz else fixed.replace(tzinfo=None))}
+        ),
     )
     assert cli._is_market_open("us") is True
 
@@ -911,10 +932,13 @@ def test_tag_intraday_last_bar_tags_us_bar_during_beijing_saturday_session(monke
 
     fixed = datetime(2026, 7, 11, 0, 0, tzinfo=ZoneInfo("Asia/Shanghai"))
     monkeypatch.setattr(
-        cli, "datetime",
-        type("DT", (), {"now": staticmethod(lambda tz=None: fixed.astimezone(tz) if tz else fixed.replace(tzinfo=None))}),
+        executors,
+        "datetime",
+        type(
+            "DT", (), {"now": staticmethod(lambda tz=None: fixed.astimezone(tz) if tz else fixed.replace(tzinfo=None))}
+        ),
     )
-    monkeypatch.setattr(cli, "infer_market_from_symbol", lambda symbol: "us")
+    monkeypatch.setattr(executors, "infer_market_from_symbol", lambda symbol: "us")
 
     rows = [{"date": "2026-07-10", "close": 100.0}]  # US trading-day date
     result = cli._tag_intraday_last_bar("AAPL", rows)
@@ -962,7 +986,7 @@ def test_futures_price_quote_command_routes_params(monkeypatch: pytest.MonkeyPat
         captured["params"] = params
         return []
 
-    monkeypatch.setattr(cli, "_execute_route", fake_execute_route)
+    monkeypatch.setattr(executors, "_execute_route", fake_execute_route)
 
     cli.futures_price_quote(symbol="GC.COMEX")
 
@@ -978,7 +1002,7 @@ def test_futures_search_command_routes_params(monkeypatch: pytest.MonkeyPatch) -
         captured["params"] = params
         return []
 
-    monkeypatch.setattr(cli, "_execute_route", fake_execute_route)
+    monkeypatch.setattr(executors, "_execute_route", fake_execute_route)
 
     cli.futures_search(query="工业硅")
 
@@ -993,7 +1017,7 @@ def test_futures_historical_executor_applies_defaults(monkeypatch: pytest.Monkey
         called_params.update(params)
         return [{"date": "2026-08-07", "close": 3010.0}]
 
-    monkeypatch.setattr(cli, "_execute_route", fake_execute_route)
+    monkeypatch.setattr(executors, "_execute_route", fake_execute_route)
 
     result = cli.COMMAND_EXECUTORS["futures.price.historical"](
         {"symbol": "rb.SHFE", "limit": 1},

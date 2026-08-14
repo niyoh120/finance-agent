@@ -3,7 +3,7 @@ import logging
 import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import Awaitable, Callable, TypeVar
+from typing import TypeVar
 
 from sqlalchemy.exc import DBAPIError, DisconnectionError, InvalidatePoolError
 from sqlalchemy.ext.asyncio import (
@@ -17,7 +17,6 @@ logger = logging.getLogger(__name__)
 
 R = TypeVar("R")
 T = TypeVar("T")
-W = TypeVar("W")
 
 DEFAULT_POOL_RECYCLE_SECONDS = 1800
 _engine_reset_lock = asyncio.Lock()
@@ -109,17 +108,3 @@ async def safe_session_scope() -> AsyncGenerator[AsyncSession, None]:
             logger.warning("Database connection invalidated, resetting engine")
             await reset_engine()
         raise
-
-
-async def run_around_db(
-    read_fn: Callable[[AsyncSession], Awaitable[R]],
-    io_fn: Callable[[R], Awaitable[T]],
-    write_fn: Callable[[AsyncSession, T], Awaitable[W]],
-) -> W:
-    async with safe_session_scope() as read_session:
-        read_result = await read_fn(read_session)
-
-    io_result = await io_fn(read_result)
-
-    async with safe_session_scope() as write_session:
-        return await write_fn(write_session, io_result)

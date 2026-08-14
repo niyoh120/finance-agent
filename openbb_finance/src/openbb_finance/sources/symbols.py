@@ -31,12 +31,20 @@ INTL_FUTURES_EXCHANGES: frozenset[str] = frozenset({"COMEX", "NYMEX", "CBOT"})
 # International futures month letter (F=Jan ... Z=Dec, skipping I/L/O) appended
 # to <YY> for month contracts, e.g. 2026-12 -> "26Z".
 FUTURES_MONTH_LETTERS: dict[int, str] = {
-    1: "F", 2: "G", 3: "H", 4: "J", 5: "K", 6: "M",
-    7: "N", 8: "Q", 9: "U", 10: "V", 11: "X", 12: "Z",
+    1: "F",
+    2: "G",
+    3: "H",
+    4: "J",
+    5: "K",
+    6: "M",
+    7: "N",
+    8: "Q",
+    9: "U",
+    10: "V",
+    11: "X",
+    12: "Z",
 }
-FUTURES_MONTH_NUMBERS: dict[str, int] = {
-    letter: month for month, letter in FUTURES_MONTH_LETTERS.items()
-}
+FUTURES_MONTH_NUMBERS: dict[str, int] = {letter: month for month, letter in FUTURES_MONTH_LETTERS.items()}
 
 # SGE (上海黄金交易所) spot-deferred products. These are not futures main
 # continuous contracts: each maps to a fixed easy-tdx code and has no

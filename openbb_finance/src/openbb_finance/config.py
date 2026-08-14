@@ -23,13 +23,19 @@ class SourceConfig:
 # This map only exists so that sources enabled by default and the API key
 # placeholders are declared in one place.
 DEFAULT_SOURCES: tuple[str, ...] = (
-    "tdx", "tickflow", "finnhub", "futunn", "convexvalue",
-    "sina", "eastmoney", "baostock", "akshare", "openbb",
+    "tdx",
+    "tickflow",
+    "finnhub",
+    "futunn",
+    "convexvalue",
+    "sina",
+    "eastmoney",
+    "baostock",
+    "akshare",
+    "openbb",
 )
 
-DEFAULT_CONFIG: dict[str, Any] = {
-    "sources": {name: {"enabled": True} for name in DEFAULT_SOURCES}
-}
+DEFAULT_CONFIG: dict[str, Any] = {"sources": {name: {"enabled": True} for name in DEFAULT_SOURCES}}
 DEFAULT_CONFIG["sources"]["finnhub"]["api_key"] = "${FINNHUB_API_KEY}"
 DEFAULT_CONFIG["sources"]["convexvalue"]["api_key"] = "${CV_API_KEY}"
 

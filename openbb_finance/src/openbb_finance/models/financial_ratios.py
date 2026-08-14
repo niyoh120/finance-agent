@@ -104,9 +104,7 @@ class FinanceFinancialRatiosData(FinancialRatiosData):
     working_capital_turnover_ratio: float | None = Field(default=None)
 
 
-class FinanceFinancialRatiosFetcher(
-    Fetcher[FinanceFinancialRatiosQueryParams, list[FinanceFinancialRatiosData]]
-):
+class FinanceFinancialRatiosFetcher(Fetcher[FinanceFinancialRatiosQueryParams, list[FinanceFinancialRatiosData]]):
     """Fetcher for ConvexValue/FMP financial ratios."""
 
     @staticmethod

@@ -67,9 +67,7 @@ class _Throttle:
         with self._lock:
             now = time.monotonic()
             if self._cooldown_until > now:
-                raise RateLimitedError(
-                    "Upstream rate limit (429) cool-down active; retry later."
-                )
+                raise RateLimitedError("Upstream rate limit (429) cool-down active; retry later.")
             elapsed = now - self._last_request_at
             wait = max(0.0, _MIN_INTERVAL_SECONDS - elapsed)
             # Reserve this slot atomically so concurrent threads queue behind it.
@@ -88,9 +86,7 @@ class _Throttle:
             return {
                 "cooldown_remaining": max(0.0, self._cooldown_until - now),
                 "failure_count": self._failure_count,
-                "seconds_since_last": now - self._last_request_at
-                if self._last_request_at
-                else -1.0,
+                "seconds_since_last": now - self._last_request_at if self._last_request_at else -1.0,
             }
 
 
@@ -103,26 +99,18 @@ throttle = _Throttle()
 # async -> sync bridge
 # --------------------------------------------------------------------------- #
 
-def _is_loop_running() -> bool:
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return False
-    return True
-
 
 def run_async(coro: Awaitable[T]) -> T:
-    """Run *coro* to completion from sync code.
+    """Run *coro* to completion from sync code on the process-wide worker loop.
 
-    Uses ``asyncio.run`` when the calling thread has no running loop. When one
-    is already running (rare for Streamlit, but defensive), the coroutine is
-    handed to a single dedicated worker thread that owns its own loop. This
-    avoids ``nest_asyncio`` and keeps the bridge testable without Streamlit.
+    Always dispatches to the single dedicated worker thread that owns a
+    persistent event loop — never ``asyncio.run``. A fresh loop per call would
+    make loop-bound resources (e.g. a shared ``httpx.AsyncClient`` connection
+    pool in the finance sources) unusable across calls; one long-lived loop
+    lets every call reuse the same pool and keeps ConvexValue requests serial
+    across all sessions, which is what the Research Plan rate limit wants.
     """
     throttle.acquire()
-    if not _is_loop_running():
-        return asyncio.run(_strip_awaitable(coro))  # type: ignore[arg-type]
-
     return _worker.submit(coro)
 
 
@@ -165,9 +153,7 @@ class _WorkerThread:
                 ready.set()
                 self._loop.run_forever()
 
-            self._thread = threading.Thread(
-                target=_runner, name="od-async-worker", daemon=True
-            )
+            self._thread = threading.Thread(target=_runner, name="od-async-worker", daemon=True)
             self._thread.start()
             ready.wait(timeout=5.0)
             if self._loop is None:
@@ -186,6 +172,7 @@ _worker = _WorkerThread()
 #   - 429 detection -> throttle.notify_429 -> RateLimitedError
 #   - empty / error -> DataUnavailableError
 # Pages still apply st.cache_data on top for TTL behavior.
+
 
 def _run_or_classify(coro: Callable[[], Awaitable[Any]]) -> Any:
     from openbb_finance.sources import convexvalue as cv
@@ -207,9 +194,7 @@ def fetch_option_chain_sync(symbol: str) -> list[dict[str, Any]]:
     )
 
     q = FinanceOptionsChainFetcher.transform_query({"symbol": symbol})
-    data = _run_or_classify(
-        lambda: FinanceOptionsChainFetcher.aextract_data(q, None)
-    )
+    data = _run_or_classify(lambda: FinanceOptionsChainFetcher.aextract_data(q, None))
     records = data.get("records", []) if isinstance(data, dict) else data
     if not records:
         raise DataUnavailableError(f"ConvexValue chain empty for {symbol}")
@@ -226,9 +211,7 @@ def fetch_equity_quote_sync(symbol: str) -> dict[str, Any]:
     from openbb_finance.models.equity_quote import FinanceEquityQuoteFetcher
 
     q = FinanceEquityQuoteFetcher.transform_query({"symbol": symbol})
-    rows = _run_or_classify(
-        lambda: FinanceEquityQuoteFetcher.aextract_data(q, None)
-    )
+    rows = _run_or_classify(lambda: FinanceEquityQuoteFetcher.aextract_data(q, None))
     if isinstance(rows, list) and rows:
         # Return a plain dict; callers pick the fields they need.
         row = rows[0]
@@ -242,17 +225,11 @@ def fetch_option_daily_sync(contract: str, date: str) -> dict[str, Any]:
         FinanceOptionDailyFetcher,
     )
 
-    q = FinanceOptionDailyFetcher.transform_query(
-        {"symbol": contract, "date": date}
-    )
-    rows = _run_or_classify(
-        lambda: FinanceOptionDailyFetcher.aextract_data(q, None)
-    )
+    q = FinanceOptionDailyFetcher.transform_query({"symbol": contract, "date": date})
+    rows = _run_or_classify(lambda: FinanceOptionDailyFetcher.aextract_data(q, None))
     if isinstance(rows, list) and rows:
         return dict(rows[0])
-    raise DataUnavailableError(
-        f"ConvexValue option daily empty for {contract}@{date}"
-    )
+    raise DataUnavailableError(f"ConvexValue option daily empty for {contract}@{date}")
 
 
 def fetch_fmp_sync(endpoint: str, **params: Any) -> Any:
@@ -272,6 +249,7 @@ async def _cv_fetch_fmp(endpoint: str, **params: Any) -> Any:
 # --------------------------------------------------------------------------- #
 # Semantic FMP helpers (thin wrappers around fetch_fmp_sync)
 # --------------------------------------------------------------------------- #
+
 
 def fetch_profile_sync(symbol: str) -> dict[str, Any]:
     """FMP company profile (lastDividend, price, sector, etc.)."""
@@ -297,24 +275,16 @@ def fetch_treasury_rates_sync(limit: int = 30) -> list[dict[str, Any]]:
     return [dict(r) for r in rows]
 
 
-def fetch_equity_eod_sync(
-    symbol: str, date_from: str, date_to: str, *, adjusted: bool = True
-) -> list[dict[str, Any]]:
+def fetch_equity_eod_sync(symbol: str, date_from: str, date_to: str, *, adjusted: bool = True) -> list[dict[str, Any]]:
     """FMP historical end-of-day prices for an underlying.
 
     ``adjusted`` selects dividend/split-adjusted prices when true (used for
     realized-volatility and return series), and the ``full`` (unadjusted)
     endpoint otherwise (used when matching raw option underlying prints).
     """
-    endpoint = (
-        "historical-price-eod/dividend-adjusted"
-        if adjusted
-        else "historical-price-eod/full"
-    )
+    endpoint = "historical-price-eod/dividend-adjusted" if adjusted else "historical-price-eod/full"
     payload = fetch_fmp_sync(endpoint, symbol=symbol, **{"from": date_from, "to": date_to})
     rows = payload.get("historical") if isinstance(payload, dict) else payload
     if not rows:
-        raise DataUnavailableError(
-            f"FMP {endpoint} empty for {symbol} [{date_from}..{date_to}]"
-        )
+        raise DataUnavailableError(f"FMP {endpoint} empty for {symbol} [{date_from}..{date_to}]")
     return [dict(r) for r in rows]

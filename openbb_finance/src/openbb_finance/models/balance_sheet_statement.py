@@ -105,9 +105,7 @@ class FinanceBalanceSheetData(BalanceSheetData):
     treasury_stock: int | None = Field(default=None)
 
 
-class FinanceBalanceSheetFetcher(
-    Fetcher[FinanceBalanceSheetQueryParams, list[FinanceBalanceSheetData]]
-):
+class FinanceBalanceSheetFetcher(Fetcher[FinanceBalanceSheetQueryParams, list[FinanceBalanceSheetData]]):
     """Fetcher for ConvexValue/FMP balance sheets."""
 
     @staticmethod

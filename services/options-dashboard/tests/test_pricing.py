@@ -43,6 +43,7 @@ _NY = ZoneInfo("America/New_York")
 # BSM reference
 # --------------------------------------------------------------------------- #
 
+
 def test_bsm_known_price() -> None:
     # S=100, K=100, T=1y, sigma=0.20, r=0.05, q=0 -> European call ~10.4506.
     price = bsm_price(spot=100, strike=100, t=1.0, iv=0.20, r=0.05, q=0.0, side="call")
@@ -71,18 +72,16 @@ def test_bsm_greeks_signs() -> None:
 # CRR convergence & American features
 # --------------------------------------------------------------------------- #
 
+
 def test_crr_european_converges_to_bsm() -> None:
     S, K, T, sigma, r, q = 100.0, 105.0, 1.0, 0.25, 0.03, 0.01
     bsm = bsm_price(spot=S, strike=K, t=T, iv=sigma, r=r, q=q, side="put")
     for n in (100, 200, 400):
-        eu = crr_price(spot=S, strike=K, t=T, iv=sigma, r=r, q=q, side="put",
-                       steps=n, american=False)
+        eu = crr_price(spot=S, strike=K, t=T, iv=sigma, r=r, q=q, side="put", steps=n, american=False)
         assert abs(eu - bsm) < 0.05  # within 5 cents at all three step counts
     # Higher step count should be at least as close.
-    eu_hi = crr_price(spot=S, strike=K, t=T, iv=sigma, r=r, q=q, side="put",
-                      steps=400, american=False)
-    eu_lo = crr_price(spot=S, strike=K, t=T, iv=sigma, r=r, q=q, side="put",
-                      steps=100, american=False)
+    eu_hi = crr_price(spot=S, strike=K, t=T, iv=sigma, r=r, q=q, side="put", steps=400, american=False)
+    eu_lo = crr_price(spot=S, strike=K, t=T, iv=sigma, r=r, q=q, side="put", steps=100, american=False)
     assert abs(eu_hi - bsm) <= abs(eu_lo - bsm) + 1e-6
 
 
@@ -110,6 +109,7 @@ def test_crr_step_constants_are_sensible() -> None:
 # --------------------------------------------------------------------------- #
 # IV round-trip
 # --------------------------------------------------------------------------- #
+
 
 @pytest.mark.parametrize("side", ["call", "put"])
 @pytest.mark.parametrize("iv", [0.10, 0.30, 0.80])
@@ -144,6 +144,7 @@ def test_iv_outside_bounds_detected() -> None:
 # --------------------------------------------------------------------------- #
 # 0DTE / time-to-expiry
 # --------------------------------------------------------------------------- #
+
 
 def test_years_to_expiry_past_clamps_to_zero() -> None:
     now = datetime(2026, 7, 14, 10, 0, tzinfo=_NY)
@@ -186,6 +187,7 @@ def test_intrinsic_value_helpers() -> None:
 # --------------------------------------------------------------------------- #
 # Market inputs
 # --------------------------------------------------------------------------- #
+
 
 def test_treasury_interpolation_mid_pillar() -> None:
     rows = [{"date": "2026-07-10", "month3": 4.0, "month6": 4.2}]

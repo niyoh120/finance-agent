@@ -59,9 +59,7 @@ class FinanceGovernmentTradesData(GovernmentTradesData):
     comment: str | None = Field(default=None)
 
 
-class FinanceGovernmentTradesFetcher(
-    Fetcher[FinanceGovernmentTradesQueryParams, list[FinanceGovernmentTradesData]]
-):
+class FinanceGovernmentTradesFetcher(Fetcher[FinanceGovernmentTradesQueryParams, list[FinanceGovernmentTradesData]]):
     """Fetcher for ConvexValue/FMP senate trades."""
 
     @staticmethod

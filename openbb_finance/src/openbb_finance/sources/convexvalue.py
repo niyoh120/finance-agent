@@ -1,6 +1,6 @@
 """ConvexValue (cvforge Research Plan) REST API data source.
 
-Reverse-engineered API documented in docs/ConvexValue REST API 数据接口文档.md.
+Reverse-engineered API documented in docs/convexvalue-rest-api.md.
 All endpoints are POST JSON with Bearer token auth. Base URL:
 https://tap.convexvalue.com/api/data
 
@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import weakref
 from typing import Any
 
 import httpx
@@ -25,17 +26,50 @@ import httpx
 # ponytail: module-level constants — CV field set is fixed by the backend.
 # Discovered via MCP list_chain_fields (the authoritative 42-field enum).
 OPTIONS_SNAPSHOTS_FIELDS: tuple[str, ...] = (
-    "underlying_ticker", "ticker", "break_even_price", "implied_volatility",
-    "open_interest", "fair_market_value", "day_change", "day_change_percent",
-    "day_close", "day_high", "day_last_updated", "day_low", "day_open",
-    "day_previous_close", "day_volume", "day_vwap", "contract_type",
-    "exercise_style", "expiration_date", "shares_per_contract", "strike_price",
-    "delta", "gamma", "theta", "vega", "ask", "ask_size", "bid", "bid_size",
-    "quote_last_updated", "midpoint", "quote_timeframe", "trade_conditions",
-    "trade_exchange", "trade_price", "trade_sip_timestamp", "trade_size",
-    "trade_timeframe", "underlying_change_to_break_even",
-    "underlying_last_updated", "underlying_price", "underlying_symbol",
-    "underlying_timeframe", "fetched_at",
+    "underlying_ticker",
+    "ticker",
+    "break_even_price",
+    "implied_volatility",
+    "open_interest",
+    "fair_market_value",
+    "day_change",
+    "day_change_percent",
+    "day_close",
+    "day_high",
+    "day_last_updated",
+    "day_low",
+    "day_open",
+    "day_previous_close",
+    "day_volume",
+    "day_vwap",
+    "contract_type",
+    "exercise_style",
+    "expiration_date",
+    "shares_per_contract",
+    "strike_price",
+    "delta",
+    "gamma",
+    "theta",
+    "vega",
+    "ask",
+    "ask_size",
+    "bid",
+    "bid_size",
+    "quote_last_updated",
+    "midpoint",
+    "quote_timeframe",
+    "trade_conditions",
+    "trade_exchange",
+    "trade_price",
+    "trade_sip_timestamp",
+    "trade_size",
+    "trade_timeframe",
+    "underlying_change_to_break_even",
+    "underlying_last_updated",
+    "underlying_price",
+    "underlying_symbol",
+    "underlying_timeframe",
+    "fetched_at",
 )
 
 # Curated 32-field subset for /chains (CV hard limit is 32 params). Covers the
@@ -45,20 +79,42 @@ OPTIONS_SNAPSHOTS_FIELDS: tuple[str, ...] = (
 # are low-value system/metadata fields.
 CHAIN_FIELDS: tuple[str, ...] = (
     # contract reference
-    "expiration_date", "strike_price", "contract_type", "ticker",
-    "exercise_style", "shares_per_contract",
+    "expiration_date",
+    "strike_price",
+    "contract_type",
+    "ticker",
+    "exercise_style",
+    "shares_per_contract",
     # greeks + IV
-    "delta", "gamma", "theta", "vega", "implied_volatility",
+    "delta",
+    "gamma",
+    "theta",
+    "vega",
+    "implied_volatility",
     # pricing
-    "bid", "bid_size", "ask", "ask_size", "midpoint",
-    "fair_market_value", "break_even_price",
+    "bid",
+    "bid_size",
+    "ask",
+    "ask_size",
+    "midpoint",
+    "fair_market_value",
+    "break_even_price",
     # open interest + volume
-    "open_interest", "day_volume",
+    "open_interest",
+    "day_volume",
     # day stats
-    "day_open", "day_high", "day_low", "day_close",
-    "day_previous_close", "day_change", "day_change_percent", "day_vwap",
+    "day_open",
+    "day_high",
+    "day_low",
+    "day_close",
+    "day_previous_close",
+    "day_change",
+    "day_change_percent",
+    "day_vwap",
     # underlying
-    "underlying_symbol", "underlying_price", "underlying_change_to_break_even",
+    "underlying_symbol",
+    "underlying_price",
+    "underlying_change_to_break_even",
     # trade
     "trade_price",
 )
@@ -74,6 +130,26 @@ _RETRY_BACKOFF = (1.0, 3.0)
 
 class ConvexValueError(RuntimeError):
     """Raised for non-recoverable ConvexValue API failures (4xx after retries)."""
+
+
+_client_by_loop: "weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, httpx.AsyncClient]" = weakref.WeakKeyDictionary()
+
+
+def _get_client() -> httpx.AsyncClient:
+    """Return a per-event-loop AsyncClient so TCP/TLS connections are reused.
+
+    An AsyncClient's connection pool is bound to the loop it was created on,
+    so keying by the running loop keeps reuse correct both for one-shot
+    ``asyncio.run`` processes (agent CLI) and the dashboard's long-lived
+    worker loop. Entries disappear together with their loop, so a stale pool
+    is never handed to a fresh loop.
+    """
+    loop = asyncio.get_running_loop()
+    client = _client_by_loop.get(loop)
+    if client is None:
+        client = httpx.AsyncClient(timeout=_TIMEOUT)
+        _client_by_loop[loop] = client
+    return client
 
 
 def _get_api_key() -> str:
@@ -116,34 +192,26 @@ async def _post(endpoint: str, body: dict[str, Any] | None = None) -> Any:
         if delay:
             await asyncio.sleep(delay)
         try:
-            async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
-                response = await client.post(url, headers=_headers(), json=payload)
+            response = await _get_client().post(url, headers=_headers(), json=payload)
         except httpx.RequestError as exc:
-            last_error = ConvexValueError(
-                f"ConvexValue {endpoint} request failed: {exc}"
-            )
+            last_error = ConvexValueError(f"ConvexValue {endpoint} request failed: {exc}")
             continue
         if response.status_code >= 500:
-            last_error = ConvexValueError(
-                f"ConvexValue {endpoint} returned HTTP {response.status_code}"
-            )
+            last_error = ConvexValueError(f"ConvexValue {endpoint} returned HTTP {response.status_code}")
             continue
         if response.status_code >= 400:
             raise ConvexValueError(
-                f"ConvexValue {endpoint} returned HTTP {response.status_code}: "
-                f"{response.text[:200]}"
+                f"ConvexValue {endpoint} returned HTTP {response.status_code}: {response.text[:200]}"
             )
         try:
             return response.json()
         except ValueError as exc:
-            raise ConvexValueError(
-                f"ConvexValue {endpoint} returned non-JSON response: "
-                f"{response.text[:200]}"
-            ) from exc
+            raise ConvexValueError(f"ConvexValue {endpoint} returned non-JSON response: {response.text[:200]}") from exc
     raise last_error or ConvexValueError(f"ConvexValue {endpoint} failed after retries")
 
 
 # ---- endpoint-specific helpers -------------------------------------------
+
 
 async def fetch_chains(symbol: str) -> dict[str, Any]:
     """Return the full option chain for *symbol* using CHAIN_FIELDS."""
@@ -209,9 +277,5 @@ async def fetch_fmp(endpoint: str, **params: Any) -> Any:
 
     Array values are comma-joined per FMP convention; falsy values are dropped.
     """
-    body = {
-        key: value
-        for key, value in params.items()
-        if value is not None and value != ""
-    }
+    body = {key: value for key, value in params.items() if value is not None and value != ""}
     return await _post(f"fmp/stable/{endpoint.lstrip('/')}", body)

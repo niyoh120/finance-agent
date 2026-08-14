@@ -81,10 +81,7 @@ def value_earnings_crush_scenario(
         default_iv=None,
         now=ctx.now,
     )
-    post_ivs = {
-        contract: max(iv * (1 + crush_pct), 0.0001)
-        for contract, iv in iv_overrides.items()
-    }
+    post_ivs = {contract: max(iv * (1 + crush_pct), 0.0001) for contract, iv in iv_overrides.items()}
     before = value_strategy(legs, before_ctx, iv_overrides=iv_overrides)
     after = value_strategy(legs, post_ctx, iv_overrides=post_ivs)
     return before, after, post_ctx.spot
@@ -176,8 +173,7 @@ def render_earnings_crush_scenario(
         price_change = after.net_price - before.net_price
 
         st.caption(
-            f"{scenario_name}：标的跳空 {gap_pct:+.2%} · IV 变化 {crush_pct:+.2%} · "
-            f"财报后标的价格 {post_spot:.2f}"
+            f"{scenario_name}：标的跳空 {gap_pct:+.2%} · IV 变化 {crush_pct:+.2%} · 财报后标的价格 {post_spot:.2f}"
         )
         metrics = st.columns(3, gap="small")
         metrics[0].metric("财报前组合模型价", f"{before.net_price:+.2f}")
@@ -186,8 +182,7 @@ def render_earnings_crush_scenario(
         st.caption("价格为每股组合模型价；财报前基准取财报日前一日，财报后使用当前估值日期。")
 
 
-def _analyze_event(symbol: str, event: analytics.EarningsEvent,
-                   style: str, q: float, spot: float):
+def _analyze_event(symbol: str, event: analytics.EarningsEvent, style: str, q: float, spot: float):
     # Pick the nearest standard monthly expiration after the event (7-45 DTE).
     expiration = analytics.nearest_option_expiration(event.date + timedelta(days=1))
     dte = (expiration - event.date).days
@@ -229,8 +224,12 @@ def _analyze_event(symbol: str, event: analytics.EarningsEvent,
     crush = (iv_after - iv_before) / iv_before if iv_before and iv_after and iv_before > 0 else None
     quality = "good" if iv_before and iv_after else "no_trade"
     return analytics.EarningsCrushSample(
-        event=event, iv_before=iv_before, iv_after=iv_after,
-        crush_pct=crush, underlying_gap_pct=gap, quality=quality,
+        event=event,
+        iv_before=iv_before,
+        iv_after=iv_after,
+        crush_pct=crush,
+        underlying_gap_pct=gap,
+        quality=quality,
     )
 
 
@@ -275,6 +274,7 @@ def _solve_iv_at(symbol: str, strike: float, side: str, expiration, as_of, style
     from datetime import datetime as _dt
 
     from ..pricing import expiry_datetime, solve_iv, years_to_expiry
+
     t, _ = years_to_expiry(
         expiry_datetime(expiration.isoformat()),
         now=_dt.combine(as_of, _dt.min.time()),

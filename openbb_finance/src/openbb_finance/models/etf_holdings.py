@@ -31,9 +31,7 @@ class FinanceEtfHoldingsData(EtfHoldingsData):
     cusip: str | None = Field(default=None, description="CUSIP identifier.")
     shares_number: float | None = Field(default=None)
     market_value: float | None = Field(default=None)
-    weight_percentage: float | None = Field(
-        default=None, description="Weight as a percentage (e.g. 6.21 for 6.21%)."
-    )
+    weight_percentage: float | None = Field(default=None, description="Weight as a percentage (e.g. 6.21 for 6.21%).")
     updated_at: datetime | None = Field(default=None)
     asset: str | None = Field(default=None, description="Underlying asset ticker.")
 
@@ -42,9 +40,7 @@ class FinanceEtfHoldingsData(EtfHoldingsData):
     }
 
 
-class FinanceEtfHoldingsFetcher(
-    Fetcher[FinanceEtfHoldingsQueryParams, list[FinanceEtfHoldingsData]]
-):
+class FinanceEtfHoldingsFetcher(Fetcher[FinanceEtfHoldingsQueryParams, list[FinanceEtfHoldingsData]]):
     """Fetcher for ConvexValue/FMP ETF holdings."""
 
     @staticmethod

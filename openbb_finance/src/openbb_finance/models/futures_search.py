@@ -19,10 +19,7 @@ class FinanceFuturesSearchQueryParams(FuturesInstrumentsQueryParams):
     """Finance futures search query."""
 
     query: str = Field(
-        description=(
-            "Search query: variety code (si), user symbol (si.GFEX), or "
-            "Chinese product name (工业硅)."
-        )
+        description=("Search query: variety code (si), user symbol (si.GFEX), or Chinese product name (工业硅).")
     )
     is_symbol: bool = Field(
         default=False,

@@ -41,9 +41,7 @@ class FinanceFuturesHistoricalData(FuturesHistoricalData):
     source: str | None = Field(default=None, description="Selected data source.")
 
 
-class FinanceFuturesHistoricalFetcher(
-    Fetcher[FinanceFuturesHistoricalQueryParams, list[FinanceFuturesHistoricalData]]
-):
+class FinanceFuturesHistoricalFetcher(Fetcher[FinanceFuturesHistoricalQueryParams, list[FinanceFuturesHistoricalData]]):
     """Fetcher for routed futures historical price data."""
 
     @staticmethod

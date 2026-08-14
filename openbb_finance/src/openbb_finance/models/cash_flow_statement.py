@@ -89,9 +89,7 @@ class FinanceCashFlowData(CashFlowStatementData):
     stock_based_compensation: int | None = Field(default=None)
 
 
-class FinanceCashFlowFetcher(
-    Fetcher[FinanceCashFlowQueryParams, list[FinanceCashFlowData]]
-):
+class FinanceCashFlowFetcher(Fetcher[FinanceCashFlowQueryParams, list[FinanceCashFlowData]]):
     """Fetcher for ConvexValue/FMP cash flow statements."""
 
     @staticmethod

@@ -78,8 +78,7 @@ class TickflowSource:
         metadata = _default_index_metadata(region)
         requested = symbols or [item["symbol"] for item in metadata]
         tickflow_symbols = [
-            _to_tickflow_index_symbol(symbol, _index_symbol_region(symbol, metadata, region))
-            for symbol in requested
+            _to_tickflow_index_symbol(symbol, _index_symbol_region(symbol, metadata, region)) for symbol in requested
         ]
         output_symbols = dict(
             zip(tickflow_symbols, [_normalize_output_symbol(symbol, region) for symbol in requested], strict=False)
@@ -103,10 +102,7 @@ class TickflowSource:
             return []
         universe_details = await self._fetch_universe_details(index_universe_ids)
         symbols = _unique_symbols(
-            symbol
-            for detail in universe_details
-            for symbol in detail.get("symbols", [])
-            if isinstance(symbol, str)
+            symbol for detail in universe_details for symbol in detail.get("symbols", []) if isinstance(symbol, str)
         )
         if not symbols:
             return []
@@ -152,10 +148,7 @@ class TickflowSource:
             return []
         universe_details = await self._fetch_universe_details(equity_universe_ids)
         symbols = _unique_symbols(
-            symbol
-            for detail in universe_details
-            for symbol in detail.get("symbols", [])
-            if isinstance(symbol, str)
+            symbol for detail in universe_details for symbol in detail.get("symbols", []) if isinstance(symbol, str)
         )
         if not symbols:
             return []
