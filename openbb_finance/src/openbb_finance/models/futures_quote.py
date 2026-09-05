@@ -17,6 +17,7 @@ from openbb_core.provider.utils.errors import EmptyDataError
 from pydantic import Field
 
 from openbb_finance.registry import build_default_registry
+from openbb_finance.sources.symbols import require_futures_exchange
 
 
 class FinanceFuturesQuoteQueryParams(QueryParams):
@@ -50,7 +51,9 @@ class FinanceFuturesQuoteFetcher(Fetcher[FinanceFuturesQuoteQueryParams, list[Fi
 
     @staticmethod
     def transform_query(params: dict[str, Any]) -> FinanceFuturesQuoteQueryParams:
-        return FinanceFuturesQuoteQueryParams(**params)
+        query = FinanceFuturesQuoteQueryParams(**params)
+        require_futures_exchange(query.symbol)
+        return query
 
     @staticmethod
     async def aextract_data(

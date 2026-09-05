@@ -85,6 +85,32 @@ def is_futures_symbol(symbol: str) -> bool:
     return futures_exchange(symbol) is not None
 
 
+def require_futures_exchange(symbol: str) -> str:
+    """Validate a futures command symbol and return its exchange short code.
+
+    Futures commands (quote/historical) require <CODE>.<EXCHANGE> with an
+    exchange we cover. Unknown-suffix symbols like DX.NYBOT or bare ones like
+    VIX would otherwise be inferred as US equities and routed to the US stock
+    market, silently returning unrelated stock data (e.g. Dynex Capital for
+    DX.NYBOT), so reject them up front with the supported exchange list.
+    """
+    exchange = futures_exchange(symbol)
+    if exchange is not None:
+        return exchange
+    value = symbol.strip().upper()
+    _, suffix = split_symbol(value)
+    supported = ", ".join(sorted(FUTURES_EXCHANGES))
+    if suffix is None:
+        raise ValueError(
+            f"Invalid futures symbol {value!r}: expected <CODE>.<EXCHANGE>, e.g. rb.SHFE or GC.COMEX; "
+            f"supported exchanges: {supported}"
+        )
+    raise ValueError(
+        f"Invalid futures symbol {value!r}: unsupported exchange {suffix!r}; "
+        f"supported exchanges: {supported}. Use futures.search to discover available contracts."
+    )
+
+
 def futures_plain_code(symbol: str) -> str:
     """Uppercase variety code part of a futures symbol, e.g. rb.SHFE -> RB."""
     code, _ = split_symbol(symbol)

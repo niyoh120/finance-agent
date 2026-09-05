@@ -288,6 +288,20 @@ async def test_futures_quote_fetcher_interface(monkeypatch):
     extract_data.assert_awaited_once()
 
 
+@pytest.mark.parametrize("bad_symbol", ["DX.NYBOT", "ES.CME", "NQ.CME", "VIX", "VIX.CFE", "rb"])
+def test_futures_quote_transform_query_rejects_non_futures_symbols(bad_symbol):
+    """Regression: unknown-suffix or suffixless symbols must fail fast.
+
+    Before the guard, DX.NYBOT/ES.CME were inferred as US equities and the
+    quote fetcher silently returned unrelated US stock data (Dynex Capital,
+    Eversource) under the requested futures symbol.
+    """
+    from openbb_finance.models.futures_quote import FinanceFuturesQuoteFetcher
+
+    with pytest.raises(ValueError, match="supported exchanges"):
+        FinanceFuturesQuoteFetcher.transform_query({"symbol": bad_symbol})
+
+
 @pytest.mark.anyio
 async def test_futures_search_fetcher_interface(monkeypatch):
     from openbb_finance.models.futures_search import FinanceFuturesSearchData
@@ -347,3 +361,17 @@ async def test_futures_historical_fetcher_unlisted_month_raises_empty(monkeypatc
     query = FinanceFuturesHistoricalFetcher.transform_query({"symbol": "IF.CFFEX", "expiration": "2026-10"})
     with pytest.raises(EmptyDataError):
         FinanceFuturesHistoricalFetcher.transform_data(query, [])
+
+
+@pytest.mark.parametrize("bad_symbol", ["DX.NYBOT", "ES.CME", "NQ.CME", "VIX", "VIX.CFE", "rb"])
+def test_futures_historical_transform_query_rejects_non_futures_symbols(bad_symbol):
+    """Regression: unknown-suffix or suffixless symbols must fail fast.
+
+    Before the guard, DX.NYBOT/ES.CME were inferred as US equities and the
+    historical fetcher silently returned US stock klines under the requested
+    futures symbol.
+    """
+    from openbb_finance.models.futures_historical import FinanceFuturesHistoricalFetcher
+
+    with pytest.raises(ValueError, match="supported exchanges"):
+        FinanceFuturesHistoricalFetcher.transform_query({"symbol": bad_symbol})

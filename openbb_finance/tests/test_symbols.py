@@ -1,5 +1,6 @@
 from datetime import datetime
 
+import pytest
 from openbb_finance.sources.baostock import _normalize_price_row, _to_baostock_symbol
 from openbb_finance.sources.base import infer_market
 from openbb_finance.sources.symbols import (
@@ -10,6 +11,7 @@ from openbb_finance.sources.symbols import (
     futures_exchange,
     futures_plain_code,
     is_futures_symbol,
+    require_futures_exchange,
     to_openbb_symbol,
 )
 
@@ -123,3 +125,22 @@ def test_infer_market_from_symbol_distinguishes_futures_from_us():
     assert infer_market_from_symbol("GC.COMEX") == "future"
     assert infer_market_from_symbol("AU.SGE") == "future"
     assert infer_market_from_symbol("AAPL") == "us"
+
+
+def test_require_futures_exchange_accepts_supported_symbols():
+    assert require_futures_exchange("rb.SHFE") == "SHFE"
+    assert require_futures_exchange("gc.comex") == "COMEX"
+    assert require_futures_exchange("AU9999.SGE") == "SGE"
+
+
+def test_require_futures_exchange_rejects_unknown_exchange_suffix():
+    # Regression: DX.NYBOT used to fall through to a US stock quote (Dynex
+    # Capital ~$13) because NYBOT is absent from FUTURES_EXCHANGES.
+    with pytest.raises(ValueError, match="unsupported exchange 'NYBOT'"):
+        require_futures_exchange("DX.NYBOT")
+
+
+def test_require_futures_exchange_rejects_suffixless_symbol():
+    # Regression: bare VIX used to be routed to the US stock market.
+    with pytest.raises(ValueError, match="expected <CODE>.<EXCHANGE>"):
+        require_futures_exchange("VIX")

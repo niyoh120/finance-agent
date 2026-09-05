@@ -17,6 +17,7 @@ from pydantic import Field
 from openbb_finance.registry import build_default_registry
 from openbb_finance.router import route_futures_price_sources
 from openbb_finance.sources.base import PriceQuery, infer_market
+from openbb_finance.sources.symbols import require_futures_exchange
 
 
 class FinanceFuturesHistoricalQueryParams(FuturesHistoricalQueryParams):
@@ -46,7 +47,9 @@ class FinanceFuturesHistoricalFetcher(Fetcher[FinanceFuturesHistoricalQueryParam
 
     @staticmethod
     def transform_query(params: dict[str, Any]) -> FinanceFuturesHistoricalQueryParams:
-        return FinanceFuturesHistoricalQueryParams(**params)
+        query = FinanceFuturesHistoricalQueryParams(**params)
+        require_futures_exchange(query.symbol)
+        return query
 
     @staticmethod
     async def aextract_data(
