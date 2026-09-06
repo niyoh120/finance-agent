@@ -16,6 +16,7 @@ members = [
   "shared",
   "services/options-dashboard",
   "services/options-scraper",
+  "services/schwab-api",
   "openbb-agent-cli",
   "openbb_finance",
 ]

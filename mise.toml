@@ -29,6 +29,10 @@ run = "docker build -f migrate/Dockerfile -t {{vars.image_repo}}/finance-migrate
 [tasks.docker-build-options-scraper]
 run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=options-scraper --build-arg MODULE_ENTRY=options_scraper.main -t {{vars.image_repo}}/finance-options-scraper:latest -t {{vars.image_repo}}/finance-options-scraper:{{exec(command='git rev-parse --short HEAD')}} ."
 
+[tasks.schwab-api]
+depends = ["install"]
+run = "uv run --package schwab-api python -m schwab_api.main"
+
 [tasks.options-dashboard]
 depends = ["install"]
 run = "uv run --package options-dashboard streamlit run services/options-dashboard/app.py"
@@ -36,12 +40,16 @@ run = "uv run --package options-dashboard streamlit run services/options-dashboa
 [tasks.docker-build-options-dashboard]
 run = "docker build -f services/options-dashboard/Dockerfile -t {{vars.image_repo}}/finance-options-dashboard:latest -t {{vars.image_repo}}/finance-options-dashboard:{{exec(command='git rev-parse --short HEAD')}} ."
 
+[tasks.docker-build-schwab-api]
+run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=schwab-api --build-arg MODULE_ENTRY=schwab_api.main -t {{vars.image_repo}}/finance-schwab-api:latest -t {{vars.image_repo}}/finance-schwab-api:{{exec(command='git rev-parse --short HEAD')}} ."
+
 [tasks.docker-build-all]
 run = [
   { tasks = [
     "docker-build-migrate",
     "docker-build-options-dashboard",
     "docker-build-options-scraper",
+    "docker-build-schwab-api",
   ] },
 ]
 
@@ -63,12 +71,19 @@ run = [
   "docker push {{vars.image_repo}}/finance-options-dashboard:{{exec(command='git rev-parse --short HEAD')}}",
 ]
 
+[tasks.docker-push-schwab-api]
+run = [
+  "docker push {{vars.image_repo}}/finance-schwab-api:latest",
+  "docker push {{vars.image_repo}}/finance-schwab-api:{{exec(command='git rev-parse --short HEAD')}}",
+]
+
 [tasks.docker-push-all]
 run = [
   { tasks = [
     "docker-push-migrate",
     "docker-push-options-dashboard",
     "docker-push-options-scraper",
+    "docker-push-schwab-api",
   ] },
 ]
 
@@ -88,6 +103,12 @@ run = [
 run = [
   { tasks = ["docker-build-options-dashboard"] },
   { tasks = ["docker-push-options-dashboard"] },
+]
+
+[tasks.docker-build-push-schwab-api]
+run = [
+  { tasks = ["docker-build-schwab-api"] },
+  { tasks = ["docker-push-schwab-api"] },
 ]
 
 [tasks.docker-build-push-all]

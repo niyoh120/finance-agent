@@ -53,6 +53,9 @@ Thumbs.db
 data/
 openbb_finance.toml
 .openbb_finance.toml
+.pytest_cache/
+.ruff_cache/
+s.jsonl
 
 # Node.js
 node_modules/

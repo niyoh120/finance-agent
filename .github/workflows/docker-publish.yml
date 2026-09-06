@@ -16,6 +16,7 @@ on:
           - migrate
           - options-scraper
           - options-dashboard
+          - schwab-api
       push:
         description: Push images to GHCR
         required: true
@@ -51,6 +52,12 @@ jobs:
             image: finance-options-dashboard
             dockerfile: services/options-dashboard/Dockerfile
             build_args: ""
+          - service: schwab-api
+            image: finance-schwab-api
+            dockerfile: services/Dockerfile
+            build_args: |
+              MODULE_NAME=schwab-api
+              MODULE_ENTRY=schwab_api.main
     steps:
       - name: Checkout
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.service == 'all' || inputs.service == matrix.service }}

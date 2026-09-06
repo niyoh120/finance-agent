@@ -1,0 +1,35 @@
+# Schwab Trader API 数据服务部署示例。
+# 复制为 compose.yml 并准备同目录 .env（或在 shell 环境中导出以下变量）：
+#   FA_SCHWAB_APP_KEY / FA_SCHWAB_APP_SECRET   必填
+#   FA_SCHWAB_CALLBACK_URL                      默认 https://127.0.0.1，需与 App 注册一致
+#   FA_SCHWAB_TOKENS_ENCRYPTION                 可选 Fernet key
+#   FA_SCHWAB_API_KEY                           可选，设置后数据接口需带 X-API-Key
+services:
+  schwab-api:
+    # 替换为实际镜像仓库
+    image: ghcr.io/OWNER/finance-schwab-api:latest
+    container_name: finance-schwab-api
+    restart: unless-stopped
+    ports:
+      # 默认只绑定本机回环；确需局域网访问再放开，并务必设置 FA_SCHWAB_API_KEY
+      - "127.0.0.1:8010:8010"
+    environment:
+      FA_SCHWAB_APP_KEY: ${FA_SCHWAB_APP_KEY:?set in .env}
+      FA_SCHWAB_APP_SECRET: ${FA_SCHWAB_APP_SECRET:?set in .env}
+      # 容器内必须绑定 0.0.0.0，端口映射才能转发；对外暴露面由上方 127.0.0.1 前缀限制
+      FA_SCHWAB_HOST: 0.0.0.0
+      FA_SCHWAB_PORT: 8010
+      FA_SCHWAB_CALLBACK_URL: ${FA_SCHWAB_CALLBACK_URL:-https://127.0.0.1}
+      FA_SCHWAB_TOKENS_DB: /data/tokens.db
+      FA_SCHWAB_TOKENS_ENCRYPTION: ${FA_SCHWAB_TOKENS_ENCRYPTION:-}
+      FA_SCHWAB_API_KEY: ${FA_SCHWAB_API_KEY:-}
+      FA_SCHWAB_KEEPALIVE_INTERVAL_HOURS: ${FA_SCHWAB_KEEPALIVE_INTERVAL_HOURS:-12}
+    volumes:
+      # token 落盘目录：授权一次后重启容器无需重新授权
+      - ${FA_SCHWAB_DATA_DIR:-./schwab-api-data}:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8010/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
