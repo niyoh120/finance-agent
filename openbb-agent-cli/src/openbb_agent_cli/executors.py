@@ -20,7 +20,7 @@ from typing import Any, Literal
 from zoneinfo import ZoneInfo
 
 from cyclopts.exceptions import CycloptsError
-from openbb_finance.models.equity_options_chain import FinanceOptionsChainFetcher
+from openbb_finance.sources.base import SourceError
 from openbb_finance.sources.symbols import infer_market_from_symbol
 
 
@@ -414,7 +414,6 @@ def _cv_route_executor(route: str) -> RouteExecutor:
     # cap the result to avoid multi-megabyte payloads. Callers can override
     # by passing an explicit limit (use 0 for chain/historical to mean all).
     default_limit = {
-        "derivatives.options.chain": 100,
         "etf.holdings": 20,
         "stocks.insider_trading": 50,
         "government.trades": 50,
@@ -580,42 +579,196 @@ def _options_query_executor(params: dict[str, Any]) -> list[dict[str, Any]]:
     )
 
 
-def _options_chain_batch_executor(params: dict[str, Any]) -> list[dict[str, Any]]:
-    """Batch executor for options chain: fetch via source, apply limit."""
+def _cv_api_key() -> str:
+    """Resolve the ConvexValue API key without raising.
+
+    Same precedence as convexvalue._get_api_key (live env var first, then the
+    loaded source config); used only to decide whether the CV side of the
+    options-chain aggregation participates.
+    """
+    import os
+
+    key = os.environ.get("CV_API_KEY", "").strip()
+    if not key:
+        from openbb_finance.config import get_source_config
+
+        key = (get_source_config("convexvalue").api_key or "").strip()
+    return key
+
+
+def _filter_cv_chain_window(
+    records: list[dict[str, Any]],
+    *,
+    dte: int,
+    strike_count: int,
+) -> list[dict[str, Any]]:
+    """Apply the Schwab-equivalent query window locally to flattened CV records.
+
+    CV /chains has no server-side dte/strike_count filters, so the aggregate
+    mode emulates them: keep contracts with dte <= *dte*, then per expiration
+    keep the *strike_count* strike levels nearest to the underlying price
+    (both call and put rows at a kept strike survive).
+    """
+    records = [r for r in records if r.get("dte") is not None and r["dte"] <= dte]
+    by_expiration: dict[Any, list[dict[str, Any]]] = {}
+    for record in records:
+        by_expiration.setdefault(record.get("expiration"), []).append(record)
+    kept: list[dict[str, Any]] = []
+    for rows in by_expiration.values():
+        reference = next((r.get("underlying_price") for r in rows if r.get("underlying_price") is not None), None)
+        if reference is None:
+            kept.extend(rows)
+            continue
+        strikes = sorted(
+            {r["strike"] for r in rows if r.get("strike") is not None},
+            key=lambda s: (abs(s - reference), s),
+        )
+        keep = set(strikes[:strike_count])
+        kept.extend(r for r in rows if r.get("strike") in keep)
+    return kept
+
+
+async def _aggregate_options_chain(
+    symbol: str,
+    *,
+    dte: int,
+    strike_count: int,
+    range_: str | None,
+    strategy: str | None,
+) -> tuple[list[dict[str, Any]], int, list[str]]:
+    """Merge the Schwab and ConvexValue chains field-by-field.
+
+    Source order IS the priority (schwab first): in-window contracts take
+    every populated field from Schwab (unified pricing/greeks conventions,
+    trusted quote timestamps); CV fills fields Schwab leaves null and
+    contributes out-of-window contracts (far-dated / deep-OTM) on its own —
+    the CV side stays the full chain here so the merged output keeps the
+    full-chain skeleton (--source cv is the branch that emulates the Schwab
+    window locally). Any single source failure is swallowed by
+    aggregate_records and degrades to the other source alone. The
+    aggregator's {field}_source annotations are stripped so the output shape
+    matches the previous single-source output exactly; only
+    _meta.sources_used reveals which sources participated.
+    """
+    from types import SimpleNamespace
+
+    from openbb_finance.aggregator import aggregate_records
+    from openbb_finance.models.equity_options_chain import FinanceOptionsChainFetcher
+    from openbb_finance.registry import build_default_registry
+
+    schwab = build_default_registry().get("schwab")
+    cv_source = SimpleNamespace(name="convexvalue", enabled=bool(_cv_api_key()))
+    state: dict[str, Any] = {"cv_total": None, "sources_used": []}
+
+    async def fetch(source: Any) -> list[dict[str, Any]]:
+        if source.name == "schwab":
+            data = await source.fetch_options_chain(
+                symbol, dte=dte, strike_count=strike_count, range_=range_, strategy=strategy
+            )
+            state["sources_used"].append("schwab")
+            # Schwab's server-side daysToExpiration filter is loose (contracts
+            # beyond the declared window still come back), so enforce the
+            # user-declared window locally; strike_count is honored server-side.
+            return [r for r in data["records"] if r.get("dte") is not None and r["dte"] <= dte]
+        query = FinanceOptionsChainFetcher.transform_query({"symbol": symbol})
+        data = await FinanceOptionsChainFetcher.aextract_data(query, None)
+        state["cv_total"] = data.get("contract_count", 0)
+        state["sources_used"].append("convexvalue")
+        # Full chain on purpose: out-of-window contracts (far-dated /
+        # deep-OTM) survive here and come out as all-CV rows.
+        return data.get("records", [])
+
+    participants = [s for s in (schwab, cv_source) if s is not None and s.enabled]
+    merged = await aggregate_records(participants, fetch, key_fields=("expiration", "strike", "option_type"))
+    records = [{k: v for k, v in row.items() if not k.endswith("_source")} for row in merged]
+    # CV's server-reported total is the closest thing to a contract count for
+    # the union; when CV failed, the merged row count is the honest number.
+    total = state["cv_total"] if state["cv_total"] is not None else len(records)
+    return records, total, state["sources_used"]
+
+
+def _options_chain_execute(params: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Shared core for the derivatives.options.chain CLI command and batch executor.
+
+    Params: symbol, dte, strike_count (both mandatory — the declared query
+    window), optional source ('cv'|'schwab' forces a single source),
+    expiration/option_type/min_dte local filters, range_/strategy (Schwab
+    only), sort_by/sort_dir/limit.
+
+    Returns (records, meta): meta carries returned/filtered plus `total`
+    (contract count) and `sources_used` (aggregate mode only).
+    """
     import asyncio
+    from datetime import date as _date
 
     symbol = params.get("symbol")
     if not symbol:
-        return []
-    limit = params.get("limit", 100)
-    expiration = params.get("expiration")
-    option_type = params.get("option_type")
+        raise ValueError("symbol is required")
+    dte = params.get("dte")
+    strike_count = params.get("strike_count")
+    if dte is None or strike_count is None:
+        raise ValueError("options.chain requires dte and strike_count (declare the query window)")
+    dte = int(dte)
+    strike_count = int(strike_count)
+    range_ = params.get("range_") or params.get("range")
+    strategy = params.get("strategy")
 
-    async def _fetch() -> tuple[list[dict[str, Any]], int]:
-        q = FinanceOptionsChainFetcher.transform_query({"symbol": symbol})
-        data = await FinanceOptionsChainFetcher.aextract_data(q, None)
-        return data.get("records", []), data.get("contract_count", 0)
+    async def _fetch() -> tuple[list[dict[str, Any]], int, list[str] | None]:
+        source_choice = params.get("source")
+        if source_choice == "schwab":
+            from openbb_finance.registry import build_default_registry
 
-    records, _ = asyncio.run(_fetch())
-    if expiration:
-        from datetime import date as _date
+            schwab = build_default_registry().get("schwab")
+            if schwab is None or not schwab.enabled:
+                raise SourceError(
+                    "schwab source is disabled; set SCHWAB_API_BASE_URL (and optional SCHWAB_API_KEY)"
+                )
+            data = await schwab.fetch_options_chain(
+                str(symbol), dte=dte, strike_count=strike_count, range_=range_, strategy=strategy
+            )
+            # Same local window enforcement as aggregate mode: Schwab's
+            # server-side dte filter is loose.
+            records = [r for r in data["records"] if r.get("dte") is not None and r["dte"] <= dte]
+            return records, data["contract_count"], ["schwab"]
+        if source_choice == "cv":
+            from openbb_finance.models.equity_options_chain import FinanceOptionsChainFetcher
 
-        exp = _date.fromisoformat(expiration)
-        records = [r for r in records if r.get("expiration") == exp]
-    if option_type:
-        records = [r for r in records if r.get("option_type") == option_type]
+            query = FinanceOptionsChainFetcher.transform_query({"symbol": symbol})
+            data = await FinanceOptionsChainFetcher.aextract_data(query, None)
+            records = _filter_cv_chain_window(data.get("records", []), dte=dte, strike_count=strike_count)
+            return records, data.get("contract_count", len(records)), ["convexvalue"]
+        return await _aggregate_options_chain(
+            str(symbol), dte=dte, strike_count=strike_count, range_=range_, strategy=strategy
+        )
+
+    records, total, sources_used = asyncio.run(_fetch())
+    if params.get("expiration"):
+        exp_date = _date.fromisoformat(str(params["expiration"]))
+        records = [r for r in records if r.get("expiration") == exp_date]
+    if params.get("option_type"):
+        records = [r for r in records if r.get("option_type") == params["option_type"]]
     min_dte = params.get("min_dte")
-    max_dte = params.get("max_dte")
     if min_dte is not None:
         records = [r for r in records if r.get("dte") is not None and r["dte"] >= min_dte]
-    if max_dte is not None:
-        records = [r for r in records if r.get("dte") is not None and r["dte"] <= max_dte]
-    records, _ = _filter_sort_limit(
+    records, meta = _filter_sort_limit(
         records,
         sort_by=params.get("sort_by", "open_interest"),
         sort_dir=params.get("sort_dir", "desc"),
-        limit=limit if isinstance(limit, int) and limit > 0 else None,
+        limit=params.get("limit") if isinstance(params.get("limit"), int) and params.get("limit", 0) > 0 else None,
     )
+    meta["total"] = total
+    if sources_used is not None:
+        meta["sources_used"] = sources_used
+    return records, meta
+
+
+def _options_chain_batch_executor(params: dict[str, Any]) -> list[dict[str, Any]]:
+    """Batch executor for options chain: aggregate/fetch via sources, apply limit."""
+    # Safety default for batch callers that omit limit (aggregated output can
+    # span the full CV chain skeleton).
+    if params.get("limit") is None:
+        params = {"limit": 100, **params}
+    records, _meta = _options_chain_execute(params)
     return records
 
 

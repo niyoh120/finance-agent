@@ -33,11 +33,17 @@ DEFAULT_SOURCES: tuple[str, ...] = (
     "baostock",
     "akshare",
     "openbb",
+    "schwab",
 )
 
 DEFAULT_CONFIG: dict[str, Any] = {"sources": {name: {"enabled": True} for name in DEFAULT_SOURCES}}
 DEFAULT_CONFIG["sources"]["finnhub"]["api_key"] = "${FINNHUB_API_KEY}"
 DEFAULT_CONFIG["sources"]["convexvalue"]["api_key"] = "${CV_API_KEY}"
+# schwab-api service endpoint: the placeholder collapses to "" when the env var
+# is unset, so SchwabSource.enabled is False and routing falls back to
+# tdx/tickflow at zero cost. api_key is optional (service-side X-API-Key gate).
+DEFAULT_CONFIG["sources"]["schwab"]["base_url"] = "${SCHWAB_API_BASE_URL}"
+DEFAULT_CONFIG["sources"]["schwab"]["api_key"] = "${SCHWAB_API_KEY}"
 
 CONFIG_FILENAMES = ("openbb_finance.toml", ".openbb_finance.toml")
 ENV_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")

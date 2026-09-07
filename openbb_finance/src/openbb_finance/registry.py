@@ -37,6 +37,7 @@ def build_default_registry() -> DataSourceRegistry:
     from openbb_finance.sources.finnhub import FinnhubSource
     from openbb_finance.sources.futunn import FutunnSource
     from openbb_finance.sources.openbb import OpenbbSource
+    from openbb_finance.sources.schwab import SchwabSource
     from openbb_finance.sources.sina import SinaSource
     from openbb_finance.sources.tdx import TdxSource
     from openbb_finance.sources.tickflow import TickflowSource
@@ -52,6 +53,7 @@ def build_default_registry() -> DataSourceRegistry:
         FinnhubSource,
         FutunnSource,
         OpenbbSource,
+        SchwabSource,
     ]:
         config = get_source_config(source_cls.name)
         registry.register(source_cls(config))

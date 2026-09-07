@@ -107,7 +107,7 @@ async def test_equity_quote_cn_falls_back_to_akshare():
 
 
 @pytest.mark.anyio
-async def test_equity_quote_us_routes_tdx_before_fallbacks():
+async def test_equity_quote_us_routes_schwab_before_tdx():
     class FakeSource:
         def __init__(self, name):
             self.name = name
@@ -118,13 +118,13 @@ async def test_equity_quote_us_routes_tdx_before_fallbacks():
 
     class FakeRegistry:
         def ordered_by_names(self, names):
-            assert names == ["tdx", "tickflow"]
+            assert names == ["schwab", "tdx", "tickflow"]
             return [FakeSource(name) for name in names]
 
     query = FinanceEquityQuoteFetcher.transform_query({"symbol": "AAPL"})
     result = await FinanceEquityQuoteFetcher.aextract_data(query, credentials=None, registry=FakeRegistry())
 
-    assert result == [{"symbol": "AAPL", "last_price": 297.28, "source": "tdx"}]
+    assert result == [{"symbol": "AAPL", "last_price": 297.28, "source": "schwab"}]
 
 
 def _akshare_fake(**methods):

@@ -8,11 +8,11 @@ below so command call sites and tests can keep resolving them on this module.
 
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
+import cyclopts
 from cyclopts import App
 from cyclopts.exceptions import CycloptsError
-from openbb_finance.models.equity_options_chain import FinanceOptionsChainFetcher
 
 from openbb_agent_cli import __version__
 
@@ -36,6 +36,7 @@ from openbb_agent_cli.executors import (  # noqa: E402, F401
     _filter_sort_limit,
     _historical_executor,
     _is_market_open,
+    _options_chain_execute,
     _print_json,
     _print_results_with_meta,
     _run_cv_list,
@@ -57,6 +58,7 @@ def equity_price_historical(
     end_date: str | None = None,
     interval: str = "1d",
     adjusted: bool = False,
+    extended: bool = False,
     limit: int | None = None,
 ) -> None:
     """Get equity historical price data."""
@@ -68,6 +70,7 @@ def equity_price_historical(
             end_date=end_date,
             interval=interval,
             adjusted=adjusted,
+            extended=extended,
         )
         _print_json(_tag_intraday_last_bar(symbol, _apply_limit(results, limit)))
     except Exception as exc:
@@ -694,55 +697,47 @@ def derivatives_options_unusual(
 @app.command(name="derivatives.options.chain")
 def derivatives_options_chain(
     symbol: str,
+    dte: int,
+    strike_count: int,
     expiration: str | None = None,
     option_type: Literal["call", "put"] | None = None,
     min_dte: int | None = None,
-    max_dte: int | None = None,
+    source: Literal["cv", "schwab"] | None = None,
+    range_: Annotated[str | None, cyclopts.Parameter(name="--range")] = None,
+    strategy: str | None = None,
     sort_by: Literal[
         "expiration", "strike", "open_interest", "volume", "implied_volatility", "delta", "bid", "ask", "vwap"
     ] = "open_interest",
     sort_dir: Literal["asc", "desc"] = "desc",
     limit: int = 50,
 ) -> None:
-    """Get option contracts for a symbol with filtering and sorting (ConvexValue /chains).
+    """Get option contracts (Schwab-first aggregate with CV fallback).
 
-    Returns {results, _meta} where _meta.total is the server-reported contract
-    count and _meta.filtered is the count after local filtering. Without filters
-    this can be large (SPY ~13k contracts); use --expiration/--option-type/--limit
-    to scope. limit=0 returns all filtered records.
+    --dte/--strike-count are mandatory: they declare the query window served
+    to Schwab (and emulated locally for CV). Aggregate mode (no --source)
+    merges both sources field-by-field, Schwab wins populated fields, CV adds
+    null-filled fields and out-of-window contracts. Returns {results, _meta}
+    where _meta.total is the contract count and _meta.sources_used lists the
+    participating sources. --range/--strategy only affect the Schwab side.
     """
-    import asyncio
-
     try:
-
-        async def _fetch() -> tuple[list[dict[str, Any]], int]:
-            q = FinanceOptionsChainFetcher.transform_query({"symbol": symbol})
-            data = await FinanceOptionsChainFetcher.aextract_data(q, None)
-            records = data.get("records", [])
-            total = data.get("contract_count", len(records))
-            return records, total
-
-        records, total = asyncio.run(_fetch())
-        # Local filters (expiration/option_type handled here because records
-        # use date objects, not the string values the CLI receives).
-        if expiration:
-            from datetime import date as _date
-
-            exp_date = _date.fromisoformat(expiration)
-            records = [r for r in records if r.get("expiration") == exp_date]
-        if option_type:
-            records = [r for r in records if r.get("option_type") == option_type]
-        if min_dte is not None:
-            records = [r for r in records if r.get("dte") is not None and r["dte"] >= min_dte]
-        if max_dte is not None:
-            records = [r for r in records if r.get("dte") is not None and r["dte"] <= max_dte]
-        filtered, meta = _filter_sort_limit(
-            records,
-            sort_by=sort_by,
-            sort_dir=sort_dir,
-            limit=limit if limit > 0 else None,
+        records, meta = _options_chain_execute(
+            {
+                "symbol": symbol,
+                "dte": dte,
+                "strike_count": strike_count,
+                "expiration": expiration,
+                "option_type": option_type,
+                "min_dte": min_dte,
+                "source": source,
+                "range_": range_,
+                "strategy": strategy,
+                "sort_by": sort_by,
+                "sort_dir": sort_dir,
+                "limit": limit,
+            }
         )
-        _print_results_with_meta(filtered, meta, total=total)
+        _print_results_with_meta(records, meta)
     except Exception as exc:
         _print_json({"error": str(exc), "code": _error_code(exc)})
         raise SystemExit(1) from exc

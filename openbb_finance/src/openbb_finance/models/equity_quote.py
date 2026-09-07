@@ -35,7 +35,14 @@ class FinanceEquityQuoteFetcher(Fetcher[EquityQuoteQueryParams, list[FinanceEqui
         del credentials
         registry = kwargs.get("registry") or build_default_registry()
         market = infer_market(query.symbol)
-        names = ["tdx", "tickflow", "akshare"] if market == "cn" else ["tdx", "tickflow"]
+        if market == "cn":
+            names = ["tdx", "tickflow", "akshare"]
+        elif market == "us":
+            names = ["schwab", "tdx", "tickflow"]
+        else:
+            # hk/global/future: schwab only covers US symbols; keep the
+            # original order and skip a guaranteed-to-fail local request.
+            names = ["tdx", "tickflow"]
         for source in registry.ordered_by_names(names):
             if not hasattr(source, "fetch_quote"):
                 continue

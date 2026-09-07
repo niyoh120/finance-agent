@@ -30,8 +30,8 @@ class FakeSource:
 async def test_equity_search_routes_tdx_before_tickflow():
     class FakeRegistry:
         def ordered_by_names(self, names):
-            assert names == ["tdx", "tickflow", "eastmoney", "akshare"]
-            return [FakeSource(name) for name in names]
+            assert names == ["schwab", "tdx", "tickflow", "eastmoney", "akshare"]
+            return [FakeSource(name) for name in names[1:]]  # schwab unregistered in this fixture
 
     query = FinanceEquitySearchFetcher.transform_query({"query": "茅台"})
     result = await FinanceEquitySearchFetcher.aextract_data(query, credentials=None, registry=FakeRegistry())

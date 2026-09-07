@@ -84,6 +84,31 @@ def test_get_source_config_reads_finnhub_api_key_from_env(tmp_path, monkeypatch)
     assert config.api_key == "finnhub-token"
 
 
+def test_get_source_config_schwab_placeholder_collapses_without_env(tmp_path, monkeypatch):
+    # SCHWAB_API_BASE_URL unset -> placeholder expands to "" -> source disabled.
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("SCHWAB_API_BASE_URL", raising=False)
+    monkeypatch.delenv("SCHWAB_API_KEY", raising=False)
+
+    config = get_source_config("schwab")
+
+    assert config.enabled is True  # default on; the empty base_url is what gates
+    assert config.base_url == ""
+    assert config.api_key == ""
+
+
+def test_get_source_config_schwab_reads_base_url_and_key_from_env(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SCHWAB_API_BASE_URL", "http://127.0.0.1:8010")
+    monkeypatch.setenv("SCHWAB_API_KEY", "schwab-secret")
+
+    config = get_source_config("schwab")
+
+    assert config.enabled is True
+    assert config.base_url == "http://127.0.0.1:8010"
+    assert config.api_key == "schwab-secret"
+
+
 def test_apply_runtime_environment_sets_database_url(tmp_path, monkeypatch):
     monkeypatch.delenv("FA_DATABASE_URL", raising=False)
     monkeypatch.setenv("TEST_DB_URL", "sqlite+aiosqlite:///openbb-finance-test.db")

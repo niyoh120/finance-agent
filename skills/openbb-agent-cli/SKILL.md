@@ -45,7 +45,7 @@ openbb-agent-cli <command> [options]
 | `technical.indicators` | 技术指标 |
 | `news.company` | 公司新闻 |
 | `news.world` | 全球新闻 |
-| `derivatives.options.chain` `CV` | 期权链（含 Greeks/IV/OI，本地过滤+排序） |
+| `derivatives.options.chain` | 期权链（Schwab 优先聚合 + CV 兑底，含 Greeks/IV/OI） |
 | `derivatives.options.screener` `CV` | 期权跨标的筛选（服务端过滤） |
 | `derivatives.options.historical` `CV` | 期权合约历史 K 线 |
 | `derivatives.options.daily` `CV` | 期权单日 OHLCV |
@@ -729,38 +729,51 @@ openbb-agent-cli news.world --limit 50
 
 ---
 
-## derivatives.options.chain `CV`
+## derivatives.options.chain
 
-单标的完整期权链，含 Greeks/IV/OI/bid-ask/day stats/break_even/vwap。服务端返回全合约（SPY ~13000），客户端过滤+排序+截断。返回 `{results, _meta}`，`_meta.total` 为合约总数。
+单标的期权链：**默认双源聚合（Schwab 优先 + CV 兑底）**，含 Greeks/IV/OI/bid-ask/day stats/break\_even。`--dte` 与 `--strike-count` **必填**，用于声明查询窗口。返回 `{results, _meta}`，`_meta.total` 为合约数，`_meta.sources_used` 为实际参与的源（如 `["schwab","convexvalue"]`）。
+
+**聚合语义（默认，不传 --source）**:
+- 查询窗口内合约：定价/Greeks/OI 全部取 Schwab（口径统一、带报价时间戳）；CV 仅补 Schwab 为 null 的字段。
+- 窗口外合约（远月/深虚值）：仅 CV 有，全字段来自 CV 快照，**可能滞后一个交易日**，跨窗口比较 IV/Greeks 时注意口径差异（两源 IV 口径差可达 ~7pp）。
+- 单源故障自动降级：Schwab 未配置/挂掉 → CV 全量；CV 挂掉 → Schwab 窗口内全量（窗口外合约丢失，用 `_meta.sources_used` 发现）。
+- 输出无来源标注，字段形状与单源输出完全一致。
 
 ```bash
 openbb-agent-cli derivatives.options.chain SYMBOL \
+  --dte N --strike-count N \
+  [--source cv|schwab] \
   [--expiration YYYY-MM-DD] \
   [--option-type call|put] \
-  [--min-dte N] [--max-dte N] \
+  [--min-dte N] \
+  [--range ITM|NTM|OTM|SAK|SBK|SNK|ALL] [--strategy NAME] \
   [--sort-by FIELD] [--sort-dir asc|desc] \
   [--limit N]
 ```
 
 **参数**:
-- `SYMBOL`: 标的代码（必需，如 SPY/AAPL/I:SPX/I:VIX）
+- `SYMBOL`: 标的代码（必需，如 SPY/AAPL）
+- `--dte`: 查询窗口天数（**必填**），合约 dte ≤ 该值
+- `--strike-count`: 每到期日返回的行权价档数（**必填**），取 ATM 附近最近档
+- `--source`: `cv` / `schwab` 强制单源（诊断/应急）；缺省为聚合。`cv` 单源在本地模拟同一窗口（dte ≤ N + 每到期日最近 N 档）；`schwab` 单源透传参数，并可配合 `--range`/`--strategy`
 - `--expiration`: 单到期日过滤（YYYY-MM-DD，本地过滤）
 - `--option-type`: `call` / `put`（本地过滤）
-- `--min-dte` / `--max-dte`: DTE 区间（本地过滤）
+- `--min-dte`: DTE 下界（本地过滤）
+- `--range` / `--strategy`: Schwab 原生过滤参数，仅影响 Schwab 侧（ITM/NTM/OTM/...；VERTICAL/CALENDAR/...）
 - `--sort-by`: `expiration`|`strike`|`open_interest`|`volume`|`implied_volatility`|`delta`|`bid`|`ask`|`vwap`，默认 `open_interest`
 - `--sort-dir`: `asc` / `desc`，默认 `desc`
 - `--limit`: 返回条数，默认 50；传 `0` 表示返回全部过滤后结果
 
 **示例**:
 ```bash
-# 默认：按 OI 降序取前 50
-openbb-agent-cli derivatives.options.chain SPY
-# 单到期日（SPY 2026-07-17 共 ~500 合约）
-openbb-agent-cli derivatives.options.chain SPY --expiration 2026-07-17
-# 近月看跌，按 IV 降序
-openbb-agent-cli derivatives.options.chain AAPL --option-type put --min-dte 0 --max-dte 30 --sort-by implied_volatility --limit 30
+# 默认聚合：SPY 未来 10 天、ATM 附近 30 档，按 OI 降序取前 50
+openbb-agent-cli derivatives.options.chain SPY --dte 10 --strike-count 30
+# 单到期日 + 看跌，按 IV 降序
+openbb-agent-cli derivatives.options.chain AAPL --dte 30 --strike-count 20 --expiration 2026-09-18 --option-type put --sort-by implied_volatility --limit 30
 # 全部过滤后结果
-openbb-agent-cli derivatives.options.chain SPY --expiration 2026-07-17 --limit 0
+openbb-agent-cli derivatives.options.chain SPY --dte 10 --strike-count 30 --limit 0
+# 强制 CV 单源（诊断）
+openbb-agent-cli derivatives.options.chain SPY --dte 10 --strike-count 30 --source cv
 ```
 
 ---
@@ -1168,7 +1181,8 @@ openbb-agent-cli batch --queries '[
 - `results`: 数据记录数组
 - `_meta.returned`: 实际返回条数
 - `_meta.filtered`: 本地过滤后的总条数（limit 截断前）
-- `_meta.total`: 服务端报告的合约总数（仅 options.chain 提供）
+- `_meta.total`: 合约总数（仅 options.chain 提供）
+- `_meta.sources_used`: 实际参与的源名单（仅 options.chain 聚合模式提供，如 `["schwab","convexvalue"]`）
 - `_meta.truncated`: 是否因 limit 截断（boolean）
 - `_meta.sort_by`/`_meta.sort_dir`: 排序字段和方向
 - `_meta.row_count`: 服务端报告的匹配数（screener/query）
@@ -1191,6 +1205,8 @@ openbb-agent-cli batch --queries '[
 
 - `CV_API_KEY` 环境变量必须设置（ConvexValue Research Plan，$19/月，覆盖美股权权 + FMP 全量财务数据）
 - `FINNHUB_API_KEY` 可选（公司新闻）
+- `SCHWAB_API_BASE_URL` 可选（schwab-api 服务地址，默认 `http://127.0.0.1:8010`；设置后美股东/S延/期权链路由优先走 Schwab，US 指数映射为 `$SPX/$COMPX/$DJI`）
+- `SCHWAB_API_KEY` 可选（schwab-api 开启 `FA_SCHWAB_API_KEY` 鉴权时需一致）
 
 ---
 
@@ -1198,7 +1214,7 @@ openbb-agent-cli batch --queries '[
 
 | 命令 | 必需参数 | 可选参数 |
 | :--- | :--- | :--- |
-| `equity.price.historical` | `symbol` | `start-date`, `end-date`, `interval`, `adjusted`, `limit` |
+| `equity.price.historical` | `symbol` | `start-date`, `end-date`, `interval`, `adjusted`, `extended`, `limit` |
 | `equity.price.quote` | `symbol` | - |
 | `equity.search` | `query` | `is-symbol` |
 | `equity.screener` | - | `market`, `limit`, `price-min`, `price-max`, `change-percent-min`, `change-percent-max`, `volume-min`, `volume-max`, `market-cap-min`, `market-cap-max`, `rsi-min`, `rsi-max`, `sector`, `filters`, `fields` |
@@ -1222,7 +1238,7 @@ openbb-agent-cli batch --queries '[
 | `technical.indicators` | `symbol` | `start-date`, `end-date`, `interval`, `adjusted`, `indicators`, `rsi-length`, `macd-fast`, `macd-slow`, `macd-signal`, `sma-lengths`, `ema-lengths`, `bbands-length`, `bbands-std`, `atr-length`, `stoch-k`, `stoch-d`, `limit` |
 | `news.company` | `symbol` | `start-date`, `end-date`, `limit` |
 | `news.world` | - | `start-date`, `end-date`, `limit` |
-| `derivatives.options.chain` `CV` | `symbol` | `expiration`, `option-type`, `min-dte`, `max-dte`, `sort-by`, `sort-dir`, `limit` |
+| `derivatives.options.chain` | `symbol`, `dte`, `strike-count` | `source`, `expiration`, `option-type`, `min-dte`, `range`, `strategy`, `sort-by`, `sort-dir`, `limit` |
 | `derivatives.options.screener` `CV` | - | `underlying-symbol`, `option-type`, `min-open-interest`, `max-open-interest`, `min-volume`, `min-iv`, `max-iv`, `delta-min`, `delta-max`, `expiration-date`, `sort-by`, `sort-dir`, `limit`, `extra-filters` |
 | `derivatives.options.historical` `CV` | `symbol`, `start-date`, `end-date` | `multiplier`, `timespan` |
 | `derivatives.options.daily` `CV` | `symbol` | `date`, `start-date`, `end-date` |

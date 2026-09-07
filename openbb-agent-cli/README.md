@@ -136,10 +136,11 @@ openbb-agent-cli derivatives.options.unusual \
 需要 `CV_API_KEY` 环境变量（ConvexValue Research Plan，$19/月，覆盖美股权权 + FMP 全量财务数据）。
 
 ```bash
-# 完整期权链（含 Greeks/IV/OI/bid-ask/day stats）
-openbb-agent-cli derivatives.options.chain --symbol SPY --limit 50
-openbb-agent-cli derivatives.options.chain --symbol SPY --expiration 2026-07-17  # 单到期日
-openbb-agent-cli derivatives.options.chain --symbol SPY --option-type put --min-dte 0 --max-dte 30 --sort-by implied_volatility
+# 期权链（默认 Schwab 优先聚合 + CV 兑底；--dte/--strike-count 必填）
+openbb-agent-cli derivatives.options.chain SPY --dte 30 --strike-count 20 --limit 50
+openbb-agent-cli derivatives.options.chain SPY --dte 30 --strike-count 20 --expiration 2026-07-17  # 单到期日
+openbb-agent-cli derivatives.options.chain SPY --dte 30 --strike-count 20 --option-type put --sort-by implied_volatility
+openbb-agent-cli derivatives.options.chain SPY --dte 10 --strike-count 30 --source cv  # 强制 CV 单源
 
 # 跨标的筛选
 openbb-agent-cli derivatives.options.screener --min-open-interest 100000 --min-iv 0.5 --limit 20

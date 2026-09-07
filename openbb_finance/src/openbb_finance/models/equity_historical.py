@@ -24,6 +24,7 @@ class FinanceEquityHistoricalQueryParams(EquityHistoricalQueryParams):
 
     interval: str = Field(default="1d", description="Price interval, e.g. 1d, 1w, 1M, 5m, 15m, 30m, 60m.")
     adjusted: bool = Field(default=False, description="Whether to request adjusted prices.")
+    extended: bool = Field(default=False, description="Include pre/post-market bars for intraday intervals.")
 
 
 class FinanceEquityHistoricalData(EquityHistoricalData):
@@ -56,6 +57,7 @@ class FinanceEquityHistoricalFetcher(Fetcher[FinanceEquityHistoricalQueryParams,
             end_date=query.end_date,
             interval=query.interval,
             adjusted=query.adjusted,
+            extended=query.extended,
         )
         for source in registry.ordered_by_names(route_price_sources(price_query)):
             if not hasattr(source, "fetch_price"):

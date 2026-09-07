@@ -24,6 +24,9 @@ class PriceQuery:
     end_date: date | None = None
     interval: str = "1d"
     adjusted: bool = False
+    # Include pre/post-market bars for intraday intervals (sources that support it,
+    # e.g. Schwab needExtendedHoursData); ignored where meaningless (daily+ bars).
+    extended: bool = False
     # Contract expiration in YYYY-MM form; None means the main continuous contract.
     expiration: str | None = None
 

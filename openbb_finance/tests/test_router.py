@@ -54,10 +54,10 @@ def test_cn_daily_routes_baostock_after_update():
     ]
 
 
-def test_us_minute_routes_tdx_only():
+def test_us_minute_routes_schwab_before_tdx():
     query = PriceQuery(symbol="AAPL", market="us", interval="1m")
 
-    assert route_price_sources(query) == ["tdx"]
+    assert route_price_sources(query) == ["schwab", "tdx"]
 
 
 def test_hk_daily_routes_tdx_before_tickflow():
@@ -66,10 +66,10 @@ def test_hk_daily_routes_tdx_before_tickflow():
     assert route_price_sources(query) == ["tdx", "tickflow"]
 
 
-def test_us_daily_routes_tdx_before_tickflow():
+def test_us_daily_routes_schwab_before_tdx_and_tickflow():
     query = PriceQuery(symbol="AAPL", market="us", interval="1d")
 
-    assert route_price_sources(query) == ["tdx", "tickflow"]
+    assert route_price_sources(query) == ["schwab", "tdx", "tickflow"]
 
 
 def test_index_price_routes_cn_through_standard():
@@ -84,7 +84,7 @@ def test_index_price_routes_cn_through_standard():
     assert "tickflow" in sources
 
 
-def test_index_price_routes_us_only_tdx():
+def test_index_price_routes_us_schwab_before_tdx():
     query = PriceQuery(
         symbol="SPX",
         market="us",
@@ -92,7 +92,7 @@ def test_index_price_routes_us_only_tdx():
         interval="1d",
     )
     sources = route_index_price_sources(query, now=datetime(2026, 4, 27, 16, 0))
-    assert sources == ["tdx"]
+    assert sources == ["schwab", "tdx"]
 
 
 def test_index_price_routes_hk_only_tdx():

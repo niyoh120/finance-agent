@@ -76,7 +76,14 @@ def route_price_sources(query: PriceQuery, *, now: datetime | None = None) -> li
             return ["tdx", "tickflow", "baostock", "akshare"]
         return ["tdx", "tickflow", "akshare", "baostock"]
 
-    if market in {"us", "hk"}:
+    if market == "us":
+        # US equities: schwab-api (real-time, extended hours, deep minute
+        # history) first, tdx second, tickflow daily fallback last.
+        if interval_type == "minute":
+            return ["schwab", "tdx"]
+        return ["schwab", "tdx", "tickflow"]
+
+    if market == "hk":
         if interval_type == "minute":
             return ["tdx"]
         return ["tdx", "tickflow"]
@@ -89,6 +96,10 @@ def route_index_price_sources(query: PriceQuery, *, now: datetime | None = None)
     market: Market = query.market
     if market == "cn":
         return route_price_sources(query, now=now)
+    if market == "us":
+        # SchwabSource handles $-prefixed index symbols internally
+        # ($SPX/$COMPX/$DJI + indicative quotes).
+        return ["schwab", "tdx"]
     return ["tdx"]
 
 

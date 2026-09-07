@@ -32,3 +32,11 @@ priority = 100
 [sources.openbb]
 enabled = true
 priority = 50
+
+[sources.schwab]
+enabled = true
+# schwab-api 服务地址（services/schwab-api）。占位符在环境变量未设置时展开为空，
+# 此时该源自动禁用，路由回退 tdx/tickflow/CV，零成本。
+base_url = "${SCHWAB_API_BASE_URL}"
+# 可选：仅当 schwab-api 开启 FA_SCHWAB_API_KEY 鉴权时需一致。
+api_key = "${SCHWAB_API_KEY}"
