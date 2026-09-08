@@ -1,0 +1,31 @@
+# TDX 行情数据服务部署示例。
+# 复制为 compose.yml 并准备同目录 .env（或在 shell 环境中导出以下变量）：
+#   FA_TDX_API_KEY            可选，强烈建议：设置后所有 /api/v1/* 需带 X-API-Key
+#   FA_TDX_HOSTS_STANDARD     可选，逗号分隔的标准协议候选主机（默认内置池）
+#   FA_TDX_HOSTS_MAC          可选，逗号分隔的 MAC 行情候选主机
+#   FA_TDX_HOSTS_MAC_EX       可选，逗号分隔的 MAC EX 扩展行情候选主机（端口 7727）
+services:
+  tdx-api:
+    # 替换为实际镜像仓库
+    image: ghcr.io/OWNER/finance-tdx-api:latest
+    container_name: finance-tdx-api
+    restart: unless-stopped
+    ports:
+      # 默认只绑定本机回环；确需局域网访问再放开，并务必设置 FA_TDX_API_KEY + TLS 反代
+      - "127.0.0.1:8011:8011"
+    environment:
+      # 容器内必须绑定 0.0.0.0，端口映射才能转发；对外暴露面由上方 127.0.0.1 前缀限制
+      FA_TDX_HOST: 0.0.0.0
+      FA_TDX_PORT: 8011
+      FA_TDX_API_KEY: ${FA_TDX_API_KEY:-}
+      # 资源预算（默认值即可满足；见 README「资源预算」）
+      FA_TDX_REQUEST_BUDGET_SECONDS: 30
+      FA_TDX_CONNECT_SECONDS: 3
+      FA_TDX_IO_SECONDS: 5
+      FA_TDX_MAX_CONCURRENCY: 8
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8011/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3

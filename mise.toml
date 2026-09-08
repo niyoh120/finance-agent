@@ -33,6 +33,34 @@ run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=options-scrap
 depends = ["install"]
 run = "uv run --package schwab-api python -m schwab_api.main"
 
+# tdx-api：独立 package 环境（frozen，独立于 all-packages 安装，
+# 避免被 openbb_finance 的 easy-tdx 供应链问题阻断）。
+[tasks.tdx-api]
+run = [
+  "uv sync --frozen --package tdx-api",
+  "uv run --no-sync python -m tdx_api.main",
+]
+
+[tasks.tdx-api-test]
+run = [
+  "uv sync --frozen --package tdx-api --group dev",
+  "uv run --no-sync pytest services/tdx-api/tests -m 'not live'",
+]
+
+[tasks.tdx-api-check]
+run = [
+  { tasks = ["tdx-api-test"] },
+  "uvx ruff@0.15.4 check services/tdx-api",
+  "uvx ruff@0.15.4 format --check services/tdx-api",
+]
+
+[tasks.tdx-api-test-live]
+# 显式启用 live 标记：对真实行情服务器的小规模连通性冒烟。
+run = [
+  "uv sync --frozen --package tdx-api --group dev",
+  "uv run --no-sync pytest services/tdx-api/tests -m live",
+]
+
 [tasks.options-dashboard]
 depends = ["install"]
 run = "uv run --package options-dashboard streamlit run services/options-dashboard/app.py"
@@ -43,6 +71,9 @@ run = "docker build -f services/options-dashboard/Dockerfile -t {{vars.image_rep
 [tasks.docker-build-schwab-api]
 run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=schwab-api --build-arg MODULE_ENTRY=schwab_api.main -t {{vars.image_repo}}/finance-schwab-api:latest -t {{vars.image_repo}}/finance-schwab-api:{{exec(command='git rev-parse --short HEAD')}} ."
 
+[tasks.docker-build-tdx-api]
+run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=tdx-api --build-arg MODULE_ENTRY=tdx_api.main -t {{vars.image_repo}}/finance-tdx-api:latest -t {{vars.image_repo}}/finance-tdx-api:{{exec(command='git rev-parse --short HEAD')}} ."
+
 [tasks.docker-build-all]
 run = [
   { tasks = [
@@ -50,6 +81,7 @@ run = [
     "docker-build-options-dashboard",
     "docker-build-options-scraper",
     "docker-build-schwab-api",
+    "docker-build-tdx-api",
   ] },
 ]
 
@@ -77,6 +109,12 @@ run = [
   "docker push {{vars.image_repo}}/finance-schwab-api:{{exec(command='git rev-parse --short HEAD')}}",
 ]
 
+[tasks.docker-push-tdx-api]
+run = [
+  "docker push {{vars.image_repo}}/finance-tdx-api:latest",
+  "docker push {{vars.image_repo}}/finance-tdx-api:{{exec(command='git rev-parse --short HEAD')}}",
+]
+
 [tasks.docker-push-all]
 run = [
   { tasks = [
@@ -84,6 +122,7 @@ run = [
     "docker-push-options-dashboard",
     "docker-push-options-scraper",
     "docker-push-schwab-api",
+    "docker-push-tdx-api",
   ] },
 ]
 
@@ -109,6 +148,12 @@ run = [
 run = [
   { tasks = ["docker-build-schwab-api"] },
   { tasks = ["docker-push-schwab-api"] },
+]
+
+[tasks.docker-build-push-tdx-api]
+run = [
+  { tasks = ["docker-build-tdx-api"] },
+  { tasks = ["docker-push-tdx-api"] },
 ]
 
 [tasks.docker-build-push-all]

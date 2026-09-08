@@ -17,6 +17,7 @@ members = [
   "services/options-dashboard",
   "services/options-scraper",
   "services/schwab-api",
+  "services/tdx-api",
   "openbb-agent-cli",
   "openbb_finance",
 ]
