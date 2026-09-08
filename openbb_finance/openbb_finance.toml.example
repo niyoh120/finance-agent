@@ -40,3 +40,14 @@ enabled = true
 base_url = "${SCHWAB_API_BASE_URL}"
 # 可选：仅当 schwab-api 开启 FA_SCHWAB_API_KEY 鉴权时需一致。
 api_key = "${SCHWAB_API_KEY}"
+
+[sources.tdx]
+enabled = true
+# tdx-api 服务地址（services/tdx-api，默认 http://127.0.0.1:8011）。
+# base_url 是服务根地址（内部自动追加 /api/v1）；占位符在环境变量未设置时
+# 展开为空，此时 TDX 源自动禁用，港股/国际期货/SGE 等 TDX 独占路由回退失败。
+# 启用顺序：先部署并健康检查 tdx-api，再设置 TDX_API_BASE_URL。
+base_url = "${TDX_API_BASE_URL}"
+# 可选：与服务端 FA_TDX_API_KEY 一致的共享密钥（X-API-Key 头；消费端
+# 环境变量名为 TDX_API_KEY，与服务端变量名区分）。
+api_key = "${TDX_API_KEY}"

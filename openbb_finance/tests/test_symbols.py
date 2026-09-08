@@ -57,17 +57,19 @@ def test_baostock_intraday_row_preserves_time():
 
 
 def test_futures_exchange_table_covers_all_supported_exchanges():
-    assert FUTURES_EXCHANGES == {
-        "SHFE": 30,
-        "DCE": 29,
-        "CZCE": 28,
-        "CFFEX": 47,
-        "GFEX": 66,
-        "COMEX": 16,
-        "NYMEX": 17,
-        "CBOT": 18,
-        "SGE": 46,
-    }
+    assert FUTURES_EXCHANGES == frozenset(
+        {
+            "SHFE",
+            "DCE",
+            "CZCE",
+            "CFFEX",
+            "GFEX",
+            "COMEX",
+            "NYMEX",
+            "CBOT",
+            "SGE",
+        }
+    )
 
 
 def test_futures_month_letters_match_industry_convention():

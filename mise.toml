@@ -33,8 +33,20 @@ run = "docker build -f services/Dockerfile --build-arg MODULE_NAME=options-scrap
 depends = ["install"]
 run = "uv run --package schwab-api python -m schwab_api.main"
 
-# tdx-api：独立 package 环境（frozen，独立于 all-packages 安装，
-# 避免被 openbb_finance 的 easy-tdx 供应链问题阻断）。
+# openbb-finance 离线测试与检查：依赖 install 的全 workspace 安装，
+# 保证跨包契约测试可以导入 tdx-api；实服务测试仅由显式环境变量门控。
+[tasks.openbb-finance-test]
+depends = ["install"]
+run = "uv run --no-sync pytest openbb_finance/tests openbb-agent-cli/tests -q"
+
+[tasks.openbb-finance-check]
+depends = ["openbb-finance-test"]
+run = [
+  "uvx ruff@0.15.4 check openbb_finance/src/openbb_finance openbb_finance/tests",
+  "uvx ruff@0.15.4 format --check openbb_finance/src/openbb_finance openbb_finance/tests",
+]
+
+# tdx-api：保持独立 frozen 环境（独立依赖闭包，与服务端解耦部署/验证）。
 [tasks.tdx-api]
 run = [
   "uv sync --frozen --package tdx-api",

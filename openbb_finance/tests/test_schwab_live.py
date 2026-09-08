@@ -56,9 +56,7 @@ async def test_live_historical_daily():
 
 
 async def test_live_historical_minute_extended():
-    rows = await _source().fetch_price(
-        PriceQuery(symbol="AAPL", market="us", interval="5m", extended=True)
-    )
+    rows = await _source().fetch_price(PriceQuery(symbol="AAPL", market="us", interval="5m", extended=True))
 
     assert rows, "expected minute candles"
     assert rows[0]["date"].hour >= 4  # extended-hours bar (04:00 ET onward)

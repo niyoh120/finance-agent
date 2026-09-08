@@ -720,9 +720,7 @@ def _options_chain_execute(params: dict[str, Any]) -> tuple[list[dict[str, Any]]
 
             schwab = build_default_registry().get("schwab")
             if schwab is None or not schwab.enabled:
-                raise SourceError(
-                    "schwab source is disabled; set SCHWAB_API_BASE_URL (and optional SCHWAB_API_KEY)"
-                )
+                raise SourceError("schwab source is disabled; set SCHWAB_API_BASE_URL (and optional SCHWAB_API_KEY)")
             data = await schwab.fetch_options_chain(
                 str(symbol), dte=dte, strike_count=strike_count, range_=range_, strategy=strategy
             )

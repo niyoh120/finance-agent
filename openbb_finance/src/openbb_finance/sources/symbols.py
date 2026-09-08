@@ -10,20 +10,25 @@ SZ_SUFFIXES = {"SZ", "XSHE"}
 # Known HK index symbols (pure alphabetic, no .HK suffix).
 HK_INDEX_SYMBOLS: frozenset[str] = frozenset({"HSI", "HSCEI", "HSTECH"})
 
-# Exchange short code -> easy-tdx ExMarket enum value.
-FUTURES_EXCHANGES: dict[str, int] = {
-    "SHFE": 30,  # 上海期货交易所
-    "DCE": 29,  # 大连商品交易所
-    "CZCE": 28,  # 郑州商品交易所
-    "CFFEX": 47,  # 中国金融期货交易所
-    "GFEX": 66,  # 广州期货交易所
-    "COMEX": 16,  # 纽约COMEX
-    "NYMEX": 17,  # 纽约NYMEX
-    "CBOT": 18,  # 芝加哥CBOT
-    "SGE": 46,  # 上海黄金交易所（现货递延）
-}
+# Supported futures/SGE exchange short codes. Service-native contract codes are
+# owned by the tdx-api consumer mapping in sources/tdx.py; this set only decides
+# symbol suffix recognition and routing.
+FUTURES_EXCHANGES: frozenset[str] = frozenset(
+    {
+        "SHFE",  # 上海期货交易所
+        "DCE",  # 大连商品交易所
+        "CZCE",  # 郑州商品交易所
+        "CFFEX",  # 中国金融期货交易所
+        "GFEX",  # 广州期货交易所
+        "COMEX",  # 纽约COMEX
+        "NYMEX",  # 纽约NYMEX
+        "CBOT",  # 芝加哥CBOT
+        "SGE",  # 上海黄金交易所（现货递延）
+    }
+)
 
-# Domestic commodity exchanges: main continuous is <CODE>L8, month contract <CODE><YYMM>.
+# Domestic commodity exchanges (month contract <CODE><YYMM>; CFFEX main
+# continuous is <CODE>L0, the commodity exchanges use <CODE>L8).
 DOMESTIC_FUTURES_EXCHANGES: frozenset[str] = frozenset({"SHFE", "DCE", "CZCE", "CFFEX", "GFEX"})
 # International exchanges: main continuous is <CODE>00W, month contract <CODE><YY><letter>.
 INTL_FUTURES_EXCHANGES: frozenset[str] = frozenset({"COMEX", "NYMEX", "CBOT"})
@@ -47,7 +52,7 @@ FUTURES_MONTH_LETTERS: dict[int, str] = {
 FUTURES_MONTH_NUMBERS: dict[str, int] = {letter: month for month, letter in FUTURES_MONTH_LETTERS.items()}
 
 # SGE (上海黄金交易所) spot-deferred products. These are not futures main
-# continuous contracts: each maps to a fixed easy-tdx code and has no
+# continuous contracts: each maps to a fixed tdx-api native code and has no
 # expiration concept.
 SGE_SPOT_MAP: dict[str, str] = {
     "AU.SGE": "Au(T+D)",  # 黄金递延

@@ -158,9 +158,7 @@ def test_flatten_normalizes_negative_iv_sentinel_to_none():
     # Schwab marks contracts without IV with volatility = -999 (live-verified).
     fixture = {
         "symbol": "AAPL",
-        "callExpDateMap": {
-            "2026-09-09:3": {"317.5": [_contract(volatility=-999)]}
-        },
+        "callExpDateMap": {"2026-09-09:3": {"317.5": [_contract(volatility=-999)]}},
     }
 
     records = flatten_schwab_chain(fixture)
@@ -425,9 +423,7 @@ def test_source_cv_single_source_applies_local_window(monkeypatch: pytest.Monkey
         cv_total=456,
     )
 
-    records, meta = _options_chain_execute(
-        {"symbol": "SPY", "dte": 10, "strike_count": 1, "source": "cv", "limit": 0}
-    )
+    records, meta = _options_chain_execute({"symbol": "SPY", "dte": 10, "strike_count": 1, "source": "cv", "limit": 0})
 
     assert calls["cv"] is True
     # dte=100 row filtered out; strike_count=1 keeps the single nearest level

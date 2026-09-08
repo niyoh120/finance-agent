@@ -1,8 +1,9 @@
 """协议层测试：请求编码黄金字节、帧解析边界、真实 TCP 回放。
 
-黄金字节来源：参考实现 easy-tdx 1.20.6 wheel（与 uv.lock 锁定哈希
-sha256=8aec465e... 逐字节一致）在干净环境中生成的请求帧，
-存于 ``fixtures/golden_requests.json``，与本服务移植代码相互独立。
+黄金字节来源：参考实现 easy-tdx 1.20.6 wheel（移植时记录的对照哈希
+sha256=8aec465e... 逐字节一致；该依赖已自 workspace 移除，记录保留作
+来源证据）在干净环境中生成的请求帧，存于 ``fixtures/golden_requests.json``，
+与本服务移植代码相互独立。
 
 解码期望（varint/自定义浮点/时间）为手工推导向量，
 避免与参考实现自对拍。

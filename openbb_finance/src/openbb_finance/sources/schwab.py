@@ -321,11 +321,7 @@ def _candle_to_row(candle: dict[str, Any], symbol: str, *, intraday: bool) -> di
     if intraday:
         # Minute bars are exposed as America/New_York naive datetimes, aligned
         # with the tdx market-local-time convention.
-        bar = (
-            datetime.fromtimestamp(int(ts_ms) / 1000, tz=timezone.utc)
-            .astimezone(_ET)
-            .replace(tzinfo=None)
-        )
+        bar = datetime.fromtimestamp(int(ts_ms) / 1000, tz=timezone.utc).astimezone(_ET).replace(tzinfo=None)
     else:
         bar = datetime.fromtimestamp(int(ts_ms) / 1000, tz=timezone.utc).astimezone(_ET).date()
     return {

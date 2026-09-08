@@ -44,6 +44,12 @@ DEFAULT_CONFIG["sources"]["convexvalue"]["api_key"] = "${CV_API_KEY}"
 # tdx/tickflow at zero cost. api_key is optional (service-side X-API-Key gate).
 DEFAULT_CONFIG["sources"]["schwab"]["base_url"] = "${SCHWAB_API_BASE_URL}"
 DEFAULT_CONFIG["sources"]["schwab"]["api_key"] = "${SCHWAB_API_KEY}"
+# tdx-api service endpoint (services/tdx-api, default http://127.0.0.1:8011):
+# same gating scheme as schwab — unset TDX_API_BASE_URL expands to "" and the
+# TDX source is disabled at zero cost. TDX_API_KEY must match the service-side
+# FA_TDX_API_KEY when that gate is enabled; it travels as the X-API-Key header.
+DEFAULT_CONFIG["sources"]["tdx"]["base_url"] = "${TDX_API_BASE_URL}"
+DEFAULT_CONFIG["sources"]["tdx"]["api_key"] = "${TDX_API_KEY}"
 
 CONFIG_FILENAMES = ("openbb_finance.toml", ".openbb_finance.toml")
 ENV_PATTERN = re.compile(r"\$\{([A-Za-z_][A-Za-z0-9_]*)\}")

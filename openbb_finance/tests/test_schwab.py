@@ -94,9 +94,7 @@ async def test_schwab_price_daily_candles_yield_dates():
         async def _get(self, path, params):
             assert params["interval"] == "1d"
             return {
-                "candles": [
-                    {"open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 100, "datetime": 1788433200000}
-                ]
+                "candles": [{"open": 1, "high": 2, "low": 0.5, "close": 1.5, "volume": 100, "datetime": 1788433200000}]
             }
 
     rows = await FakeSchwab(_source()).fetch_price(PriceQuery(symbol="AAPL", market="us", interval="1d"))
@@ -110,9 +108,7 @@ async def test_schwab_price_extended_hours_passthrough():
             assert params["extended"] == "true"
             return {"candles": []}
 
-    rows = await FakeSchwab(_source()).fetch_price(
-        PriceQuery(symbol="AAPL", market="us", interval="5m", extended=True)
-    )
+    rows = await FakeSchwab(_source()).fetch_price(PriceQuery(symbol="AAPL", market="us", interval="5m", extended=True))
 
     assert rows == []
 
@@ -131,10 +127,7 @@ async def test_schwab_price_empty_returns_no_rows():
 async def test_schwab_price_pages_backward_across_40k_cap():
     """A full 40k page triggers a follow-up request with `end` moved just
     before the earliest kept bar; pages concatenate oldest-first."""
-    page_candles = [
-        {"open": 1, "high": 1, "low": 1, "close": 1, "volume": 1, "datetime": ms}
-        for ms in range(40_000)
-    ]
+    page_candles = [{"open": 1, "high": 1, "low": 1, "close": 1, "volume": 1, "datetime": ms} for ms in range(40_000)]
 
     class FakeSchwab(SchwabSource):
         def __init__(self):
@@ -145,11 +138,7 @@ async def test_schwab_price_pages_backward_across_40k_cap():
             self.calls.append(dict(params))
             if "end" not in params:
                 return {"symbol": "AAPL", "candles": page_candles}
-            return {
-                "candles": [
-                    {"open": 1, "high": 1, "low": 1, "close": 1, "volume": 1, "datetime": -1_000}
-                ]
-            }
+            return {"candles": [{"open": 1, "high": 1, "low": 1, "close": 1, "volume": 1, "datetime": -1_000}]}
 
     source = FakeSchwab()
     rows = await source.fetch_price(PriceQuery(symbol="AAPL", market="us", interval="1m"))
@@ -356,9 +345,7 @@ async def test_schwab_search_keeps_equities_only():
 
     rows = await FakeSchwab(_source()).fetch_equity_search("apple", is_symbol=False)
 
-    assert rows == [
-        {"symbol": "AAPL", "name": "APPLE INC", "exchange": "NASDAQ", "type": "EQUITY", "source": "schwab"}
-    ]
+    assert rows == [{"symbol": "AAPL", "name": "APPLE INC", "exchange": "NASDAQ", "type": "EQUITY", "source": "schwab"}]
 
 
 async def test_schwab_search_symbol_projection_and_non_ascii_shortcut():

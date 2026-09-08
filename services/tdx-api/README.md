@@ -10,7 +10,7 @@
 
 - **协议复杂度单点持有**：三类协议（标准 TDX / MAC / MAC EX）、帧编解码、字节级容错、QFQ 复权都在服务内消化；消费端拿到的就是干净 JSON。
 - **上游即公开免费端口**：无需账号凭据；服务内置候选主机池（可覆盖）与主机健康缓存，单台失效自动切换。
-- **与 `openbb_finance/` 的 easy-tdx 数据源解耦**：本期不迁移既有 `TdxSource`，两条路径并行，未来由消费端自行切换到 HTTP。
+- **消费端已迁移**：`openbb_finance/` 的 `TdxSource` 现以 HTTP 消费本服务（`sources.tdx.base_url` 门控），运行依赖已不含 easy-tdx；本服务独立部署、独立发版。
 
 ## 快速开始
 
@@ -118,8 +118,8 @@ curl "http://127.0.0.1:8011/api/v1/klines?market=cn_sh&code=600000&interval=1d&a
 
 ## 受阻与跳过的检查
 
-- **`uv sync --all-packages` 与 `mise run hooks-install`**：被既有供应链问题阻断——easy-tdx 1.20.6 的镜像 wheel URL 已 404（该条目在 `uv.lock` 中原样保留、diff 为零，属本次改动前即存在的问题，非本服务引入）。按计划保留锁文件真实性，未手造哈希或替换旧依赖。
-- **消费端回归**：`openbb_finance/tests/test_tdx.py` 22/22 通过，改用独立环境完成（files.pythonhosted.org 同哈希 wheel + 最小依赖，含 `shared` 路径注入）。
+- **历史记录（easy-tdx 依赖仍在消费端时）**：`uv sync --all-packages` 与 `mise run hooks-install` 曾被供应链问题阻断——easy-tdx 1.20.6 的镜像 wheel URL 已 404。当时按计划保留锁文件原样、未手造哈希。消费端迁移移除 easy-tdx 后，`uv sync --all-packages` 已实测恢复正常，此条目仅作历史留存。
+- **消费端回归**：迁移后由 `mise run openbb-finance-test`（消费端全套离线测试，含跨包 ASGI 契约用例）与 `mise run tdx-api-test`（本服务离线全套）共同覆盖。
 - **诚实标注的未验证字段**：美股墙钟时区、港股报价成交量单位、境内外期货/SGE/指数成交量单位缺少可复核证据，能力矩阵显式标 `null`，不做未验证倍数换算；CFFEX 目录缺失（上游目录无此市场，行情/K线/逐笔可用）。
 
 ## 测试
@@ -135,4 +135,4 @@ mise run tdx-api-test-live   # 显式连真实行情服务器的冒烟（小规�
 
 ## 协议来源与许可
 
-协议层移植自 `niyoh120/easy_tdx`（批准参考提交 `e374a0da2834119ac695c1083805d1b0a60967c2`；移植对照工作副本为 uv.lock 锁定的 easy-tdx 1.20.6 wheel，哈希一致），并按本服务边界修改（请求级预算会话、帧硬上限、去 pandas/numpy、错误体系拆分）。溯源与逐文件说明见 `THIRD_PARTY_NOTICES.md`；原始 LICENSE 见 `licenses/easy-tdx-LICENSE`（MIT，含 pytdx/xmtdx 血统声明）。
+协议层移植自 `niyoh120/easy_tdx`（批准参考提交 `e374a0da2834119ac695c1083805d1b0a60967c2`；移植对照工作副本为移植时记录的参考版本 easy-tdx 1.20.6 wheel，当时的锁定哈希一致；该依赖现已自 workspace 移除，记录保留作来源证据），并按本服务边界修改（请求级预算会话、帧硬上限、去 pandas/numpy、错误体系拆分）。溯源与逐文件说明见 `THIRD_PARTY_NOTICES.md`；原始 LICENSE 见 `licenses/easy-tdx-LICENSE`（MIT，含 pytdx/xmtdx 血统声明）。

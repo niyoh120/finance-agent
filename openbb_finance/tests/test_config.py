@@ -109,6 +109,32 @@ def test_get_source_config_schwab_reads_base_url_and_key_from_env(tmp_path, monk
     assert config.api_key == "schwab-secret"
 
 
+def test_get_source_config_tdx_placeholder_collapses_without_env(tmp_path, monkeypatch):
+    # TDX_API_BASE_URL unset -> placeholder expands to "" -> source disabled
+    # at the TdxSource level (mirrors the schwab gating scheme).
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("TDX_API_BASE_URL", raising=False)
+    monkeypatch.delenv("TDX_API_KEY", raising=False)
+
+    config = get_source_config("tdx")
+
+    assert config.enabled is True  # default on; the empty base_url is what gates
+    assert config.base_url == ""
+    assert config.api_key == ""
+
+
+def test_get_source_config_tdx_reads_base_url_and_key_from_env(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("TDX_API_BASE_URL", "http://127.0.0.1:8011")
+    monkeypatch.setenv("TDX_API_KEY", "tdx-secret")
+
+    config = get_source_config("tdx")
+
+    assert config.enabled is True
+    assert config.base_url == "http://127.0.0.1:8011"
+    assert config.api_key == "tdx-secret"
+
+
 def test_apply_runtime_environment_sets_database_url(tmp_path, monkeypatch):
     monkeypatch.delenv("FA_DATABASE_URL", raising=False)
     monkeypatch.setenv("TEST_DB_URL", "sqlite+aiosqlite:///openbb-finance-test.db")
