@@ -10,7 +10,6 @@ import threading
 from datetime import datetime
 
 import pytest
-from conftest import FakeSession, fake_factory, make_config
 from fastapi.testclient import TestClient
 from tdx_api.main import create_app
 from tdx_api.tdx.commands.mac.symbols import MacSymbolBarCmd
@@ -18,6 +17,7 @@ from tdx_api.tdx.commands.standard.fundamentals import GetXdxrInfoCmd
 from tdx_api.tdx.errors import TdxConnectionError, TdxDecodeError
 from tdx_api.tdx.hosts import HostSelector
 from tdx_api.tdx.models import XdxrRecord
+from tdx_fakes import FakeSession, fake_factory, make_config
 
 
 def day(s: str) -> datetime:

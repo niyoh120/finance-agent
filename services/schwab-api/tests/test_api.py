@@ -8,9 +8,9 @@ import json
 from typing import Any
 
 import pytest
-from conftest import make_config, make_row
 from fastapi.testclient import TestClient
 from schwab_api.main import create_app
+from schwab_fakes import make_config, make_row
 
 QUOTE_FIXTURE = {
     "AAPL": {

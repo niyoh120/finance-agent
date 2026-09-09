@@ -17,7 +17,6 @@ from datetime import datetime
 from pathlib import Path
 
 import pytest
-from conftest import Exchange, FakeTdxServer, build_frame
 from tdx_api.tdx.codec.frame import (
     HEADER_SIZE,
     decompress_body,
@@ -61,6 +60,7 @@ from tdx_api.tdx.commands.standard.setup import SETUP_COMMANDS
 from tdx_api.tdx.enums import Adjust, MacPeriod, StdMarket
 from tdx_api.tdx.errors import TdxConnectionError, TdxDecodeError, TdxTimeoutError
 from tdx_api.tdx.transport import Budget, MacExSession, MacSession, StandardSession
+from tdx_fakes import Exchange, FakeTdxServer, build_frame
 
 GOLDEN = json.loads((Path(__file__).parent / "fixtures" / "golden_requests.json").read_text())
 

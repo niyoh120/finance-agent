@@ -5,10 +5,10 @@ from __future__ import annotations
 import datetime
 
 import pytest
-from conftest import APP_KEY, CALLBACK_URL, make_config, make_row
 from fastapi.testclient import TestClient
 from schwab_api import auth as auth_module
 from schwab_api.main import create_app
+from schwab_fakes import APP_KEY, CALLBACK_URL, make_config, make_row
 
 TOKEN_RESPONSE = {
     "access_token": "at-new",

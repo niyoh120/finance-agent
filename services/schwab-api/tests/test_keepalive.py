@@ -6,10 +6,10 @@ import asyncio
 import datetime
 
 import pytest
-from conftest import make_config, make_row
 from schwab_api import keepalive as keepalive_module
 from schwab_api.auth import SchwabTokenError
 from schwab_api.keepalive import KeepaliveError, RuntimeState, run_loop, run_once
+from schwab_fakes import make_config, make_row
 
 REFRESH_RESPONSE = {
     "access_token": "at-new",

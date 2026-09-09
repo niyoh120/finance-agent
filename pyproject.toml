@@ -34,3 +34,11 @@ target-version = "py311"
 
 [tool.ruff.lint]
 select = ["E", "F", "I"]
+
+[tool.pytest.ini_options]
+# live 标记 = 对真实通达信服务器的 opt-in 冒烟，仅在显式 ``-m live`` 时运行
+# （命令行 ``-m live`` 会覆盖这里的 addopts，mise run tdx-api-test-live 依赖此行为）。
+addopts = "-m 'not live'"
+markers = [
+  "live: 对真实通达信行情服务器的小规模冒烟（仅 -m live 时运行）",
+]

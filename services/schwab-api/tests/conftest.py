@@ -1,50 +1,18 @@
-"""Shared fixtures for schwab-api tests."""
+"""Shared fixtures for schwab-api tests.
+
+可导入的测试助手（``make_config`` / ``make_row`` / 认证常量）位于
+``schwab_fakes``：模块名全局唯一，避免 pytest prepend 导入模式下
+``from conftest import`` 在多目录收集时命中其它服务 conftest 的
+``sys.modules`` 缓存。
+"""
 
 from __future__ import annotations
 
-import datetime
-
 import pytest
 from fastapi.testclient import TestClient
-from schwab_api.config import Config
 from schwab_api.main import create_app
-from schwab_api.store import TokenRow, TokenStore
-
-APP_KEY = "A" * 32
-APP_SECRET = "S" * 32
-CALLBACK_URL = "https://127.0.0.1"
-
-
-def make_config(**overrides) -> Config:
-    kwargs = dict(
-        app_key=APP_KEY,
-        app_secret=APP_SECRET,
-        callback_url=CALLBACK_URL,
-        tokens_db="~/.schwabdev-test-unreachable/tokens.db",
-        tokens_encryption=None,
-        host="127.0.0.1",
-        port=8010,
-        api_key=None,
-        keepalive_interval_hours=12.0,
-    )
-    kwargs.update(overrides)
-    return Config(**kwargs)
-
-
-def make_row(issued: datetime.datetime | None = None, **overrides) -> TokenRow:
-    issued = issued or datetime.datetime.now(datetime.timezone.utc)
-    kwargs = dict(
-        access_token_issued=issued,
-        refresh_token_issued=issued,
-        access_token="access-123",
-        refresh_token="refresh-456",
-        id_token="id-789",
-        expires_in=1800,
-        token_type="Bearer",
-        scope="api",
-    )
-    kwargs.update(overrides)
-    return TokenRow(**kwargs)
+from schwab_api.store import TokenStore
+from schwab_fakes import make_config
 
 
 @pytest.fixture()

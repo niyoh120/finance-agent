@@ -1,4 +1,9 @@
-"""tdx-api 测试夹具。
+"""tdx-api 可导入测试替身与工具。
+
+独立成模块的原因：pytest prepend 导入模式下，测试目录里的
+``conftest`` 会被测试代码以顶层模块名直接导入（``from conftest import``），
+全仓一起收集时会与其它服务的 conftest 在 ``sys.modules`` 中同名冲突。
+``tdx_fakes`` 名字全局唯一，任何收集顺序下都能无歧义解析。
 
 三层测试基建：
 1. ``make_config``：测试用 Config（可覆盖任意字段）。
@@ -17,12 +22,9 @@ import zlib
 from dataclasses import dataclass, field
 from typing import Callable
 
-import pytest
 from tdx_api.config import Config
 from tdx_api.main import create_app
 from tdx_api.tdx.transport import Session
-
-APP_KEY = None
 
 MAGIC = 7654321
 
@@ -113,11 +115,6 @@ def failing_factory(errors: list[Exception], *, sessions: list | None = None):
 def make_app(config: Config, service_factory: Callable):
     """用注入的 service 工厂构建 FastAPI 应用。"""
     return create_app(config, service=service_factory(config))
-
-
-@pytest.fixture()
-def config():
-    return make_config()
 
 
 # --------------------------------------------------------------------- #

@@ -1,7 +1,7 @@
 """查询层测试：分页、市场路由、QFQ 流程、缓存与主机切换。
 
 使用会话级替身（命令解析后的对象），验证 TdxService 的编排逻辑；
-线级编解码由 test_protocol.py 覆盖，HTTP 契约由 test_api.py 覆盖。
+线级编解码由 test_protocol.py 覆盖，HTTP 契约由 test_http.py 覆盖。
 """
 
 from __future__ import annotations
@@ -9,7 +9,6 @@ from __future__ import annotations
 from datetime import datetime
 
 import pytest
-from conftest import FakeSession, fake_factory, make_config
 from tdx_api.client import TdxService
 from tdx_api.errors import (
     AdjustmentUnavailableError,
@@ -45,6 +44,7 @@ from tdx_api.tdx.models import (
     Transaction,
     XdxrRecord,
 )
+from tdx_fakes import FakeSession, fake_factory, make_config
 
 SH = get_spec("cn_sh")
 HK = get_spec("hk")

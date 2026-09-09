@@ -17,8 +17,3 @@ dev = ["httpx>=0.27.0", "pytest>=8.0.0"]
 
 [tool.uv.build-backend]
 module-name = "tdx_api"
-
-[tool.pytest.ini_options]
-markers = [
-  "live: 对真实通达信行情服务器的小规模冒烟（仅 -m live 时运行）",
-]

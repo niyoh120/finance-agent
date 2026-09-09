@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import datetime
 
-from conftest import make_config, make_row
 from fastapi.testclient import TestClient
 from schwab_api.main import create_app
+from schwab_fakes import make_config, make_row
 
 
 def test_index_renders_single_page(client):
