@@ -46,6 +46,11 @@ from openbb_agent_cli.executors import (  # noqa: E402, F401
     _tag_intraday_last_bar,
     _technical_indicators_params,
     infer_market_from_symbol,
+    keeps_empty_strings,
+    schema_model_for,
+)
+from openbb_agent_cli.output import (  # noqa: E402, F401
+    build_success_envelope,
 )
 
 app = App(name="openbb-agent-cli", version=__version__, help="Agent-friendly JSON CLI for openbb-finance.")
@@ -72,7 +77,12 @@ def equity_price_historical(
             adjusted=adjusted,
             extended=extended,
         )
-        _print_json(_tag_intraday_last_bar(symbol, _apply_limit(results, limit)))
+        _print_json(
+            build_success_envelope(
+                _tag_intraday_last_bar(symbol, _apply_limit(results, limit)),
+                model_name=schema_model_for("equity.price.historical"),
+            )
+        )
     except Exception as exc:
         _print_json({"error": str(exc), "code": _error_code(exc)})
         raise SystemExit(1) from exc
@@ -432,7 +442,12 @@ def index_price_historical(
     """Get index historical price data."""
     try:
         results = _execute_route("index.price.historical", symbol=symbol, start_date=start_date, end_date=end_date)
-        _print_json(_tag_intraday_last_bar(symbol, _apply_limit(results, limit)))
+        _print_json(
+            build_success_envelope(
+                _tag_intraday_last_bar(symbol, _apply_limit(results, limit)),
+                model_name=schema_model_for("index.price.historical"),
+            )
+        )
     except Exception as exc:
         _print_json({"error": str(exc), "code": _error_code(exc)})
         raise SystemExit(1) from exc
@@ -462,7 +477,12 @@ def etf_historical(
     """Get ETF historical price data."""
     try:
         results = _execute_route("etf.historical", symbol=symbol, start_date=start_date, end_date=end_date)
-        _print_json(_tag_intraday_last_bar(symbol, _apply_limit(results, limit)))
+        _print_json(
+            build_success_envelope(
+                _tag_intraday_last_bar(symbol, _apply_limit(results, limit)),
+                model_name=schema_model_for("etf.historical"),
+            )
+        )
     except Exception as exc:
         _print_json({"error": str(exc), "code": _error_code(exc)})
         raise SystemExit(1) from exc
@@ -500,7 +520,12 @@ def futures_price_historical(
             interval=interval,
             adjusted=adjusted,
         )
-        _print_json(_apply_limit(results, limit))
+        _print_json(
+            build_success_envelope(
+                _apply_limit(results, limit),
+                model_name=schema_model_for("futures.price.historical"),
+            )
+        )
     except Exception as exc:
         _print_json({"error": str(exc), "code": _error_code(exc)})
         raise SystemExit(1) from exc
@@ -642,7 +667,12 @@ def technical_indicators(
                 stoch_d=stoch_d,
             ),
         )
-        _print_json(_apply_limit(results, limit))
+        _print_json(
+            build_success_envelope(
+                _apply_limit(results, limit),
+                model_name=schema_model_for("technical.indicators"),
+            )
+        )
     except Exception as exc:
         _print_json({"error": str(exc), "code": _error_code(exc)})
         raise SystemExit(1) from exc
@@ -716,9 +746,10 @@ def derivatives_options_chain(
     --dte/--strike-count are mandatory: they declare the query window served
     to Schwab (and emulated locally for CV). Aggregate mode (no --source)
     merges both sources field-by-field, Schwab wins populated fields, CV adds
-    null-filled fields and out-of-window contracts. Returns {results, _meta}
-    where _meta.total is the contract count and _meta.sources_used lists the
-    participating sources. --range/--strategy only affect the Schwab side.
+    null-filled fields and out-of-window contracts. Returns {results, _schema,
+    _meta} where _meta.total is the contract count and _meta.sources_used
+    lists the participating sources. --range/--strategy only affect the
+    Schwab side.
     """
     try:
         records, meta = _options_chain_execute(
@@ -737,7 +768,7 @@ def derivatives_options_chain(
                 "limit": limit,
             }
         )
-        _print_results_with_meta(records, meta)
+        _print_results_with_meta(records, meta, model_name=schema_model_for("derivatives.options.chain"))
     except Exception as exc:
         _print_json({"error": str(exc), "code": _error_code(exc)})
         raise SystemExit(1) from exc
@@ -858,7 +889,7 @@ def derivatives_options_screener(
             "sort_by": sort_by,
             "sort_dir": sort_dir,
         }
-        _print_results_with_meta(records, meta)
+        _print_results_with_meta(records, meta, model_name=schema_model_for("derivatives.options.screener"))
     except Exception as exc:
         _print_json({"error": str(exc), "code": _error_code(exc)})
         raise SystemExit(1) from exc
@@ -870,7 +901,10 @@ def derivatives_options_query(sql: str, max_rows: int = 5000) -> None:
 
     DDL/DML are rejected server-side. See the openbb-agent-cli skill for SQL
     templates (GEX ranking, term structure, market PCR, max pain, etc.).
-    Returns {results, _meta} where _meta.row_count/truncated come from the server.
+    Returns {results, _meta} where _meta.row_count/truncated come from the
+    server. Result fields are dynamic SQL columns, so no _schema is emitted,
+    and empty strings are preserved as-is (expressions can produce them
+    deliberately).
     """
     import asyncio
 
@@ -885,7 +919,12 @@ def derivatives_options_query(sql: str, max_rows: int = 5000) -> None:
             "truncated": raw.get("truncated", False),
             "elapsed_ms": raw.get("elapsed_ms"),
         }
-        _print_results_with_meta(rows, meta)
+        _print_results_with_meta(
+            rows,
+            meta,
+            model_name=schema_model_for("derivatives.options.query"),
+            keep_empty_strings=keeps_empty_strings("derivatives.options.query"),
+        )
     except Exception as exc:
         _print_json({"error": str(exc), "code": _error_code(exc)})
         raise SystemExit(1) from exc

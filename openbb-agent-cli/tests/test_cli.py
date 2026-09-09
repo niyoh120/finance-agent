@@ -5,7 +5,7 @@ import sys
 from typing import Any
 
 import pytest
-from openbb_agent_cli import cli, executors
+from openbb_agent_cli import cli, executors, output
 
 
 class DummyResult:
@@ -21,13 +21,17 @@ def test_run_route_outputs_results_only(monkeypatch: pytest.MonkeyPatch, capsys:
             "query": "AAPL",
             "is_symbol": False,
         }
-        return [{"symbol": "AAPL"}]
+        return [{"symbol": "AAPL", "note": None}]
 
     monkeypatch.setattr(executors, "_execute_route", fake_execute_route)
+    monkeypatch.setattr(output, "model_field_descriptions", lambda name: {"symbol": "Symbol", "note": "Note"})
 
     cli._run_route("equity.search", query="AAPL", is_symbol=False, start_date=None)
 
-    assert capsys.readouterr().out == '[{"symbol":"AAPL"}]\n'
+    assert json.loads(capsys.readouterr().out) == {
+        "results": [{"symbol": "AAPL"}],
+        "_schema": {"symbol": "Symbol", "note": "Note"},
+    }
 
 
 def test_run_route_suppresses_provider_output(
@@ -44,12 +48,83 @@ def test_run_route_suppresses_provider_output(
             return [DummyResult()]
 
     monkeypatch.setattr("openbb_core.app.query.Query", FakeQuery)
+    monkeypatch.setattr(output, "model_field_descriptions", lambda name: {"results": "Data records"})
 
     cli._run_route("equity.search", query="AAPL")
 
     captured = capsys.readouterr()
-    assert captured.out == '[{"results":[{"symbol":"AAPL"}]}]\n'
+    assert captured.out == '{"results":[{"results":[{"symbol":"AAPL"}]}],"_schema":{"results":"Data records"}}\n'
     assert captured.err == ""
+
+
+def test_derivatives_options_query_outputs_results_meta_without_schema(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """自由 SQL 动态列：无 _schema，空串保留，None 删除，_meta 保留零值。"""
+
+    async def fake_fetch_query(sql: str, max_rows: int | None = None) -> dict[str, Any]:
+        assert sql == "SELECT 1"
+        assert max_rows == 10
+        return {"rows": [{"col": "", "n": None, "z": 0}], "row_count": 5, "truncated": True, "elapsed_ms": 7}
+
+    monkeypatch.setattr("openbb_finance.sources.convexvalue.fetch_query", fake_fetch_query)
+
+    cli.derivatives_options_query(sql="SELECT 1", max_rows=10)
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {
+        "results": [{"col": "", "z": 0}],
+        "_meta": {"returned": 1, "row_count": 5, "truncated": True, "elapsed_ms": 7},
+    }
+    assert "_schema" not in payload
+
+
+def test_derivatives_options_screener_outputs_schema_and_meta(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    async def fake_fetch_screen(**kwargs: Any) -> dict[str, Any]:
+        assert kwargs["limit"] == 50
+        return {
+            "columns": ["underlying_ticker", "open_interest"],
+            "rows": [["SPY", 1000], ["QQQ", None]],
+            "row_count": 2,
+            "truncated": False,
+        }
+
+    monkeypatch.setattr("openbb_finance.sources.convexvalue.fetch_screen", fake_fetch_screen)
+    monkeypatch.setattr(output, "model_field_descriptions", lambda name: {"underlying_ticker": "Underlying"})
+
+    cli.derivatives_options_screener()
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["results"] == [{"underlying_ticker": "SPY", "open_interest": 1000}, {"underlying_ticker": "QQQ"}]
+    assert payload["_schema"] == {"underlying_ticker": "Underlying", "open_interest": "open_interest"}
+    assert payload["_meta"] == {
+        "returned": 2,
+        "row_count": 2,
+        "truncated": False,
+        "sort_by": "open_interest",
+        "sort_dir": "desc",
+    }
+
+
+def test_run_route_dynamic_screener_omits_schema(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
+        assert route == "equity.screener"
+        return [{"symbol": "AAPL", "sector": ""}]
+
+    monkeypatch.setattr(executors, "_execute_route", fake_execute_route)
+
+    cli._run_route("equity.screener", market="america", volume_min=1)
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {"results": [{"symbol": "AAPL"}]}
+    assert "_schema" not in payload
 
 
 def test_run_route_outputs_json_error(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -105,6 +180,7 @@ def test_technical_indicators_uses_extra_params_and_limit(
         return [{"i": 1}, {"i": 2}, {"i": 3}]
 
     monkeypatch.setattr(cli, "_execute_provider_model", execute_provider_model)
+    monkeypatch.setattr(output, "model_field_descriptions", lambda name: {"i": "Indicator value"})
 
     cli.technical_indicators(
         symbol="600519.XSHG",
@@ -132,7 +208,10 @@ def test_technical_indicators_uses_extra_params_and_limit(
     assert "limit" not in captured["extra_params"]
     assert captured["extra_params"]["sma_lengths"] == [20, 50]
     assert captured["extra_params"]["ema_lengths"] == [20]
-    assert json.loads(capsys.readouterr().out) == [{"i": 2}, {"i": 3}]
+    assert json.loads(capsys.readouterr().out) == {
+        "results": [{"i": 2}, {"i": 3}],
+        "_schema": {"i": "Indicator value"},
+    }
 
 
 def test_technical_indicators_executor_supports_batch_limit(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -499,19 +578,25 @@ def test_run_batch_queries_collects_results_and_errors(monkeypatch: pytest.Monke
     def failing_executor(params: dict[str, Any]) -> list[dict[str, Any]]:
         raise RuntimeError("boom")
 
-    monkeypatch.setitem(cli.COMMAND_EXECUTORS, "test.quote", quote_executor)
-    monkeypatch.setitem(cli.COMMAND_EXECUTORS, "test.fail", failing_executor)
+    monkeypatch.setitem(cli.COMMAND_EXECUTORS, "equity.price.quote", quote_executor)
+    monkeypatch.setitem(cli.COMMAND_EXECUTORS, "equity.search", failing_executor)
+    monkeypatch.setattr(output, "model_field_descriptions", lambda name: {"symbol": "Symbol"})
 
     payload = cli._run_batch_queries(
         [
-            {"name": "quote", "command": "test.quote", "params": {"symbol": "AAPL"}},
-            {"name": "failed", "command": "test.fail"},
+            {"name": "quote", "command": "equity.price.quote", "params": {"symbol": "AAPL"}},
+            {"name": "failed", "command": "equity.search"},
         ],
         max_workers=2,
     )
 
     assert payload == {
-        "results": {"quote": [{"symbol": "AAPL", "price": 100}]},
+        "results": {
+            "quote": {
+                "results": [{"symbol": "AAPL", "price": 100}],
+                "_schema": {"symbol": "Symbol", "price": "price"},
+            }
+        },
         "errors": {"failed": {"error": "boom", "code": "RUNTIMEERROR"}},
     }
 
@@ -527,39 +612,44 @@ def test_run_batch_queries_executes_serially(monkeypatch: pytest.MonkeyPatch) ->
         events.append("second")
         return []
 
-    monkeypatch.setitem(cli.COMMAND_EXECUTORS, "test.first", first_executor)
-    monkeypatch.setitem(cli.COMMAND_EXECUTORS, "test.second", second_executor)
+    monkeypatch.setitem(cli.COMMAND_EXECUTORS, "equity.search", first_executor)
+    monkeypatch.setitem(cli.COMMAND_EXECUTORS, "equity.price.quote", second_executor)
+    monkeypatch.setattr(output, "model_field_descriptions", lambda name: {})
 
-    cli._run_batch_queries(
+    payload = cli._run_batch_queries(
         [
-            {"name": "first", "command": "test.first"},
-            {"name": "second", "command": "test.second"},
+            {"name": "first", "command": "equity.search"},
+            {"name": "second", "command": "equity.price.quote"},
         ],
         max_workers=2,
     )
 
     assert events == ["first", "second"]
+    assert payload["errors"] == {}
+    assert payload["results"]["first"] == {"results": [], "_schema": {}}
+    assert payload["results"]["second"] == {"results": [], "_schema": {}}
 
 
 def test_run_batch_queries_preserves_repeated_unnamed_commands(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setitem(
         cli.COMMAND_EXECUTORS,
-        "test.quote",
+        "equity.price.quote",
         lambda params: [{"symbol": params["symbol"]}],
     )
+    monkeypatch.setattr(output, "model_field_descriptions", lambda name: {"symbol": "Symbol"})
 
     payload = cli._run_batch_queries(
         [
-            {"command": "test.quote", "params": {"symbol": "AAPL"}},
-            {"command": "test.quote", "params": {"symbol": "MSFT"}},
+            {"command": "equity.price.quote", "params": {"symbol": "AAPL"}},
+            {"command": "equity.price.quote", "params": {"symbol": "MSFT"}},
         ],
         max_workers=2,
     )
 
     assert payload == {
         "results": {
-            "0": [{"symbol": "AAPL"}],
-            "1": [{"symbol": "MSFT"}],
+            "0": {"results": [{"symbol": "AAPL"}], "_schema": {"symbol": "Symbol"}},
+            "1": {"results": [{"symbol": "MSFT"}], "_schema": {"symbol": "Symbol"}},
         },
         "errors": {},
     }
@@ -568,14 +658,15 @@ def test_run_batch_queries_preserves_repeated_unnamed_commands(monkeypatch: pyte
 def test_batch_outputs_json_payload(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     monkeypatch.setitem(
         cli.COMMAND_EXECUTORS,
-        "test.quote",
+        "equity.price.quote",
         lambda params: [{"symbol": params["symbol"]}],
     )
+    monkeypatch.setattr(output, "model_field_descriptions", lambda name: {"symbol": "Symbol"})
 
-    cli.batch(queries='[{"name":"quote","command":"test.quote","params":{"symbol":"AAPL"}}]')
+    cli.batch(queries='[{"name":"quote","command":"equity.price.quote","params":{"symbol":"AAPL"}}]')
 
     assert json.loads(capsys.readouterr().out) == {
-        "results": {"quote": [{"symbol": "AAPL"}]},
+        "results": {"quote": {"results": [{"symbol": "AAPL"}], "_schema": {"symbol": "Symbol"}}},
         "errors": {},
     }
 
@@ -705,8 +796,8 @@ def test_equity_price_historical_passes_limit(capsys: pytest.CaptureFixture[str]
 
     cli.equity_price_historical(symbol="AAPL", start_date="2026-01-01", end_date="2026-01-31", limit=5)
 
-    output = json.loads(capsys.readouterr().out)
-    assert len(output) == 5
+    output_payload = json.loads(capsys.readouterr().out)
+    assert len(output_payload["results"]) == 5
     assert called_with["route"] == "equity.price.historical"
     assert called_with.get("limit") is None
 
@@ -722,9 +813,9 @@ def test_index_price_historical_passes_limit(capsys: pytest.CaptureFixture[str])
 
     cli.index_price_historical(symbol="000001.XSHG", limit=3)
 
-    output = json.loads(capsys.readouterr().out)
-    assert len(output) == 3
-    assert output[0]["i"] == 5
+    output_payload = json.loads(capsys.readouterr().out)
+    assert len(output_payload["results"]) == 3
+    assert output_payload["results"][0]["i"] == 5
 
     monkeypatch_local.undo()
 
@@ -738,8 +829,9 @@ def test_etf_historical_passes_limit(capsys: pytest.CaptureFixture[str]) -> None
 
     cli.etf_historical(symbol="510300.XSHG", limit=2)
 
-    output = json.loads(capsys.readouterr().out)
-    assert len(output) == 2
+    output_payload = json.loads(capsys.readouterr().out)
+    assert len(output_payload["results"]) == 2
+    assert set(output_payload["_schema"]) >= {"symbol", "date", "open", "close"}
 
     monkeypatch_local.undo()
 
@@ -975,7 +1067,7 @@ def test_futures_price_historical_command_routes_params(monkeypatch: pytest.Monk
         "interval": "1d",
         "adjusted": False,
     }
-    assert json.loads(capsys.readouterr().out) == [{"date": "2026-08-07", "close": 3010.0}]
+    assert json.loads(capsys.readouterr().out)["results"] == [{"date": "2026-08-07", "close": 3010.0}]
 
 
 def test_futures_price_quote_command_routes_params(monkeypatch: pytest.MonkeyPatch) -> None:

@@ -2,7 +2,9 @@
 
 Turns a template name (or a raw JSON query list) into a list of
 ``{name, command, params}`` queries and runs them through
-``COMMAND_EXECUTORS``, collecting per-query results and errors.
+``COMMAND_EXECUTORS``, collecting per-query results and errors. Successful
+sub-queries are wrapped individually as ``{results, _schema?}`` envelopes by
+:mod:`openbb_agent_cli.output`.
 """
 
 from __future__ import annotations
@@ -10,7 +12,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
-from .executors import COMMAND_EXECUTORS, _error_code
+from .executors import COMMAND_EXECUTORS, _error_code, keeps_empty_strings, schema_model_for
+from .output import build_success_envelope
 
 
 def _build_template_queries(template: str, params: dict[str, Any]) -> list[dict[str, Any]]:
@@ -178,9 +181,19 @@ def _run_batch_queries(queries: list[dict[str, Any]], max_workers: int) -> dict[
             continue
 
         name, data, error = _execute_batch_query(index, query)
-        if error is None:
-            results[name] = data
-        else:
+        if error is not None:
             errors[name] = error
+            continue
+        command = query.get("command")
+        try:
+            results[name] = build_success_envelope(
+                data,
+                model_name=schema_model_for(str(command)),
+                keep_empty_strings=keeps_empty_strings(str(command)),
+            )
+        except Exception as exc:
+            # Schema resolution failures stay isolated per query, matching the
+            # executor error semantics above.
+            errors[name] = {"error": str(exc), "code": _error_code(exc)}
 
     return {"results": results, "errors": errors}

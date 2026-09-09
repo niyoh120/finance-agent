@@ -731,7 +731,7 @@ openbb-agent-cli news.world --limit 50
 
 ## derivatives.options.chain
 
-单标的期权链：**默认双源聚合（Schwab 优先 + CV 兑底）**，含 Greeks/IV/OI/bid-ask/day stats/break\_even。`--dte` 与 `--strike-count` **必填**，用于声明查询窗口。返回 `{results, _meta}`，`_meta.total` 为合约数，`_meta.sources_used` 为实际参与的源（如 `["schwab","convexvalue"]`）。
+单标的期权链：**默认双源聚合（Schwab 优先 + CV 兑底）**，含 Greeks/IV/OI/bid-ask/day stats/break\_even。`--dte` 与 `--strike-count` **必填**，用于声明查询窗口。返回 `{results, _schema, _meta}`，`_meta.total` 为合约数，`_meta.sources_used` 为实际参与的源（如 `["schwab","convexvalue"]`）。
 
 **聚合语义（默认，不传 --source）**:
 - 查询窗口内合约：定价/Greeks/OI 全部取 Schwab（口径统一、带报价时间戳）；CV 仅补 Schwab 为 null 的字段。
@@ -780,7 +780,7 @@ openbb-agent-cli derivatives.options.chain SPY --dte 10 --strike-count 30 --sour
 
 ## derivatives.options.screener `CV`
 
-跨标的多字段筛选（全市场扫描）。服务端过滤 + 排序，支持字段间比较（如 day_volume > open_interest）。返回 `{results, _meta}`，`_meta.row_count` 是服务端匹配数，`_meta.truncated` 表示是否还有更多。
+跨标的多字段筛选（全市场扫描）。服务端过滤 + 排序，支持字段间比较（如 day_volume > open_interest）。返回 `{results, _schema, _meta}`，`_meta.row_count` 是服务端匹配数，`_meta.truncated` 表示是否还有更多。
 
 ```bash
 openbb-agent-cli derivatives.options.screener \
@@ -869,7 +869,7 @@ openbb-agent-cli derivatives.options.daily O:SPY260731C00750000 --date 2026-06-3
 
 ## derivatives.options.query `CV`
 
-自由 SQL 聚合查询（DuckDB 只读，DDL/DML 被服务端拒绝）。这是 ConvexValue 杀手级能力：跨合约聚合（GEX/Max Pain/PCR/期限结构），`chain` 和 `screener` 做不到，服务端聚合 14-27ms 返回。返回 `{results, _meta}`。
+自由 SQL 聚合查询（DuckDB 只读，DDL/DML 被服务端拒绝）。这是 ConvexValue 杀手级能力：跨合约聚合（GEX/Max Pain/PCR/期限结构），`chain` 和 `screener` 做不到，服务端聚合 14-27ms 返回。结果字段是动态 SQL 列，返回 `{results, _meta}`（省略 `_schema`，空字符串是表达式可产生的有意义值、保持原样）。
 
 ```bash
 openbb-agent-cli derivatives.options.query --sql SQL [--max-rows N]
@@ -932,7 +932,7 @@ openbb-agent-cli derivatives.options.unusual \
 
 ## etf.holdings `CV`
 
-ETF 持仓明细。服务端返回全量（SPY 505），本地排序+截断。返回 `{results, _meta}`，`_meta.filtered` 是总持仓数。
+ETF 持仓明细。服务端返回全量（SPY 505），本地排序+截断。返回 `{results, _schema, _meta}`，`_meta.filtered` 是总持仓数。
 
 ```bash
 openbb-agent-cli etf.holdings SYMBOL \
@@ -957,7 +957,7 @@ openbb-agent-cli etf.holdings SPY --sort-by market_value --limit 50
 
 ## etf.sectors `CV`
 
-ETF 行业权重（12 条固定，返回纯数组）。返回 12 条 sector weight 记录。
+ETF 行业权重（12 条固定）。返回 12 条 sector weight 记录，格式为 `{results, _schema}`。
 
 ```bash
 openbb-agent-cli etf.sectors SYMBOL
@@ -972,7 +972,7 @@ openbb-agent-cli etf.sectors SPY
 
 ## stocks.fundamental.income / balance / cash `CV`
 
-财报三表（利润表/资产负债表/现金流量表）。TTM 路由到独立 `*-ttm` endpoint（真实滚动 12 个月）。返回 `{results, _meta}`，默认按期降序。
+财报三表（利润表/资产负债表/现金流量表）。TTM 路由到独立 `*-ttm` endpoint（真实滚动 12 个月）。返回 `{results, _schema, _meta}`，默认按期降序。
 
 ```bash
 openbb-agent-cli stocks.fundamental.income SYMBOL [--period annual|quarter|ttm] [--limit N]
@@ -999,7 +999,7 @@ openbb-agent-cli stocks.fundamental.cash AAPL --period ttm --limit 1
 
 ## stocks.fundamental.ratios `CV`
 
-财务比率（PE/PB/ROE/debt-to-equity/current-ratio 等 ~60 个）。**不支持 ttm**（ratios-ttm endpoint 字段命名不同）。返回 `{results, _meta}`。
+财务比率（PE/PB/ROE/debt-to-equity/current-ratio 等 ~60 个）。**不支持 ttm**（ratios-ttm endpoint 字段命名不同）。返回 `{results, _schema, _meta}`。
 
 ```bash
 openbb-agent-cli stocks.fundamental.ratios SYMBOL [--period annual|quarter] [--limit N]
@@ -1019,7 +1019,7 @@ openbb-agent-cli stocks.fundamental.ratios AAPL --period annual --limit 5
 
 ## stocks.estimates `CV`
 
-分析师预测（营收/EPS/EBITDA/SGA/NetIncome 各 low/high/avg + 分析师数量）。返回 `{results, _meta}`。
+分析师预测（营收/EPS/EBITDA/SGA/NetIncome 各 low/high/avg + 分析师数量）。返回 `{results, _schema, _meta}`。
 
 ```bash
 openbb-agent-cli stocks.estimates SYMBOL [--period annual|quarter] [--limit N]
@@ -1039,7 +1039,7 @@ openbb-agent-cli stocks.estimates AAPL --period quarter --limit 4
 
 ## stocks.insider_trading `CV`
 
-内部人交易。服务端支持 transactionType/after 过滤。返回 `{results, _meta}`，默认按 filing_date desc。
+内部人交易。服务端支持 transactionType/after 过滤。返回 `{results, _schema, _meta}`，默认按 filing_date desc。
 
 ```bash
 openbb-agent-cli stocks.insider_trading SYMBOL \
@@ -1064,7 +1064,7 @@ openbb-agent-cli stocks.insider_trading AAPL --transaction-type P-Purchase --aft
 
 ## government.trades `CV`
 
-参议院交易披露。支持 page 翻页（0-indexed）。返回 `{results, _meta}`，默认按 transaction_date desc。
+参议院交易披露。支持 page 翻页（0-indexed）。返回 `{results, _schema, _meta}`，默认按 transaction_date desc。
 
 ```bash
 openbb-agent-cli government.trades [SYMBOL] [--page N] [--limit N]
@@ -1085,7 +1085,7 @@ openbb-agent-cli government.trades AAPL --page 1 --limit 50
 
 ## stocks.filings `CV`
 
-SEC 8-K 文件。服务端支持 from/to 日期 + page 翻页。返回 `{results, _meta}`，默认按 filing_date desc。
+SEC 8-K 文件。服务端支持 from/to 日期 + page 翻页。返回 `{results, _schema, _meta}`，默认按 filing_date desc。
 
 ```bash
 openbb-agent-cli stocks.filings SYMBOL \
@@ -1108,7 +1108,7 @@ openbb-agent-cli stocks.filings AAPL --from-date 2024-01-01 --to-date 2024-06-01
 
 ## batch
 
-一次执行多个金融查询，输出结构为 `{"results": {...}, "errors": {...}}`。
+一次执行多个金融查询，输出结构为 `{"results": {"<name>": {"results": [...], "_schema": {...}}, ...}, "errors": {...}}`；每个成功子查询独立包装（动态字段命令省略 `_schema`）。
 
 ```bash
 openbb-agent-cli batch \
@@ -1177,8 +1177,21 @@ openbb-agent-cli batch --queries '[
 
 ## 输出格式
 
-**ConvexValue 接口**（下文标注 `CV`，含期权链/筛选/历史/查询/财报/分析师/内部人/参议院/ETF持仓/SEC文件）返回 `{"results": [...], "_meta": {...}}` 对象：
-- `results`: 数据记录数组
+所有数据命令成功时返回 `{"results": [...], "_schema": {...}, "_meta": {...}}` 对象（`_meta` 仅部分命令提供）：
+
+```json
+{
+  "results": [{"symbol": "AAPL", "last_price": 228.68}],
+  "_schema": {
+    "symbol": "Symbol representing the entity requested in the data.",
+    "last_price": "Last traded price."
+  },
+  "_meta": {"returned": 1, "filtered": 1}
+}
+```
+
+- `results`: 数据记录数组。值为 `null` 的字段与无意义空字符串已默认剔除（嵌套对象同步处理），`0`、`false`、空数组和空对象保留；字段省略统一表达本次无可用值。
+- `_schema`: 字段名到含义的短描述，来自本次命令对应的数据模型，随结果同次返回，字段在本次结果中全为 `null` 也会列出；模型外字段用字段名兑底。`equity.screener` 与 `derivatives.options.query` 的结果字段是动态的，省略 `_schema`。
 - `_meta.returned`: 实际返回条数
 - `_meta.filtered`: 本地过滤后的总条数（limit 截断前）
 - `_meta.total`: 合约总数（仅 options.chain 提供）
@@ -1186,20 +1199,29 @@ openbb-agent-cli batch --queries '[
 - `_meta.truncated`: 是否因 limit 截断（boolean）
 - `_meta.sort_by`/`_meta.sort_dir`: 排序字段和方向
 - `_meta.row_count`: 服务端报告的匹配数（screener/query）
+- 记录级 `_meta`（历史价格命令盘中触发）附加在对应那条行情记录上，含 `warning` 与 `market`，表示该 bar 可能是盘中未收盘快照。
 
 当 `_meta.truncated=true` 时，调宽 `--limit` 或加严过滤可获取更多数据。
 
-**非 ConvexValue 接口**（行情/指数/宏观/技术指标/新闻/期权异动）返回纯 JSON 数组：
+**batch** 每个成功子查询独立包装：
+
 ```json
-[{"symbol": "AAPL", "price": 175.50, ...}, ...]
+{
+  "results": {
+    "quote": {"results": [{"symbol": "AAPL"}], "_schema": {"symbol": "Symbol"}},
+    "historical": {"results": [], "_schema": {"date": "Date"}}
+  },
+  "errors": {}
+}
 ```
 
 **失败**：
+
 ```json
 {"error": "错误信息", "code": "ERROR_CODE"}
 ```
 
-常见错误码：`EMPTY_DATA`（无数据）、`VALIDATIONERROR`（参数错误）、`CLI_ERROR`（CLI 参数错误）。
+常见错误码：`EMPTY_DATA`（无数据）、`VALIDATIONERROR`（参数错误）、`CLI_ERROR`（CLI 参数错误）。帮助类输出（`equity.screener` 无过滤条件、`equity.screener.fields`）保持各自专用结构。
 
 ## Setup
 

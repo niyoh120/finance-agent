@@ -87,19 +87,38 @@ class FutunnSource:
         return news
 
 
+def _optional_value(*values: Any) -> Any:
+    """First meaningful value (None and exact "" skipped), else None.
+
+    Missing and empty-string are both expressions of "no value" for optional
+    calendar response fields, while falsy non-empty values such as
+    ``importance=0`` / ``forecast=0`` are real data and must survive.
+    """
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, str) and value == "":
+            continue
+        return value
+    return None
+
+
 def _normalize_calendar(item: dict[str, Any]) -> dict[str, Any]:
     data = item.get("itemData", item)
     date_value = item.get(_CALENDAR_GROUP_DATE_KEY) or data.get("date") or data.get("time") or data.get("timestamp")
     parsed = _parse_calendar_date(date_value)
+    importance = _optional_value(data.get("importance"), data.get("star"))
     return {
         "date": parsed,
-        "country": data.get("country") or data.get("region") or data.get("stockMarket") or "",
-        "category": data.get("category") or "",
-        "event": data.get("event") or data.get("title") or data.get("name") or "",
-        "importance": str(data.get("importance") or data.get("star") or ""),
+        "country": _optional_value(data.get("country"), data.get("region"), data.get("stockMarket")),
+        "category": _optional_value(data.get("category")),
+        "event": _optional_value(data.get("event"), data.get("title"), data.get("name")),
+        "importance": str(importance) if importance is not None else None,
         "source": "futunn",
         "actual": data.get("actual"),
-        "consensus": data.get("forecast") or data.get("consensus"),
+        # _optional_value skips only None and "" so a real forecast=0 wins
+        # over the consensus field instead of being treated as missing.
+        "consensus": _optional_value(data.get("forecast"), data.get("consensus")),
         "previous": data.get("previous"),
     }
 

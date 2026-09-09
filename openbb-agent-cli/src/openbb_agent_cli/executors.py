@@ -23,6 +23,8 @@ from cyclopts.exceptions import CycloptsError
 from openbb_finance.sources.base import SourceError
 from openbb_finance.sources.symbols import infer_market_from_symbol
 
+from .output import build_success_envelope
+
 
 def _json_default(value: Any) -> str:
     return str(value)
@@ -171,6 +173,44 @@ ROUTE_MODELS = {
     "stocks.filings": "CompanyFilings",
 }
 
+# CLI 命令名 -> OpenBB 模型名（静态 _schema 的描述来源）。route 命令复用
+# ROUTE_MODELS；直连 provider 模型的命令在此补全。横线命名的
+# economy.available-indicators 对应 ROUTE_MODELS 的下划线路由键。
+COMMAND_MODELS: dict[str, str] = {
+    **ROUTE_MODELS,
+    "economy.available-indicators": ROUTE_MODELS["economy.available_indicators"],
+    "index.snapshots": "IndexSnapshots",
+    "technical.indicators": "TechnicalIndicators",
+    "etf.search": "EtfSearch",
+    "derivatives.options.screener": "OptionsScreener",
+}
+
+# 结果字段动态、无法静态描述的命令：成功输出省略 _schema。
+DYNAMIC_FIELD_COMMANDS = frozenset({"equity.screener", "derivatives.options.query"})
+
+# 自由 SQL 动态列：空字符串是表达式可显式产生的有意义值，清理时保持原样。
+MEANINGFUL_EMPTY_STRING_COMMANDS = frozenset({"derivatives.options.query"})
+
+
+def schema_model_for(command: str) -> str | None:
+    """Static schema model for a CLI data command; None omits _schema.
+
+    A command that is neither dynamic nor mapped is an implementation gap
+    and fails loudly here (the offline mapping-completeness test catches it
+    before release).
+    """
+    if command in DYNAMIC_FIELD_COMMANDS:
+        return None
+    try:
+        return COMMAND_MODELS[command]
+    except KeyError:
+        raise ValueError(f"no schema model mapped for command: {command}") from None
+
+
+def keeps_empty_strings(command: str) -> bool:
+    """True when the command's empty strings carry meaning (free-SQL columns)."""
+    return command in MEANINGFUL_EMPTY_STRING_COMMANDS
+
 
 def _error_code(exc: Exception) -> str:
     name = exc.__class__.__name__
@@ -210,7 +250,8 @@ def _execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
 
 def _run_route(route: str, **params: Any) -> None:
     try:
-        _print_json(_execute_route(route, **params))
+        records = _execute_route(route, **params)
+        _print_json(build_success_envelope(records, model_name=schema_model_for(route)))
     except Exception as exc:
         _print_json({"error": str(exc), "code": _error_code(exc)})
         raise SystemExit(1) from exc
@@ -226,7 +267,8 @@ def _run_cv_route(route: str, **params: Any) -> None:
     """
     try:
         standard, extra = _split_standard_extra(ROUTE_MODELS[route], params)
-        _print_json(_execute_provider_model(ROUTE_MODELS[route], standard, extra))
+        records = _execute_provider_model(ROUTE_MODELS[route], standard, extra)
+        _print_json(build_success_envelope(records, model_name=schema_model_for(route)))
     except Exception as exc:
         _print_json({"error": str(exc), "code": _error_code(exc)})
         raise SystemExit(1) from exc
@@ -312,7 +354,8 @@ def _run_provider_model(
     extra_params: dict[str, Any] | None = None,
 ) -> None:
     try:
-        _print_json(_execute_provider_model(model_name, standard_params, extra_params))
+        records = _execute_provider_model(model_name, standard_params, extra_params)
+        _print_json(build_success_envelope(records, model_name=model_name))
     except Exception as exc:
         _print_json({"error": str(exc), "code": _error_code(exc)})
         raise SystemExit(1) from exc
@@ -362,11 +405,17 @@ def _print_results_with_meta(
     records: list[dict[str, Any]],
     meta: dict[str, Any],
     total: int | None = None,
+    *,
+    model_name: str | None = None,
+    keep_empty_strings: bool = False,
 ) -> None:
-    payload: dict[str, Any] = {"results": records, "_meta": meta}
+    """Print ``{results, _schema?, _meta?}`` with the same null cleaning applied
+    to both records and meta. ``model_name=None`` omits ``_schema``."""
     if total is not None:
-        payload["_meta"]["total"] = total
-    _print_json(payload)
+        meta = {**meta, "total": total}
+    _print_json(
+        build_success_envelope(records, model_name=model_name, meta=meta, keep_empty_strings=keep_empty_strings)
+    )
 
 
 def _run_cv_list(
@@ -393,7 +442,7 @@ def _run_cv_list(
             sort_dir=sort_dir,
             limit=limit,
         )
-        _print_results_with_meta(filtered, meta)
+        _print_results_with_meta(filtered, meta, model_name=model_name)
     except Exception as exc:
         _print_json({"error": str(exc), "code": _error_code(exc)})
         raise SystemExit(1) from exc

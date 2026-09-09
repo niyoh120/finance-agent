@@ -34,6 +34,50 @@ def test_futunn_calendar_extracts_nested_records():
     assert result["country"] == "HK"
     assert result["event"] == "ICBC released earnings report"
     assert result["source"] == "futunn"
+    # 可选响应字段缺失时用 None 表达，不再填充空字符串。
+    assert result["category"] is None
+    assert result["importance"] is None
+
+
+def test_futunn_calendar_normalizes_empty_strings_and_preserves_zero_values():
+    result = _normalize_calendar(
+        {
+            "itemData": {
+                "timestamp": "1777392000",
+                "country": "",
+                "region": "CN",
+                "category": "",
+                "event": "",
+                "name": "CPI yoy",
+                "star": 0,
+                "forecast": 0,
+                "previous": "1.0",
+            }
+        }
+    )
+
+    # 空字符串视为缺失；回退链继续取到 region/name。
+    assert result["country"] == "CN"
+    assert result["category"] is None
+    assert result["event"] == "CPI yoy"
+    # 真实零值保留：importance=0 -> "0"，forecast=0 优先于 consensus。
+    assert result["importance"] == "0"
+    assert result["consensus"] == 0
+
+
+def test_futunn_calendar_consensus_falls_back_when_forecast_missing():
+    result = _normalize_calendar(
+        {
+            "itemData": {
+                "timestamp": "1777392000",
+                "event": "GDP qoq",
+                "consensus": "2.1",
+            }
+        }
+    )
+
+    assert result["consensus"] == "2.1"
+    assert result["actual"] is None
 
 
 def test_futunn_news_normalizes_search_records():
