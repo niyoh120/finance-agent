@@ -77,7 +77,9 @@ def _load_quote(symbol: str) -> dict[str, Any]:
 # Contract symbol formatting: O:AAPL260918C00100000 -> AAPL 260918 100C
 # --------------------------------------------------------------------------- #
 
-_OCC_RE = re.compile(r"^O:([A-Z]+)(\d{6})([CP])\d+$")
+# OCC-style contract symbol. The "O:" prefix is ConvexValue's form while
+# Schwab emits the bare OCC form, and aggregated chain rows mix both.
+_OCC_RE = re.compile(r"^(?:O:)?([A-Z]+)(\d{6})([CP])\d+$")
 
 
 def fmt_contract(occ: str) -> str:
@@ -118,7 +120,10 @@ def _days_to_expiry(expiration_str: str, *, now: date | None = None) -> int | No
 
 def render_chain_strategy() -> None:
     st.title("期权策略")
-    st.caption("当前 Research Plan 不提供实时 NBBO bid/ask；价格与风险指标来自 ConvexValue 估值快照。")
+    st.caption(
+        "价格与风险指标来自 Schwab+ConvexValue 聚合估值快照："
+        "窗口内合约（1 年、ATM±50 档）Schwab 优先，CV 补缺并提供窗口外合约。"
+    )
 
     symbol = st.session_state.get(SYMBOL_KEY, "").strip().upper()
     if not symbol:
@@ -155,6 +160,9 @@ def render_chain_strategy() -> None:
     except data.DataUnavailableError as exc:
         st.error(f"暂无数据：{exc}")
         return
+
+    if _schwab_chain_enabled() and not _has_schwab_fields(records):
+        st.caption("ℹ️ Schwab 源未参与本次期权链（可能未授权或请求失败），当前数据全部来自 ConvexValue。")
 
     # --- Market context defaults from data sources ---
     chain_spot = float(records[0].get("underlying_price") or 0.0) if records else 0.0
@@ -207,17 +215,42 @@ def render_chain_strategy() -> None:
 
 
 # --------------------------------------------------------------------------- #
+# Data-source hints
+# --------------------------------------------------------------------------- #
+
+
+def _schwab_chain_enabled() -> bool:
+    """Whether the schwab source participates in the chain (SCHWAB_API_BASE_URL set).
+
+    Unset means pure-CV behavior by design, so the source-absent hint stays
+    silent. Never raises: the hint must not break rendering.
+    """
+    try:
+        from openbb_finance.registry import build_default_registry
+
+        source = build_default_registry().get("schwab")
+    except Exception:  # noqa: BLE001 - hint only
+        return False
+    return bool(source is not None and source.enabled)
+
+
+def _has_schwab_fields(records: list[dict[str, Any]]) -> bool:
+    """Whether any aggregated record field was sourced from schwab."""
+    return any(str(value) == "schwab" for row in records for key, value in row.items() if key.endswith("_source"))
+
+
+# --------------------------------------------------------------------------- #
 # 5-second auto-refresh fragment
 # --------------------------------------------------------------------------- #
 
 
 @st.fragment(run_every=5.0)
 def _render_auto_refresh(symbol: str) -> None:
-    """Refresh ConvexValue valuations (CV 估值) on a 5-second timer.
+    """Refresh aggregate valuations (FMV) on a 5-second timer.
 
     Pulls a fresh chain snapshot, updates each strategy leg's ``fmv`` from the
     latest chain record, and reruns the page so the strategy table shows the
-    refreshed CV 估值. User-set values (direction/张数/建仓价/IV) are left intact.
+    refreshed FMV. User-set values (direction/张数/建仓价/IV) are left intact.
     Rerun only when something actually changed; otherwise the fragment is a
     no-op, which also keeps AppTest deterministic.
     """
@@ -225,16 +258,19 @@ def _render_auto_refresh(symbol: str) -> None:
     try:
         records = _load_chain(symbol)
     except data.RateLimitedError as exc:
-        st.toast(f"CV 估值刷新被限频：{exc}", icon="⏳")
+        # Defensive: in the aggregate path a CV 429 is swallowed inside
+        # aggregate_records and degrades to Schwab, so this rarely fires —
+        # but it stays live for the _fetch_chain_cv rollback path.
+        st.toast(f"FMV 刷新被限频：{exc}", icon="⏳")
         return
     except data.DataUnavailableError as exc:
-        st.toast(f"CV 估值刷新无数据：{exc}", icon="⚠️")
+        st.toast(f"FMV 刷新无数据：{exc}", icon="⚠️")
         return
     except Exception as exc:  # noqa: BLE001 - keep the auto-refresh timer alive
         # Unexpected upstream error (timeout / decode / connection). Without
         # this guard the fragment raises and its run_every timer stops until a
         # full page rerun; surface it and skip this tick instead.
-        st.toast(f"CV 估值刷新出错：{exc}", icon="⚠️")
+        st.toast(f"FMV 刷新出错：{exc}", icon="⚠️")
         return
     if _refresh_leg_fmvs(records):
         st.rerun()
@@ -256,8 +292,8 @@ def _refresh_leg_fmvs(records: list[dict[str, Any]]) -> bool:
         row = by_symbol.get(leg.get("kind_symbol", ""))
         if not row:
             continue
-        # CV returns float | None here, but guard against malformed upstream
-        # payloads so a single bad row never crashes the auto-refresh loop.
+        # Aggregated rows return float | None here, but guard against malformed
+        # upstream payloads so a single bad row never crashes the auto-refresh loop.
         try:
             new_fmv = float(row.get("theoretical_price") or 0.0)
             cur_fmv = float(leg.get("fmv") or 0.0)
@@ -265,7 +301,7 @@ def _refresh_leg_fmvs(records: list[dict[str, Any]]) -> bool:
             continue
         if abs(new_fmv - cur_fmv) > 1e-9:
             # Match the codebase convention (fmv > 0 == "has valuation"):
-            # a CV drop to 0/None clears a stale positive FMV to None so the
+            # a drop to 0/None clears a stale positive FMV to None so the
             # strategy table shows "—" instead of a stale price.
             leg["fmv"] = new_fmv if new_fmv > 0 else None
             changed = True
@@ -582,7 +618,7 @@ def _render_strategy(
         return
 
     column_widths = [2.2, 0.9, 0.65, 0.9, 0.8, 0.6, 0.8, 0.8, 0.45]
-    headers = ["合约", "方向", "张数", "建仓价", "IV", "DTE", "CV 估值", "模型价", ""]
+    headers = ["合约", "方向", "张数", "建仓价", "IV", "DTE", "FMV", "模型价", ""]
     hdr = st.columns(column_widths, gap="small", vertical_alignment="center")
     for col, label in zip(hdr, headers):
         col.caption(label)
@@ -666,7 +702,7 @@ def _render_strategy(
 
     st.session_state[STRATEGY_LEGS_KEY] = legs_state
 
-    st.caption("建仓价用于损益计算；CV 估值来自 ConvexValue，模型价来自本地 CRR/BSM。")
+    st.caption("建仓价用于损益计算；FMV 来自 Schwab+CV 聚合估值，模型价来自本地 CRR/BSM。")
 
     # Net valuation.
     legs = [_dict_to_leg(d) for d in legs_state]
@@ -678,7 +714,7 @@ def _render_strategy(
     lev = effective_leverage(valuation, spot=spot)
     m1, m2, m3 = st.columns(3, gap="small")
     m1.metric("组合模型价", f"{net_theo:+.2f}")
-    m2.metric("组合 CV 估值", f"{net_fmv:+.2f}")
+    m2.metric("组合 FMV", f"{net_fmv:+.2f}")
     m3.metric(
         "有效杠杆",
         f"{lev:+.2f}×" if lev is not None else "—",

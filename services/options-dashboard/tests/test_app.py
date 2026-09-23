@@ -110,6 +110,16 @@ def test_fmt_contract_trader_friendly() -> None:
     assert fmt_contract("") == ""
 
 
+def test_fmt_contract_bare_occ() -> None:
+    """Schwab emits bare OCC symbols (no O: prefix); aggregated rows mix both."""
+    assert fmt_contract("AAPL260918C00100000") == "AAPL 260918 100C"
+    assert fmt_contract("NVDA260717P00450000") == "NVDA 260717 450P"
+    assert fmt_contract("SPY260117C00450500") == "SPY 260117 450.5C"
+    from options_dashboard.pages.market import _underlying_from_occ
+
+    assert _underlying_from_occ("AAPL260918C00100000") == "AAPL"
+
+
 # ---------- auto-refresh fmv update ----------
 
 
