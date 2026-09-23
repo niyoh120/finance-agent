@@ -17,6 +17,7 @@ from openbb_finance.sources.tdx import (
     TdxSource,
     _futures_contract_symbol,
     _is_queryable_futures_code,
+    _normalize_minute_session_rollover,
     _service_interval,
     _to_futures_market,
     _to_service_market,
@@ -132,6 +133,69 @@ def test_index_aliases_map_to_index_markets():
     assert _to_service_market("HSI", "hk") == ("hk_index", "HSI")
     assert _to_service_market("HSCEI", "hk") == ("hk_index", "HZ5014")
     assert _to_service_market("HSTECH", "hk") == ("hk_index", "HZ5017")
+
+
+def _bar(date_value: datetime | date, close: float = 1.0) -> dict[str, Any]:
+    return {"date": date_value, "open": 1.0, "high": 1.0, "low": 1.0, "close": close, "volume": 1.0}
+
+
+def test_minute_session_rollover_fixes_us_midnight_wrap():
+    """Live-verified wire shape: one US session serializes with a session-constant
+    date while the wall-clock runs past midnight (D 23:55 -> D 00:00)."""
+    session = [datetime(2026, 9, 23, 21, 30), datetime(2026, 9, 23, 23, 55)]
+    session += [datetime(2026, 9, 23, 0, 0), datetime(2026, 9, 23, 0, 5), datetime(2026, 9, 23, 4, 0)]
+
+    fixed = _normalize_minute_session_rollover([_bar(t) for t in session])
+
+    stamps = [row["date"] for row in fixed]
+    assert stamps == [
+        datetime(2026, 9, 23, 21, 30),
+        datetime(2026, 9, 23, 23, 55),
+        datetime(2026, 9, 24, 0, 0),
+        datetime(2026, 9, 24, 0, 5),
+        datetime(2026, 9, 24, 4, 0),
+    ]
+    assert all(b > a for a, b in zip(stamps, stamps[1:]))
+
+
+def test_minute_session_rollover_keeps_cn_sessions_unchanged():
+    session = [datetime(2026, 9, 23, 9, 35), datetime(2026, 9, 23, 11, 30), datetime(2026, 9, 23, 13, 5)]
+
+    rows = [dict(item) for item in _normalize_minute_session_rollover([_bar(t) for t in session])]
+
+    assert [row["date"] for row in rows] == session
+
+
+def test_minute_session_rollover_handles_two_us_sessions_and_date_rows():
+    day1 = [datetime(2026, 9, 22, 21, 30), datetime(2026, 9, 22, 0, 0)]
+    day2 = [datetime(2026, 9, 23, 21, 30), datetime(2026, 9, 23, 0, 5)]
+    rows = [_bar(t) for t in [*day1, *day2]]
+    rows.append(_bar(date(2026, 9, 24)))
+
+    fixed = _normalize_minute_session_rollover(rows)
+
+    stamps = [row["date"] for row in fixed]
+    assert stamps == [
+        datetime(2026, 9, 22, 21, 30),
+        datetime(2026, 9, 23, 0, 0),
+        datetime(2026, 9, 23, 21, 30),
+        datetime(2026, 9, 24, 0, 5),
+        date(2026, 9, 24),
+    ]
+
+
+def test_index_asset_gate_rejects_unmapped_aliases():
+    """Regression: an unmapped index alias (RUT/VIX) must fail cleanly instead
+    of requesting US stock-market bars under the index symbol."""
+    with pytest.raises(SourceError, match="no index mapping for RUT"):
+        _to_service_market("RUT", "us", asset="index")
+    with pytest.raises(SourceError, match="no index mapping for VIX"):
+        _to_service_market("VIX", "us", asset="index")
+    # Mapped aliases and CN index codes keep their routes.
+    assert _to_service_market("000300.XSHG", "cn", asset="index") == ("cn_sh", "000300")
+    assert _to_service_market("SPX", "us", asset="index") == ("intl_index", "A_SPX")
+    # Equity requests (no asset context) keep the stock-market route.
+    assert _to_service_market("RUT", "us") == ("us", "RUT")
 
 
 def test_futures_market_translation_domestic():

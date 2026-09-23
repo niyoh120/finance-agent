@@ -337,13 +337,14 @@ openbb-agent-cli index.search "S&P"
 
 ## index.price.historical
 
-获取指数历史价格。
+获取指数历史价格，支持分钟 K 线。
 
 ```bash
 openbb-agent-cli index.price.historical SYMBOL \
   [--start-date YYYY-MM-DD] \
   [--end-date YYYY-MM-DD] \
-  [--limit N]
+  [--limit N] \
+  [--interval INTERVAL]
 ```
 
 **参数**:
@@ -351,6 +352,17 @@ openbb-agent-cli index.price.historical SYMBOL \
 - `--start-date`: 开始日期 (YYYY-MM-DD)
 - `--end-date`: 结束日期 (YYYY-MM-DD)
 - `--limit`: 只保留最近的 N 条记录（在 CLI 侧裁剪，不下传到底层接口）
+- `--interval`: 时间间隔，默认 `1d`；支持 `1m/5m/15m/30m/60m/1d/1w/1M`，美股另支持 `10m`（`1h` 自动转为 `60m`）
+
+**symbol 规则**:
+- CN 指数必须带交易所后缀：`000300.XSHG`（也接受 `.SH/.SS`）；`399006.XSHE`（也接受 `.SZ`）。
+- 裸六位代码（如 `000300`）有歧义，会被拒绝；用 `index.search` 或 `index.available` 查完整 symbol。
+- 美股指数别名直接使用：`SPX`、`DJI`、`IXIC`、`COMPX`、`NDX`（`$SPX` 也接受，自动规范化为 `SPX`）；HK：`HSI`、`HSCEI`、`HSTECH`。未知代码会被拒绝，避免误取个股数据。
+
+**分钟链路与时间口径**:
+- US：schwab 主源（token 失效时自动回退 tdx）；60m 仅 tdx、10m 仅 schwab。
+- CN/HK：仅 tdx。
+- 分钟 bar 的 `date` 为 datetime（naive）：Schwab 为美东时间，TDX 为北京时间（美股会话跨北京午夜已重构为真实时间戳）；日线为 date。
 
 **示例**:
 ```bash
@@ -360,6 +372,10 @@ openbb-agent-cli index.price.historical SPX \
 
 # 只取最近 10 条结果
 openbb-agent-cli index.price.historical SPX --limit 10
+
+# 沪深300 5分钟线（最近一个交易日窗口）
+openbb-agent-cli index.price.historical 000300.XSHG --interval 5m \
+  --start-date 2026-09-23 --end-date 2026-09-23 --limit 100
 ```
 
 ---
@@ -392,13 +408,14 @@ openbb-agent-cli index.snapshots --symbol SPX --symbol DJI
 
 ## etf.historical
 
-获取 ETF 历史价格。
+获取 ETF 历史价格，支持分钟 K 线。
 
 ```bash
 openbb-agent-cli etf.historical SYMBOL \
   [--start-date YYYY-MM-DD] \
   [--end-date YYYY-MM-DD] \
-  [--limit N]
+  [--limit N] \
+  [--interval INTERVAL]
 ```
 
 **参数**:
@@ -406,6 +423,14 @@ openbb-agent-cli etf.historical SYMBOL \
 - `--start-date`: 开始日期 (YYYY-MM-DD)
 - `--end-date`: 结束日期 (YYYY-MM-DD)
 - `--limit`: 只保留最近的 N 条记录（在 CLI 侧裁剪，不下传到底层接口）
+- `--interval`: 时间间隔，默认 `1d`；支持 `1m/5m/15m/30m/60m/1d/1w/1M`，美股另支持 `10m`
+
+**symbol 规则**:
+- 裸 A 股 ETF 六位码自动推断市场：`510300` → `510300.XSHG`、`159915` → `159915.XSHE`；仅确定市场，验证证券类型，推荐用 `etf.search` 结果的完整 symbol。
+- 美股直接用 ticker：`SPY`、`QQQ`；港股用 `.HK` 后缀：`02800.HK`（裸四位数字如 `2800` 会被拒绝）。
+- 未知后缀（如 `510300.BAD`）会被拒绝。
+
+**分钟链路与时间口径**：同 `index.price.historical`（US schwab → tdx，60m/10m 同规则；CN/HK 仅 tdx；时间口径按源端，见上）。
 
 **示例**:
 ```bash
@@ -413,6 +438,10 @@ openbb-agent-cli etf.historical SPY
 
 # 只取最近 5 条结果
 openbb-agent-cli etf.historical SPY --limit 5
+
+# SPY 1分钟线（当日）
+openbb-agent-cli etf.historical SPY --interval 1m \
+  --start-date 2026-09-23 --end-date 2026-09-23 --limit 390
 ```
 
 ---
@@ -1243,9 +1272,9 @@ openbb-agent-cli batch --queries '[
 | `equity.screener.fields` | - | `search`, `all` |
 | `index.available` | - | - |
 | `index.search` | `query` | `is-symbol` |
-| `index.price.historical` | `symbol` | `start-date`, `end-date`, `limit` |
+| `index.price.historical` | `symbol` | `start-date`, `end-date`, `limit`, `interval` |
 | `index.snapshots` | - | `region` (cn/us/hk), `symbol` |
-| `etf.historical` | `symbol` | `start-date`, `end-date`, `limit` |
+| `etf.historical` | `symbol` | `start-date`, `end-date`, `limit`, `interval` |
 | `etf.search` | `query` | - |
 | `etf.holdings` `CV` | `symbol` | `sort-by` (weight_percentage/market_value/shares_number), `sort-dir`, `limit` |
 | `etf.sectors` `CV` | `symbol` | - |

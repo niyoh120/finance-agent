@@ -64,8 +64,11 @@ openbb-agent-cli index.available
 # 指数搜索
 openbb-agent-cli index.search --query "沪深"
 
-# 历史价格
+# 历史价格（省略 interval = 日线；分钟支持 1m/5m/15m/30m/60m，美股另支持 10m）
 openbb-agent-cli index.price.historical --symbol 000001.XSHG --start-date 2026-04-01 --end-date 2026-04-24
+
+# 沪深300 5分钟线（指数 symbol 需带交易所后缀；裸代码如 000001 有歧义会被拒绝）
+openbb-agent-cli index.price.historical --symbol 000300.XSHG --interval 5m --start-date 2026-09-17 --end-date 2026-09-23
 
 # 指数快照
 openbb-agent-cli index.snapshots --region cn
@@ -75,8 +78,9 @@ openbb-agent-cli index.snapshots --region us --symbol SPX --symbol DJI
 ### ETF
 
 ```bash
-# 历史价格
+# 历史价格（省略 interval = 日线；裸 A 股 ETF 代码自动推断市场，美股直接用 ticker）
 openbb-agent-cli etf.historical --symbol 510300.XSHG --start-date 2026-04-01 --end-date 2026-04-24
+openbb-agent-cli etf.historical --symbol SPY --interval 5m --limit 100
 
 # ETF 搜索
 openbb-agent-cli etf.search --query "沪深300"
@@ -197,11 +201,11 @@ openbb-agent-cli etf.sectors --symbol SPY
 ### 批量查询
 
 ```bash
-# 使用内置模板
+# 使用内置模板（--interval 仅传给 equity-overview / index-detail 的历史价格子查询）
 openbb-agent-cli batch --template equity-overview --symbol AAPL --start-date 2026-04-01 --end-date 2026-04-30
+openbb-agent-cli batch --template index-detail --symbol 000300.XSHG --region cn --interval 5m --limit 100
 openbb-agent-cli batch --template market-overview --region cn --limit 20
 openbb-agent-cli batch --template macro-overview --country china --start-date 2026-01-01
-openbb-agent-cli batch --template index-detail --symbol 000001.XSHG --region cn
 
 # 自定义查询数组
 openbb-agent-cli batch --queries '[
@@ -220,9 +224,9 @@ openbb-agent-cli batch --queries '[
 | `equity.screener` | - | `market`, `limit`, `price-min`, `price-max`, `change-percent-min`, `change-percent-max`, `volume-min`, `volume-max`, `market-cap-min`, `market-cap-max`, `rsi-min`, `rsi-max`, `sector`, `filters`, `fields` |
 | `index.available` | - | - |
 | `index.search` | `query` | `is-symbol` |
-| `index.price.historical` | `symbol` | `start-date`, `end-date` |
+| `index.price.historical` | `symbol` | `start-date`, `end-date`, `limit`, `interval` (1d 默认；1m/5m/15m/30m/60m，美股另支持 10m；美股指数接受 SPX/NDX 等别名，CN 指数需 `.XSHG/.XSHE` 后缀) |
 | `index.snapshots` | - | `region` (cn/us/hk), `symbol` |
-| `etf.historical` | `symbol` | `start-date`, `end-date` |
+| `etf.historical` | `symbol` | `start-date`, `end-date`, `limit`, `interval` (同上；裸 A 股 ETF 六位码自动推断市场) |
 | `etf.search` | `query` | - |
 | `economy.calendar` | - | `start-date`, `end-date` |
 | `economy.available-indicators` | - | - |
@@ -233,7 +237,7 @@ openbb-agent-cli batch --queries '[
 | `news.company` | `symbol` | `start-date`, `end-date`, `limit` |
 | `news.world` | - | `start-date`, `end-date`, `limit` |
 | `derivatives.options.unusual` | - | `symbol`, `start-date`, `end-date`, `side`, `option-type`, `min-premium`, `min-vol-oi`, `limit` |
-| `batch` | `queries` 或 `template` | `symbol`, `region`, `country`, `start-date`, `end-date`, `limit`, `news-limit`, `options-limit`, `max-workers` |
+| `batch` | `queries` 或 `template` | `symbol`, `region`, `country`, `start-date`, `end-date`, `limit`, `news-limit`, `options-limit`, `interval`, `max-workers` |
 
 ## 批量模板
 

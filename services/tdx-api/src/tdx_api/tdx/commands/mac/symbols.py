@@ -95,7 +95,9 @@ class MacSymbolBarCmd(Command[list]):
 
         # 防越界：count 以 body 实际可容纳记录数为准（参考实现同款保护）。
         count = min(count, max((len(body) - 33) // 36, 0))
-        is_intraday = int(self.period) < int(MacPeriod.DAILY)
+        # 周期码非单调（MIN_1=7 排在 DAILY=4 之后），不能用序号与 DAILY 比较；
+        # 旧写法把 1m 误判为日线、丢弃盘中时间（全部折叠到 00:00）。
+        is_intraday = self.period not in (MacPeriod.DAILY, MacPeriod.WEEKLY, MacPeriod.MONTHLY)
 
         bars: list = []
         for i in range(count):

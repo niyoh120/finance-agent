@@ -92,15 +92,57 @@ def route_price_sources(query: PriceQuery, *, now: datetime | None = None) -> li
 
 
 def route_index_price_sources(query: PriceQuery, *, now: datetime | None = None) -> list[str]:
-    """Route index historical price sources."""
+    """Route index historical price sources.
+
+    The minute chain is capability-filtered: US keeps schwab-first with tdx
+    fallback (60m is tdx-only, 10m schwab-only), while CN/HK indices have
+    only TDX minute capability (tickflow/baostock/akshare stay excluded from
+    the new minute path). Daily/weekly/monthly chains keep the existing
+    candidates and order.
+    """
     market: Market = query.market
+    normalized = normalize_interval(query.interval)
     if market == "cn":
+        if is_intraday_interval(normalized):
+            return ["tdx"]
         return route_price_sources(query, now=now)
     if market == "us":
         # SchwabSource handles $-prefixed index symbols internally
         # ($SPX/$COMPX/$DJI + indicative quotes).
+        if is_intraday_interval(normalized):
+            return _us_minute_chain(normalized)
         return ["schwab", "tdx"]
     return ["tdx"]
+
+
+def route_etf_price_sources(query: PriceQuery, *, now: datetime | None = None) -> list[str]:
+    """Route ETF historical price sources (same minute-chain rules as indices).
+
+    Daily/weekly/monthly ETF requests keep the equity candidate chain; minute
+    requests use the validated index/ETF minute chain: US schwab -> tdx,
+    CN/HK tdx only.
+    """
+    normalized = normalize_interval(query.interval)
+    if is_intraday_interval(normalized):
+        market: Market = query.market
+        if market == "cn":
+            return ["tdx"]
+        if market == "us":
+            return _us_minute_chain(normalized)
+        if market == "hk":
+            return ["tdx"]
+    return route_price_sources(query, now=now)
+
+
+def _us_minute_chain(interval: str) -> list[str]:
+    """US minute chain filtered by per-source interval capability."""
+    # Imported lazily: sources import config/base only, so a top-level import
+    # would also work, but this keeps router imports as light as equity paths.
+    from openbb_finance.sources.schwab import SUPPORTED_INTERVALS as SCHWAB_INTERVALS
+    from openbb_finance.sources.tdx import SUPPORTED_INTERVALS as TDX_INTERVALS
+
+    capability = {"schwab": SCHWAB_INTERVALS, "tdx": TDX_INTERVALS}
+    return [name for name in ("schwab", "tdx") if interval in capability[name]]
 
 
 def route_futures_price_sources(query: PriceQuery) -> list[str]:

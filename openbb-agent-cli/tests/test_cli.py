@@ -836,6 +836,114 @@ def test_etf_historical_passes_limit(capsys: pytest.CaptureFixture[str]) -> None
     monkeypatch_local.undo()
 
 
+def test_index_price_historical_forwards_interval(capsys: pytest.CaptureFixture[str]) -> None:
+    called_with: dict[str, Any] = {}
+
+    def fake_execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
+        called_with.update({"route": route, **params})
+        return [{"symbol": "000300.XSHG", "date": "2026-09-18T09:35:00", "close": 1.5}]
+
+    monkeypatch_local = pytest.MonkeyPatch()
+    monkeypatch_local.setattr(cli, "_execute_route", fake_execute_route)
+
+    cli.index_price_historical(symbol="000300.XSHG", interval="5m")
+
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["results"][0]["date"] == "2026-09-18T09:35:00"
+    assert called_with["route"] == "index.price.historical"
+    assert called_with["interval"] == "5m"
+
+    monkeypatch_local.undo()
+
+
+def test_etf_historical_forwards_interval(capsys: pytest.CaptureFixture[str]) -> None:
+    called_with: dict[str, Any] = {}
+
+    def fake_execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
+        called_with.update({"route": route, **params})
+        return [{"symbol": "SPY", "date": "2026-09-18T09:35:00", "close": 1.5}]
+
+    monkeypatch_local = pytest.MonkeyPatch()
+    monkeypatch_local.setattr(cli, "_execute_route", fake_execute_route)
+
+    cli.etf_historical(symbol="SPY", interval="10m")
+
+    assert called_with["route"] == "etf.historical"
+    assert called_with["interval"] == "10m"
+
+    monkeypatch_local.undo()
+
+
+def test_index_price_historical_positional_limit_keeps_binding(capsys: pytest.CaptureFixture[str]) -> None:
+    """interval appends after limit: existing positional calls keep semantics."""
+    called_with: dict[str, Any] = {}
+
+    def fake_execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
+        called_with.update(params)
+        return [{"symbol": "000001.XSHG", "i": i} for i in range(8)]
+
+    monkeypatch_local = pytest.MonkeyPatch()
+    monkeypatch_local.setattr(cli, "_execute_route", fake_execute_route)
+
+    cli.index_price_historical("000001.XSHG", "2026-01-01", "2026-01-31", 3)
+
+    output_payload = json.loads(capsys.readouterr().out)
+    assert len(output_payload["results"]) == 3
+    assert "limit" not in called_with
+    assert called_with["interval"] == "1d"
+
+    monkeypatch_local.undo()
+
+
+def test_historical_executor_forwards_default_and_explicit_interval(monkeypatch: pytest.MonkeyPatch) -> None:
+    seen: list[dict[str, Any]] = []
+
+    def fake_execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
+        seen.append(params)
+        return [{"symbol": "SPX", "close": 1.0}]
+
+    monkeypatch.setattr(executors, "_execute_route", fake_execute_route)
+
+    cli.COMMAND_EXECUTORS["index.price.historical"]({"symbol": "SPX"})
+    cli.COMMAND_EXECUTORS["etf.historical"]({"symbol": "SPY", "interval": "5m"})
+
+    assert seen[0]["interval"] == "1d"
+    assert seen[1]["interval"] == "5m"
+
+
+def test_index_detail_template_passes_interval_to_historical_only() -> None:
+    queries = cli._build_template_queries(
+        "index-detail",
+        {"symbol": "000001.XSHG", "region": "cn", "limit": 50, "interval": "5m"},
+    )
+
+    snapshot, historical = queries[0]["params"], queries[1]["params"]
+    assert "interval" in historical
+    assert historical["interval"] == "5m"
+    assert "interval" not in snapshot
+
+
+def test_index_detail_template_omits_interval_when_unset() -> None:
+    queries = cli._build_template_queries(
+        "index-detail",
+        {"symbol": "000001.XSHG", "region": "cn", "limit": 50},
+    )
+
+    assert "interval" not in queries[1]["params"]
+
+
+def test_equity_overview_template_passes_interval_to_historical_only() -> None:
+    queries = cli._build_template_queries(
+        "equity-overview",
+        {"symbol": "AAPL", "limit": 30, "interval": "15m"},
+    )
+
+    by_name = {query["name"]: query for query in queries}
+    assert by_name["historical"]["params"]["interval"] == "15m"
+    assert by_name["quote"]["params"] == {"symbol": "AAPL"}
+    assert "interval" not in by_name["news"]["params"]
+
+
 def test_historical_limit_not_forwarded_to_provider(monkeypatch: pytest.MonkeyPatch) -> None:
     called_params: dict[str, Any] = {}
 

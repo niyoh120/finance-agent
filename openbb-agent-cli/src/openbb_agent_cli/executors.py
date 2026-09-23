@@ -491,8 +491,8 @@ def _provider_executor(model_name: str) -> RouteExecutor:
 
 _HISTORICAL_ROUTES = {
     "equity.price.historical": {"interval": "1d", "adjusted": False},
-    "index.price.historical": {},
-    "etf.historical": {},
+    "index.price.historical": {"interval": "1d"},
+    "etf.historical": {"interval": "1d"},
     "futures.price.historical": {"interval": "1d", "adjusted": False},
 }
 

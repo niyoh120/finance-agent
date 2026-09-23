@@ -400,6 +400,49 @@ def test_standard_session_budget_exhausted():
         server.stop()
 
 
+def test_mac_symbol_bar_min1_period_keeps_intraday_time():
+    """回归：MIN_1 周期码（7）大于 DAILY（4），旧序号比较把它误判为日线，
+    丢弃 time_num 导致 1m K 线全部折叠到 00:00。修复后必须保留时分。"""
+    cmd = MacSymbolBarCmd(1, "600000", MacPeriod.MIN_1, 1, 0, 2, Adjust.NONE)
+    frame_len = len(cmd.render(0x1C))
+    bars_body = b"\x00" * 24 + struct.pack("<HBHI", 4, 0, 2, 0)
+    for ymd, seconds in ((20250717, 9 * 3600 + 31 * 60), (20250717, 9 * 3600 + 32 * 60)):
+        bars_body += struct.pack("<II7f", ymd, seconds, 1.0, 2.0, 0.5, 1.5, 100.0, 200.0, 0.0)
+    server = FakeTdxServer(_setup_exchanges() + [Exchange(frame_len, build_frame(bars_body, 0x122E))])
+    server.start()
+    try:
+        session = MacSession.open(server.host, server.port, budget())
+        try:
+            bars = session.execute(cmd)
+        finally:
+            session.close()
+    finally:
+        server.stop()
+    assert [b["datetime"] for b in bars] == [
+        datetime(2025, 7, 17, 9, 31),
+        datetime(2025, 7, 17, 9, 32),
+    ]
+
+
+def test_mac_symbol_bar_daily_period_still_ignores_time_field():
+    """日线语义保持：time_num 非零时同样丢弃（datetime 为当日 00:00）。"""
+    cmd = MacSymbolBarCmd(1, "600000", MacPeriod.DAILY, 1, 0, 1, Adjust.NONE)
+    frame_len = len(cmd.render(0x1C))
+    bars_body = b"\x00" * 24 + struct.pack("<HBHI", 4, 0, 1, 0)
+    bars_body += struct.pack("<II7f", 20250717, 15 * 3600, 1.0, 2.0, 0.5, 1.5, 100.0, 200.0, 0.0)
+    server = FakeTdxServer(_setup_exchanges() + [Exchange(frame_len, build_frame(bars_body, 0x122E))])
+    server.start()
+    try:
+        session = MacSession.open(server.host, server.port, budget())
+        try:
+            bars = session.execute(cmd)
+        finally:
+            session.close()
+    finally:
+        server.stop()
+    assert bars[0]["datetime"] == datetime(2025, 7, 17)
+
+
 def test_mac_session_handshake_and_command():
     cmd = MacSymbolBarCmd(1, "600000", MacPeriod.DAILY, 1, 0, 2, Adjust.NONE)
     frame_len = len(cmd.render(0x1C))

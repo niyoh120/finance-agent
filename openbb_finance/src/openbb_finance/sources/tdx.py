@@ -26,7 +26,7 @@ import asyncio
 import logging
 import re
 from contextlib import asynccontextmanager
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, AsyncIterator
 
 import httpx
@@ -80,9 +80,14 @@ SERVICE_INTERVALS: dict[str, str] = {
     "1w": "1w",
     "1M": "1M",
 }
-#: Minute-grained service intervals. Kept explicit because the shared
-#: is_intraday_interval() helper lower-cases input and misclassifies "1M".
+#: Minute-grained service intervals. The shared is_intraday_interval() now
+#: resolves "1M" as monthly; this set stays explicit for bar-time parsing.
 MINUTE_INTERVALS = frozenset({"1m", "5m", "15m", "30m", "60m"})
+
+#: Public interval capability for router-level filtering (see router.py).
+#: No 10m service interval: US 10m requests have no TDX same-granularity
+#: fallback, and 60m is TDX-only (Schwab skips it).
+SUPPORTED_INTERVALS = frozenset(SERVICE_INTERVALS)
 
 #: Kline pagination: single-page cap, page budget, and the default newest-window
 #: size when the caller gives no start_date (TDX convention).
@@ -174,7 +179,9 @@ class TdxSource:
     async def fetch_price(self, query: PriceQuery) -> list[dict[str, Any]]:
         if query.start_date is not None and query.end_date is not None and query.start_date > query.end_date:
             raise SourceError(f"TDX invalid date range: start_date {query.start_date} > end_date {query.end_date}")
-        service_market, service_code = _to_service_market(query.symbol, query.market, query.expiration)
+        service_market, service_code = _to_service_market(
+            query.symbol, query.market, query.expiration, asset=query.asset
+        )
         interval = _service_interval(query.interval)
         adjust = "qfq" if query.adjusted else "none"
         async with self._fetch_scope() as client:
@@ -395,6 +402,11 @@ class TdxSource:
                 f"TDX kline pagination exhausted the {KLINE_MAX_PAGES}-page budget without covering the request"
             )
 
+        # Reconstruct physical datetimes first (US sessions wrap past Beijing
+        # midnight on a session-constant wire date), then apply the window so
+        # membership uses the corrected dates.
+        if interval in MINUTE_INTERVALS:
+            merged = _normalize_minute_session_rollover(merged)
         return _finalize_kline_window(merged, start_date, end_date)
 
     async def _search_markets(
@@ -561,10 +573,29 @@ def _require_base_url(base_url: str) -> str:
     return base_url
 
 
-def _to_service_market(symbol: str, market_hint: Market, expiration: str | None = None) -> tuple[str, str]:
-    """Map a user symbol to the tdx-api (market id, native code) pair."""
+def _to_service_market(
+    symbol: str,
+    market_hint: Market,
+    expiration: str | None = None,
+    *,
+    asset: str | None = None,
+) -> tuple[str, str]:
+    """Map a user symbol to the tdx-api (market id, native code) pair.
+
+    With asset="index" the symbol must hit a known index mapping (CN index
+    codes ride the CN stock markets); unmapped US/HK index aliases fail here
+    instead of silently requesting common-stock bars under the index symbol.
+    """
     if futures_exchange(symbol) is not None:
         return _to_futures_market(symbol, expiration)
+    if asset == "index":
+        value = symbol.strip().upper()
+        if value in INTL_INDEX_SERVICE_CODES:
+            return "intl_index", INTL_INDEX_SERVICE_CODES[value]
+        if value in HK_INDEX_SERVICE_CODES:
+            return "hk_index", HK_INDEX_SERVICE_CODES[value]
+        if market_hint != "cn":
+            raise SourceError(f"TDX has no index mapping for {symbol}")
     if market_hint == "cn":
         code = cn_plain_symbol(symbol)
         if code is None:
@@ -915,6 +946,47 @@ def _finalize_kline_window(
         ]
     in_window = [item for item in merged if end_date is None or _bar_date(item["date"]) <= end_date]
     return in_window[-DEFAULT_KLINE_COUNT:]
+
+
+def _normalize_minute_session_rollover(items: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Reconstruct true datetimes for sessions that cross Beijing midnight.
+
+    Wire convention (live-verified 2026-09, US minute/hourly klines): every
+    bar of one exchange session carries the session's *start* calendar date,
+    while the time-of-day is market wall-clock time that keeps running past
+    midnight without incrementing the date. A US session therefore serializes
+    as ``D 21:30 ... D 23:55, D 00:00 ... D 04:00`` — wall-clock datetimes
+    that descend at the wrap point even though bar order is ascending.
+
+    This pass walks the ascending bar sequence and, per wire-date group (=
+    one session), rolls every bar from the first time-of-day decrease onward
+    one calendar day forward. CN/HK sessions never cross midnight and stay
+    untouched; daily+ bars are date-typed and never enter this path. The
+    mapping is a bijection, so it composes with the pagination dedup that ran
+    earlier on the raw wire datetimes.
+    """
+    fixed: list[dict[str, Any]] = []
+    group_date: date | None = None
+    wrapped = False
+    prev_time = None
+    for item in items:
+        value = item["date"]
+        if not isinstance(value, datetime):
+            fixed.append(item)
+            group_date, wrapped, prev_time = None, False, None
+            continue
+        if group_date is None or value.date() != group_date:
+            group_date = value.date()
+            wrapped = False
+        if prev_time is not None and value.time() < prev_time:
+            wrapped = True
+        if wrapped:
+            value = datetime.combine(group_date + timedelta(days=1), value.time())
+            fixed.append({**item, "date": value})
+        else:
+            fixed.append(item)
+        prev_time = value.time()
+    return fixed
 
 
 def _normalize_bar_row(row: dict[str, Any], symbol: str, interval: str) -> dict[str, Any]:

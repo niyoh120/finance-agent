@@ -39,6 +39,11 @@ _ET = ZoneInfo("America/New_York")
 # interval -> service param (the service whitelists exactly these values).
 _SUPPORTED_INTERVALS: frozenset[str] = frozenset({"1m", "5m", "10m", "15m", "30m", "1d", "1w", "1M"})
 
+#: Public interval capability for router-level filtering (see router.py).
+#: 60m is intentionally absent: Schwab serves no hourly candles, so the router
+#: can skip this source for 60m instead of paying a failing request.
+SUPPORTED_INTERVALS = _SUPPORTED_INTERVALS
+
 # Schwab caps one pricehistory response at 40k candles (dropping the oldest
 # side); pagination keeps going until a short page or this page budget.
 _SCHWAB_CANDLE_CAP = 40_000

@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, datetime
 from unittest.mock import AsyncMock
 
 import pytest
@@ -135,6 +135,81 @@ async def test_index_historical_fetcher_interface(monkeypatch):
     assert len(result) == 1
     assert result[0].symbol == "000001.XSHG"
     extract_data.assert_awaited_once()
+
+
+def test_index_etf_historical_expose_interval_extra_param():
+    """The finance QueryParams interval is discovered by the provider interface."""
+    from openbb_core.app.provider_interface import ProviderInterface
+
+    pi = ProviderInterface()
+    for model in ("IndexHistorical", "EtfHistorical"):
+        extra_fields = pi.params[model]["extra"].__dataclass_fields__
+        assert "interval" in extra_fields, model
+
+
+@pytest.mark.anyio
+@pytest.mark.parametrize(
+    ("model", "raw_symbol", "canonical"),
+    [
+        ("IndexHistorical", " 000300.sh ", "000300.XSHG"),
+        ("EtfHistorical", "510300", "510300.XSHG"),
+    ],
+)
+async def test_index_etf_historical_fetch_passes_symbol_and_interval(monkeypatch, model, raw_symbol, canonical):
+    """fetch_data normalizes the symbol and carries interval into the query."""
+    seen: dict[str, object] = {}
+
+    async def _capture(query, credentials, **kwargs):
+        seen["symbol"] = query.symbol
+        seen["interval"] = query.interval
+        return [
+            {
+                "symbol": canonical,
+                "date": date(2026, 4, 24),
+                "open": 1.0,
+                "high": 2.0,
+                "low": 0.5,
+                "close": 1.5,
+                "volume": 100,
+            }
+        ]
+
+    # fetch_data dispatches through the __init_subclass__-copied extract_data.
+    monkeypatch.setattr(provider.fetcher_dict[model], "extract_data", _capture)
+
+    await provider.fetcher_dict[model].fetch_data(
+        {"symbol": raw_symbol, "interval": "5m"},
+        credentials=None,
+    )
+
+    assert seen == {"symbol": canonical, "interval": "5m"}
+
+
+@pytest.mark.anyio
+async def test_index_historical_minute_rows_keep_datetime(monkeypatch):
+    """Minute bars surface with their full timestamp through the standard model."""
+    moment = datetime(2026, 9, 18, 9, 35)
+    extract_data = AsyncMock(
+        return_value=[
+            {
+                "symbol": "000300.XSHG",
+                "date": moment,
+                "open": 1.0,
+                "high": 2.0,
+                "low": 0.5,
+                "close": 1.5,
+                "volume": 100,
+            }
+        ]
+    )
+    monkeypatch.setattr(provider.fetcher_dict["IndexHistorical"], "extract_data", extract_data)
+
+    result = await provider.fetcher_dict["IndexHistorical"].fetch_data(
+        {"symbol": "000300.XSHG", "interval": "5m"},
+        credentials=None,
+    )
+
+    assert result[0].date == moment
 
 
 @pytest.mark.anyio

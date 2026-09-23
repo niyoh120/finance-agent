@@ -1,6 +1,11 @@
 from datetime import date, datetime
 
-from openbb_finance.router import baostock_available_for_range, route_index_price_sources, route_price_sources
+from openbb_finance.router import (
+    baostock_available_for_range,
+    route_etf_price_sources,
+    route_index_price_sources,
+    route_price_sources,
+)
 from openbb_finance.sources.base import PriceQuery
 
 
@@ -60,6 +65,41 @@ def test_us_minute_routes_schwab_before_tdx():
     assert route_price_sources(query) == ["schwab", "tdx"]
 
 
+def test_interval_case_semantics_keep_monthly_out_of_minute_routing():
+    """Regression: normalize_interval used to collapse 1M into 1m, misrouting
+    monthly requests to minute-capability-only source chains."""
+    from openbb_finance.router import price_interval_type
+    from openbb_finance.sources.base import is_intraday_interval, normalize_interval
+
+    assert normalize_interval("1M") == "1M"
+    assert normalize_interval("1m") == "1m"
+    assert normalize_interval("M") == "1M"
+    assert normalize_interval("D") == "1d"
+    assert is_intraday_interval("1M") is False
+    assert is_intraday_interval("m") is False
+    assert is_intraday_interval("1mo") is False
+    assert is_intraday_interval("60m") is True
+    assert price_interval_type("1M") == "monthly"
+    assert price_interval_type("5m") == "minute"
+
+
+def test_us_equity_monthly_routes_daily_chain():
+    """Regression: a US equity monthly request must ride the daily+ chain."""
+    query = PriceQuery(symbol="AAPL", market="us", interval="1M")
+
+    assert route_price_sources(query) == ["schwab", "tdx", "tickflow"]
+
+
+def test_futures_monthly_routes_daily_chain_not_intraday():
+    """Regression: domestic futures monthly used to classify as minute (tdx
+    only); it now uses the daily-capable chain with the akshare fallback."""
+    from openbb_finance.router import route_futures_price_sources
+
+    query = PriceQuery(symbol="rb.SHFE", market="future", interval="1M")
+
+    assert route_futures_price_sources(query) == ["tdx", "akshare"]
+
+
 def test_hk_daily_routes_tdx_before_tickflow():
     query = PriceQuery(symbol="00700.HK", market="hk", interval="1d")
 
@@ -93,6 +133,47 @@ def test_index_price_routes_us_schwab_before_tdx():
     )
     sources = route_index_price_sources(query, now=datetime(2026, 4, 27, 16, 0))
     assert sources == ["schwab", "tdx"]
+
+
+def test_index_us_minute_chain_schwab_first_tdx_fallback():
+    for interval in ["1m", "5m", "15m", "30m"]:
+        query = PriceQuery(symbol="SPX", market="us", interval=interval)
+        assert route_index_price_sources(query) == ["schwab", "tdx"]
+        etf_query = PriceQuery(symbol="SPY", market="us", interval=interval)
+        assert route_etf_price_sources(etf_query) == ["schwab", "tdx"]
+
+
+def test_index_us_60m_skips_schwab():
+    """Schwab serves no hourly candles; 60m must go straight to tdx."""
+    assert route_index_price_sources(PriceQuery(symbol="SPX", market="us", interval="60m")) == ["tdx"]
+    assert route_etf_price_sources(PriceQuery(symbol="SPY", market="us", interval="60m")) == ["tdx"]
+
+
+def test_index_us_10m_schwab_only():
+    """TDX serves no 10m bars, so US 10m has no same-granularity fallback."""
+    assert route_index_price_sources(PriceQuery(symbol="SPX", market="us", interval="10m")) == ["schwab"]
+    assert route_etf_price_sources(PriceQuery(symbol="SPY", market="us", interval="10m")) == ["schwab"]
+
+
+def test_index_cn_minute_chain_tdx_only():
+    """The new index/ETF minute chain excludes the equity-only fallbacks."""
+    query = PriceQuery(symbol="000300.XSHG", market="cn", interval="5m")
+    assert route_index_price_sources(query) == ["tdx"]
+
+
+def test_etf_cn_minute_chain_tdx_only():
+    query = PriceQuery(symbol="510300.XSHG", market="cn", interval="5m")
+    assert route_etf_price_sources(query) == ["tdx"]
+
+
+def test_etf_hk_minute_chain_tdx_only():
+    query = PriceQuery(symbol="02800.HK", market="hk", interval="5m")
+    assert route_etf_price_sources(query) == ["tdx"]
+
+
+def test_etf_daily_keeps_equity_chain():
+    query = PriceQuery(symbol="510300.XSHG", market="cn", interval="1d")
+    assert route_etf_price_sources(query) == route_price_sources(query)
 
 
 def test_index_price_routes_hk_only_tdx():

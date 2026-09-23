@@ -23,6 +23,19 @@ def _build_template_queries(template: str, params: dict[str, Any]) -> list[dict[
     start_date = params.get("start_date")
     end_date = params.get("end_date")
 
+    def _historical_params() -> dict[str, Any]:
+        """Shared historical sub-query params; interval only rides along when set."""
+        historical: dict[str, Any] = {
+            "symbol": symbol,
+            "start_date": start_date,
+            "end_date": end_date,
+            "__cli_limit__": params.get("limit"),
+        }
+        interval = params.get("interval")
+        if interval:
+            historical["interval"] = interval
+        return historical
+
     if template == "equity-overview":
         if not symbol:
             raise ValueError("template equity-overview requires symbol")
@@ -31,12 +44,7 @@ def _build_template_queries(template: str, params: dict[str, Any]) -> list[dict[
             {
                 "name": "historical",
                 "command": "equity.price.historical",
-                "params": {
-                    "symbol": symbol,
-                    "start_date": start_date,
-                    "end_date": end_date,
-                    "__cli_limit__": params.get("limit"),
-                },
+                "params": _historical_params(),
             },
             {
                 "name": "news",
@@ -121,12 +129,7 @@ def _build_template_queries(template: str, params: dict[str, Any]) -> list[dict[
             {
                 "name": "historical",
                 "command": "index.price.historical",
-                "params": {
-                    "symbol": symbol,
-                    "start_date": start_date,
-                    "end_date": end_date,
-                    "__cli_limit__": params.get("limit"),
-                },
+                "params": _historical_params(),
             },
         ]
 

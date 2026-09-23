@@ -438,10 +438,21 @@ def index_price_historical(
     start_date: str | None = None,
     end_date: str | None = None,
     limit: int | None = None,
+    interval: str = "1d",
 ) -> None:
-    """Get index historical price data."""
+    """Get index historical price data.
+
+    interval: 1d (default), 1w, 1M, or minute bars 1m/5m/15m/30m/60m; US
+        symbols additionally accept 10m. Omitting it keeps daily behaviour.
+    """
     try:
-        results = _execute_route("index.price.historical", symbol=symbol, start_date=start_date, end_date=end_date)
+        results = _execute_route(
+            "index.price.historical",
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            interval=interval,
+        )
         _print_json(
             build_success_envelope(
                 _tag_intraday_last_bar(symbol, _apply_limit(results, limit)),
@@ -473,10 +484,21 @@ def etf_historical(
     start_date: str | None = None,
     end_date: str | None = None,
     limit: int | None = None,
+    interval: str = "1d",
 ) -> None:
-    """Get ETF historical price data."""
+    """Get ETF historical price data.
+
+    interval: 1d (default), 1w, 1M, or minute bars 1m/5m/15m/30m/60m; US
+        symbols additionally accept 10m. Omitting it keeps daily behaviour.
+    """
     try:
-        results = _execute_route("etf.historical", symbol=symbol, start_date=start_date, end_date=end_date)
+        results = _execute_route(
+            "etf.historical",
+            symbol=symbol,
+            start_date=start_date,
+            end_date=end_date,
+            interval=interval,
+        )
         _print_json(
             build_success_envelope(
                 _tag_intraday_last_bar(symbol, _apply_limit(results, limit)),
@@ -1102,9 +1124,14 @@ def batch(
     limit: int = 20,
     news_limit: int = 20,
     options_limit: int = 50,
+    interval: str | None = None,
     max_workers: int = 4,
 ) -> None:
-    """Run multiple finance queries in one JSON response."""
+    """Run multiple finance queries in one JSON response.
+
+    interval is optional and only feeds the historical sub-queries of the
+    equity-overview and index-detail templates (default 1d when omitted).
+    """
     try:
         parsed_queries = _parse_batch_queries(
             queries,
@@ -1118,6 +1145,7 @@ def batch(
                 "limit": limit,
                 "news_limit": news_limit,
                 "options_limit": options_limit,
+                "interval": interval,
             },
         )
         _print_json(_run_batch_queries(parsed_queries, max_workers))

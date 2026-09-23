@@ -100,7 +100,7 @@ index_search = obb.index.search(
 )
 print(index_search.to_df().head())
 
-# 指数历史价格
+# 指数历史价格（省略 interval = 日线）
 index_prices = obb.index.price.historical(
     symbol="000001.XSHG",
     start_date="2026-04-01",
@@ -109,6 +109,16 @@ index_prices = obb.index.price.historical(
 )
 print(index_prices.to_df().head())
 
+# 指数 5 分钟线（美股指数另支持 10m）
+index_5m = obb.index.price.historical(
+    symbol="000300.XSHG",
+    interval="5m",
+    start_date="2026-09-17",
+    end_date="2026-09-23",
+    provider="finance",
+)
+print(index_5m.to_df().head())
+
 # 指数快照
 snapshots = obb.index.snapshots(
     region="cn",
@@ -116,7 +126,7 @@ snapshots = obb.index.snapshots(
 )
 print(snapshots.to_df().head())
 
-# ETF 历史价格
+# ETF 历史价格（省略 interval = 日线）
 etf_prices = obb.etf.historical(
     symbol="510300.XSHG",
     start_date="2026-04-01",
@@ -124,6 +134,16 @@ etf_prices = obb.etf.historical(
     provider="finance",
 )
 print(etf_prices.to_df().head())
+
+# ETF 5 分钟线
+etf_5m = obb.etf.historical(
+    symbol="SPY",
+    interval="5m",
+    start_date="2026-09-23",
+    end_date="2026-09-23",
+    provider="finance",
+)
+print(etf_5m.to_df().head())
 
 # ETF 搜索
 etf_search = obb.etf.search(
@@ -253,7 +273,8 @@ K 线数据采用单源路由（第一个返回数据的源胜出，失败自动
 | A 股 | 日/周/月线 | tdx → tickflow → baostock/akshare（baostock/akshare 按入库时间排序） |
 | 美股/港股 | 日线及以上 | schwab → tdx → tickflow（港股：tdx → tickflow） |
 | 美股/港股 | 分钟线 | schwab → tdx（港股分钟线仅 tdx） |
-| 指数 | — | cn 同 A 股；us 为 schwab → tdx；其余仅 tdx |
+| 指数/ETF | 分钟线 | US：schwab → tdx（60m 仅 tdx、10m 仅 schwab）；CN/HK：仅 tdx |
+| 指数/ETF | 日/周/月线 | 指数：cn 同 A 股、us 为 schwab → tdx、其余仅 tdx；ETF 同对应市场股票链 |
 | 期货 | 日线及以上 | tdx → akshare（国际交易所/SGE/分钟线仅 tdx） |
 
 BaoStock 可用性按请求时间范围判断（仅当其排在 akshare 之前时生效）：
@@ -278,6 +299,42 @@ BaoStock 可用性按请求时间范围判断（仅当其排在 akshare 之前�
 | 美股/港股基本面 | OpenBB/Yahoo |
 | 中国宏观 | BaoStock → AKShare |
 | 全球宏观 | OpenBB |
+
+## 指数/ETF 分钟线
+
+`index.price.historical` 与 `etf.historical` 支持 `interval`（默认 `1d` 保持旧行为）：`1m/5m/15m/30m/60m/1d/1w/1M`，美股另接受 `10m`；`1h` 统一为 `60m`，数字别名（`5` → `5m`）可用。CN/HK 传入 `10m`、未知档位在模型验证阶段直接失败，不发起网络请求。
+
+### 符号约定（OpenBB 规则：符号格式由 provider 定义）
+
+| 输入 | 规范化结果 | 说明 |
+| :--- | :--- | :--- |
+| `000300.sh` / `000300.SS` / `000300.XSHG` | `000300.XSHG` | 显式交易所后缀优先，统一大小写与规范后缀 |
+| `399006.sz` / `399006.XSHE` | `399006.XSHE` | 同上 |
+| `000300`（指数接口裸六位） | 验证失败 | 裸指数代码有歧义（如 `000001` 上证指数 vs 平安银行），需补后缀或用 `index.search` / `index.available` 的完整 symbol |
+| `510300` / `159915`（ETF 接口裸六位） | `510300.XSHG` / `159915.XSHE` | 保留既有市场推断兼容；仅确定市场，验证证券类型（推荐用 `etf.search` 结果的完整 symbol） |
+| `000300.BAD` / `899050.BJ` | 验证失败 | 未知后缀不再被当作美股标的 |
+| `SPX` / `$SPX` / `NDX` / `HSI` 等 | 同名规范别名 | 复用源端映射（Schwab `$SPX/$DJI/$COMPX`，tdx `A_*`/`HZ*`）；未知指数标识（如 `FOO`、`AAPL`）验证失败，避免被当作普通股票请求 |
+| `SPY` / `QQQ` / `BRK.B` | 大小写规范化 | 美股 ETF ticker 保留内部点 |
+| `02800.HK` / `02800` | 原样保留 | 港股 ETF；裸四位数字（`2800`）会被推断为美股市场，故要求 `.HK` 后缀 |
+
+空输入与多 symbol 拼接（如 `SPY,QQQ`）在请求前验证失败；两个接口维持单 symbol。
+
+### 分钟质量闸门与时间口径
+
+逐源在返回后、采用前校验分钟序列：时间戳必须是带时分秒的 datetime、严格递增、无重复；某交易日多根 bar 全部折叠到午夜视为源端解码缺陷并拒绝。无效结果触发下一候选源，全部无效返回 `EMPTY_DATA`，不会把缺陷数据包装成成功备用。
+
+时间口径（均为 naive，按源端约定解释）：
+
+- Schwab 分钟线：America/New_York 本地时间；美股日线按 ET 交易日。
+- TDX 分钟线：北京时间；美股会话跨北京时间午夜，消费端已按源端约定重构真实时间戳（会话内日期回绕点之后的 bar 日期 +1，逐行日期过滤按重构后的物理日期）。CN/HK 会话不跨午夜。
+
+> 注：TDX 服务端曾将 1m 周期（协议码 7）误判为日线、丢弃盘中时间（已修复于 tdx-api）；修复前的历史 1m 数据需注意该口径。
+
+### 已验证与受限组合（2026-09 实源抽样，不代表历史深度全覆盖）
+
+- 已验证：CN 指数/ETF（000300.XSHG、510300）全档分钟（1m/5m/15m/30m/60m）；HK（HSI）全档；多日跨日升序与午休间隔符合市场语义；US（SPX/NDX）全档经 TDX 备用链升序返回（1m 390 根、跨午夜会话时间已重构）；Schwab 主链在 token 有效时优先返回（1m/5m/10m/15m/30m）。
+- 受限/阻塞：RUT/VIX 的 Schwab 映射未验证、TDX 无指数映射（显式失败）；02800.HK 单窗口空；Schwab token 过期时 503 → 自动回退 TDX。
+- 历史深度未系统测试：Schwab 分页窗口参数已验证可向前翻页；各源真实保留深度需另行评估。
 
 ## TDX 数据源（tdx-api 消费端）
 
