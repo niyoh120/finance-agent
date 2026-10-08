@@ -195,13 +195,47 @@ def test_build_success_envelope_static_command(monkeypatch: pytest.MonkeyPatch) 
     assert envelope == {
         "results": [{"symbol": "AAPL"}],
         "_schema": {"symbol": "Symbol", "bid": "bid"},
+        "_meta": {"null_stripped_fields": ["bid"]},
     }
+
+
+def test_build_success_envelope_no_stripped_fields_omits_meta(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(output, "model_field_descriptions", lambda name: {"symbol": "Symbol"})
+
+    envelope = output.build_success_envelope([{"symbol": "AAPL"}], model_name="EquityQuote")
+
+    assert envelope == {
+        "results": [{"symbol": "AAPL"}],
+        "_schema": {"symbol": "Symbol"},
+    }
+
+
+def test_null_stripped_fields_collects_dotted_paths_and_skips_scalar_nulls() -> None:
+    records = [
+        {"a": None, "rows": [{"bid": None, "ask": 1.0}, {"bid": 2.0}], "nested": {"x": None}, "list": [None, 1]},
+        {"b": None},
+    ]
+
+    assert output.null_stripped_fields(records) == ["a", "b", "nested.x", "rows[].bid"]
+
+
+def test_null_stripped_fields_recurses_into_nested_lists() -> None:
+    # 双层 list 嵌套的 dict 与清洗行为保持一致（clean_output_value 会递归进入）
+    records = [{"outer": [[{"a": None, "b": 1}]]}]
+
+    assert output.null_stripped_fields(records) == ["outer[][].a"]
+
+
+def test_null_stripped_fields_ignores_record_meta_and_scalar_lists() -> None:
+    records = [{"_meta": {"warning": "w", "x": None}, "list": [None], "nested": [{"deep": None, "ok": 1}]}]
+
+    assert output.null_stripped_fields(records) == ["nested[].deep"]
 
 
 def test_build_success_envelope_dynamic_command_omits_schema() -> None:
     envelope = output.build_success_envelope([{"a": "", "b": None}], model_name=None, keep_empty_strings=True)
 
-    assert envelope == {"results": [{"a": ""}]}
+    assert envelope == {"results": [{"a": ""}], "_meta": {"null_stripped_fields": ["b"]}}
 
 
 def test_build_success_envelope_cleans_meta_protecting_zero_and_false(

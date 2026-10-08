@@ -109,6 +109,8 @@ openbb-agent-cli equity.price.historical AAPL \
 openbb-agent-cli equity.price.quote SYMBOL
 ```
 
+数据源按优先级取第一个成功者（US：schwab → tdx → tickflow；CN：tdx → tickflow → akshare；HK：tdx → tickflow），无 `--source` 参数。上游返回无任何价格字段的空快照时自动视为源失败并回退下一源；全部源失败返回 `EMPTY_DATA`。
+
 **示例**:
 ```bash
 openbb-agent-cli equity.price.quote AAPL
@@ -762,6 +764,8 @@ openbb-agent-cli news.world --limit 50
 
 单标的期权链：**默认双源聚合（Schwab 优先 + CV 兑底）**，含 Greeks/IV/OI/bid-ask/day stats/break\_even。`--dte` 与 `--strike-count` **必填**，用于声明查询窗口。返回 `{results, _schema, _meta}`，`_meta.total` 为合约数，`_meta.sources_used` 为实际参与的源（如 `["schwab","convexvalue"]`）。
 
+**排错**：报 `parameter --dte requires an argument` = 漏传必填的 `--dte`/`--strike-count`（缺必填参数与缺参数值共用同一句文案，与 `--expiration` 无关）。`--expiration` 是 `--dte` 窗口内的本地过滤：目标到期日超出窗口会返回空 `results`，按到期日取链时先放大 `--dte` 覆盖它。
+
 **聚合语义（默认，不传 --source）**:
 - 查询窗口内合约：定价/Greeks/OI 全部取 Schwab（口径统一、带报价时间戳）；CV 仅补 Schwab 为 null 的字段。
 - 窗口外合约（远月/深虚值）：仅 CV 有，全字段来自 CV 快照，**可能滞后一个交易日**，跨窗口比较 IV/Greeks 时注意口径差异（两源 IV 口径差可达 ~7pp）。
@@ -785,7 +789,7 @@ openbb-agent-cli derivatives.options.chain SYMBOL \
 - `--dte`: 查询窗口天数（**必填**），合约 dte ≤ 该值
 - `--strike-count`: 每到期日返回的行权价档数（**必填**），取 ATM 附近最近档
 - `--source`: `cv` / `schwab` 强制单源（诊断/应急）；缺省为聚合。`cv` 单源在本地模拟同一窗口（dte ≤ N + 每到期日最近 N 档）；`schwab` 单源透传参数，并可配合 `--range`/`--strategy`
-- `--expiration`: 单到期日过滤（YYYY-MM-DD，本地过滤）
+- `--expiration`: 单到期日过滤（YYYY-MM-DD，本地过滤，需落在 `--dte` 窗口内）
 - `--option-type`: `call` / `put`（本地过滤）
 - `--min-dte`: DTE 下界（本地过滤）
 - `--range` / `--strategy`: Schwab 原生过滤参数，仅影响 Schwab 侧（ITM/NTM/OTM/...；VERTICAL/CALENDAR/...）
@@ -898,7 +902,7 @@ openbb-agent-cli derivatives.options.daily O:SPY260731C00750000 --date 2026-06-3
 
 ## derivatives.options.query `CV`
 
-自由 SQL 聚合查询（DuckDB 只读，DDL/DML 被服务端拒绝）。这是 ConvexValue 杀手级能力：跨合约聚合（GEX/Max Pain/PCR/期限结构），`chain` 和 `screener` 做不到，服务端聚合 14-27ms 返回。结果字段是动态 SQL 列，返回 `{results, _meta}`（省略 `_schema`，空字符串是表达式可产生的有意义值、保持原样）。
+自由 SQL 聚合查询（DuckDB 只读，DDL/DML 被服务端拒绝）。这是 ConvexValue 杀手级能力：跨合约聚合（GEX/Max Pain/PCR/期限结构），`chain` 和 `screener` 做不到，服务端聚合 14-27ms 返回。结果字段是动态 SQL 列，返回 `{results, _meta}`（省略 `_schema`，空字符串是表达式可产生的有意义值、保持原样；动态列值为 null 时同样被剔除，缺失列看 `_meta.null_stripped_fields`）。
 
 ```bash
 openbb-agent-cli derivatives.options.query --sql SQL [--max-rows N]
@@ -1219,7 +1223,7 @@ openbb-agent-cli batch --queries '[
 }
 ```
 
-- `results`: 数据记录数组。值为 `null` 的字段与无意义空字符串已默认剔除（嵌套对象同步处理），`0`、`false`、空数组和空对象保留；字段省略统一表达本次无可用值。
+- `results`: 数据记录数组。值为 `null` 的字段与无意义空字符串已默认剔除（嵌套对象同步处理），`0`、`false`、空数组和空对象保留；字段省略统一表达本次无可用值，被剥字段清单见 `_meta.null_stripped_fields`。
 - `_schema`: 字段名到含义的短描述，来自本次命令对应的数据模型，随结果同次返回，字段在本次结果中全为 `null` 也会列出；模型外字段用字段名兑底。`equity.screener` 与 `derivatives.options.query` 的结果字段是动态的，省略 `_schema`。
 - `_meta.returned`: 实际返回条数
 - `_meta.filtered`: 本地过滤后的总条数（limit 截断前）
@@ -1228,6 +1232,7 @@ openbb-agent-cli batch --queries '[
 - `_meta.truncated`: 是否因 limit 截断（boolean）
 - `_meta.sort_by`/`_meta.sort_dir`: 排序字段和方向
 - `_meta.row_count`: 服务端报告的匹配数（screener/query）
+- `_meta.null_stripped_fields`: 本次结果中因值为 null 被剔除的字段点路径清单（嵌套列用 `rows[].bid` 形式；仅发生过剔除时出现；缺失 key + 此清单可区分“值为 null”与“字段不存在”）
 - 记录级 `_meta`（历史价格命令盘中触发）附加在对应那条行情记录上，含 `warning` 与 `market`，表示该 bar 可能是盘中未收盘快照。
 
 当 `_meta.truncated=true` 时，调宽 `--limit` 或加严过滤可获取更多数据。
@@ -1361,6 +1366,8 @@ GROUP BY contract_type, strike_price ORDER BY oi DESC LIMIT 20
 ```
 
 ### options_snapshots 表字段（44 个）
+
+**列名注意**：`theoretical_price` 只存在于 `chain` 命令输出（CV `fair_market_value` 的映射名，Schwab 侧来自 theoreticalOptionValue）；SQL 表里没有这一列，定价请用 `fair_market_value`、`midpoint`、`trade_price` 或 `(bid+ask)/2`。
 
 - **标的**：underlying_ticker, underlying_symbol, underlying_price, underlying_change_to_break_even, underlying_last_updated, underlying_timeframe
 - **合约**：ticker（OCC 合约代码）, contract_type（call/put）, exercise_style, expiration_date, strike_price, shares_per_contract, break_even_price

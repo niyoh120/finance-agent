@@ -12,6 +12,18 @@ from pydantic import Field
 from openbb_finance.registry import build_default_registry
 from openbb_finance.sources.base import infer_market
 
+# Fields that identify a quote but carry no market data. A record holding only
+# these is an empty upstream snapshot (observed on tdx: row exists, every price
+# field null); after CLI null-stripping it degrades to {"symbol", "source"} and
+# reads as "no data", so the router treats it as a source failure and falls
+# through to the next source.
+_QUOTE_IDENTIFIER_FIELDS = frozenset({"symbol", "name", "source", "exchange", "type", "expiration", "currency"})
+
+
+def _quote_has_market_data(record: dict[str, Any]) -> bool:
+    """True when the quote carries at least one non-identifier, non-null value."""
+    return any(key not in _QUOTE_IDENTIFIER_FIELDS and value is not None for key, value in record.items())
+
 
 class FinanceEquityQuoteData(EquityQuoteData):
     """Finance equity quote data."""
@@ -47,9 +59,13 @@ class FinanceEquityQuoteFetcher(Fetcher[EquityQuoteQueryParams, list[FinanceEqui
             if not hasattr(source, "fetch_quote"):
                 continue
             try:
-                return [await source.fetch_quote(query.symbol)]
+                records = [await source.fetch_quote(query.symbol)]
             except Exception:
                 continue
+            # Identifier-only record (upstream empty snapshot) counts as a source
+            # failure: keep falling through instead of short-circuiting the chain.
+            if _quote_has_market_data(records[0]):
+                return records
         return []
 
     @staticmethod

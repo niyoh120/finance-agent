@@ -24,7 +24,7 @@ mise run install
 }
 ```
 
-- `results`: 数据记录数组。值为 `null` 的字段与无意义空字符串已默认剔除（嵌套对象同步处理），`0`、`false`、空数组和空对象保留；字段省略统一表达本次无可用值。
+- `results`: 数据记录数组。值为 `null` 的字段与无意义空字符串已默认剔除（嵌套对象同步处理），`0`、`false`、空数组和空对象保留；字段省略统一表达本次无可用值，被剥字段清单见 `_meta.null_stripped_fields`。
 - `_schema`: 字段名到含义的短描述映射，来自本次命令对应的数据模型，随结果同次返回，避免额外查询。字段在本次结果中全为 `null` 也会列出；模型外字段用字段名兑底。
 - `_meta`: 可选的元信息（`returned`/`filtered`/`truncated`/`total` 等）；`equity.screener` 与 `derivatives.options.query` 的结果字段是动态的，省略 `_schema`。
 - `batch` 成功子查询各自携带 `{results, _schema}` 包装，错误仍集中在 `errors`。

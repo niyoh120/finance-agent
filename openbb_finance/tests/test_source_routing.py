@@ -1,5 +1,6 @@
 import pytest
 from openbb_finance.models.company_news import FinanceCompanyNewsFetcher
+from openbb_finance.models.equity_quote import FinanceEquityQuoteFetcher
 from openbb_finance.models.equity_search import FinanceEquitySearchFetcher
 from openbb_finance.models.index_snapshots import FinanceIndexSnapshotsFetcher
 from openbb_finance.models.world_news import FinanceWorldNewsFetcher
@@ -73,3 +74,66 @@ async def test_world_news_routes_finnhub_first():
     result = await FinanceWorldNewsFetcher.aextract_data(query, credentials=None, registry=FakeRegistry())
 
     assert result[0]["source"] == "finnhub"
+
+
+# --------------------------------------------------------------------------- #
+# equity.quote 空报价回退：仅标识字段的记录视为源失败，继续下一源
+# --------------------------------------------------------------------------- #
+
+
+def _quote_source(name: str, record: dict) -> object:
+    class _QuoteSource:
+        def __init__(self, source_name: str):
+            self.name = source_name
+            self.enabled = True
+
+        async def fetch_quote(self, symbol: str) -> dict:
+            return record
+
+    return _QuoteSource(name)
+
+
+async def test_equity_quote_skips_identifier_only_record_and_falls_back():
+    """tdx 返回仅 symbol+source 的空快照时，回退到下一源而非短路。"""
+
+    class FakeRegistry:
+        def ordered_by_names(self, names):
+            assert names == ["schwab", "tdx", "tickflow"]
+            return [
+                _quote_source("schwab", {"symbol": "ON", "source": "schwab"}),  # 同样空 → 也跳过
+                _quote_source("tdx", {"symbol": "ON", "source": "tdx"}),  # 空快照 → 跳过
+                _quote_source("tickflow", {"symbol": "ON", "last_price": 62.1, "source": "tickflow"}),
+            ]
+
+    query = FinanceEquityQuoteFetcher.transform_query({"symbol": "ON"})
+    result = await FinanceEquityQuoteFetcher.aextract_data(query, credentials=None, registry=FakeRegistry())
+
+    assert result == [{"symbol": "ON", "last_price": 62.1, "source": "tickflow"}]
+
+
+async def test_equity_quote_accepts_first_source_with_market_data():
+    class FakeRegistry:
+        def ordered_by_names(self, names):
+            return [
+                _quote_source(
+                    "schwab",
+                    {"symbol": "ON", "last_price": 62.0, "bid": 61.9, "ask": 62.1, "source": "schwab"},
+                ),
+                _quote_source("tdx", {"symbol": "ON", "last_price": 61.5, "source": "tdx"}),
+            ]
+
+    query = FinanceEquityQuoteFetcher.transform_query({"symbol": "ON"})
+    result = await FinanceEquityQuoteFetcher.aextract_data(query, credentials=None, registry=FakeRegistry())
+
+    assert result[0]["source"] == "schwab"
+
+
+async def test_equity_quote_all_sources_empty_returns_no_data():
+    class FakeRegistry:
+        def ordered_by_names(self, names):
+            return [_quote_source(name, {"symbol": "ON", "source": name}) for name in names]
+
+    query = FinanceEquityQuoteFetcher.transform_query({"symbol": "ON"})
+    result = await FinanceEquityQuoteFetcher.aextract_data(query, credentials=None, registry=FakeRegistry())
+
+    assert result == []

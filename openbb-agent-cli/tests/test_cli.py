@@ -14,7 +14,9 @@ class DummyResult:
         return {"results": [{"symbol": "AAPL"}]}
 
 
-def test_run_route_outputs_results_only(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_run_route_reports_stripped_null_fields(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
     def fake_execute_route(route: str, **params: Any) -> list[dict[str, Any]]:
         assert route == "equity.search"
         assert {key: value for key, value in params.items() if value is not None} == {
@@ -31,6 +33,7 @@ def test_run_route_outputs_results_only(monkeypatch: pytest.MonkeyPatch, capsys:
     assert json.loads(capsys.readouterr().out) == {
         "results": [{"symbol": "AAPL"}],
         "_schema": {"symbol": "Symbol", "note": "Note"},
+        "_meta": {"null_stripped_fields": ["note"]},
     }
 
 
@@ -75,7 +78,13 @@ def test_derivatives_options_query_outputs_results_meta_without_schema(
     payload = json.loads(capsys.readouterr().out)
     assert payload == {
         "results": [{"col": "", "z": 0}],
-        "_meta": {"returned": 1, "row_count": 5, "truncated": True, "elapsed_ms": 7},
+        "_meta": {
+            "returned": 1,
+            "row_count": 5,
+            "truncated": True,
+            "elapsed_ms": 7,
+            "null_stripped_fields": ["n"],
+        },
     }
     assert "_schema" not in payload
 
@@ -107,6 +116,7 @@ def test_derivatives_options_screener_outputs_schema_and_meta(
         "truncated": False,
         "sort_by": "open_interest",
         "sort_dir": "desc",
+        "null_stripped_fields": ["open_interest"],
     }
 
 

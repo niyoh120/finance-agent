@@ -8,6 +8,10 @@ Turns raw executor records into the agent-facing envelope
   lists; ``0``/``0.0``/``False``/empty containers, the remaining ``{}`` of an
   all-empty record, list order and element position are preserved. Scalar
   ``null`` items inside arrays are positional values and stay in place.
+- ``_meta.null_stripped_fields`` (added only when something was stripped)
+  lists the dotted paths dropped because of null values — nested dicts extend
+  the path with a dot, dicts inside lists with ``[]`` (e.g. ``rows[].bid``) —
+  so consumers can tell "value is null" apart from "field absent".
 - ``_schema`` maps field names to short descriptions taken from the finance
   Data model behind the command; fields without a usable description fall
   back to the field name, and extra keys observed in the final records are
@@ -124,6 +128,43 @@ def build_schema(model_name: str, records: list[dict[str, Any]]) -> dict[str, st
     return schema
 
 
+def _collect_null_paths(value: Any, path: str, out: set[str]) -> None:
+    """Collect dotted paths of ``None`` fields that cleaning will drop.
+
+    Nested dicts extend the path with a dot; dicts inside lists extend it
+    with ``[]`` (e.g. ``rows[].bid``), applied per list level so doubly
+    nested lists report ``outer[][].key``. Scalar list items are skipped:
+    nulls inside arrays are positional values and cleaning keeps them in
+    place. The record-level ``_meta`` entry is preserved verbatim by
+    cleaning and therefore excluded.
+    """
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if key == RECORD_META_KEY:
+                continue
+            child = f"{path}.{key}" if path else key
+            if item is None:
+                out.add(child)
+            else:
+                _collect_null_paths(item, child, out)
+    elif isinstance(value, list):
+        for item in value:
+            if isinstance(item, (dict, list)):
+                _collect_null_paths(item, f"{path}[]", out)
+
+
+def null_stripped_fields(records: list[dict[str, Any]]) -> list[str]:
+    """Sorted union of dotted paths dropped from *records* due to null values.
+
+    Empty when nothing was stripped; feeds ``_meta.null_stripped_fields`` so
+    consumers can tell "value is null" apart from "field absent".
+    """
+    paths: set[str] = set()
+    for record in records:
+        _collect_null_paths(record, "", paths)
+    return sorted(paths)
+
+
 def build_success_envelope(
     records: list[dict[str, Any]],
     *,
@@ -137,12 +178,19 @@ def build_success_envelope(
     ``keep_empty_strings`` preserves exact-``""`` values (free-SQL dynamic
     columns may produce meaningful empty strings). ``meta`` keeps current
     semantics with the same null cleaning (``0``/``False`` protected).
+    ``null_stripped_fields`` is appended to ``_meta`` only when some null
+    field was actually stripped; commands without meta and without stripped
+    fields keep the meta-less envelope shape.
     """
     envelope: dict[str, Any] = {
         "results": [clean_output_record(record, keep_empty_strings=keep_empty_strings) for record in records]
     }
     if model_name is not None:
         envelope["_schema"] = build_schema(model_name, records)
-    if meta is not None:
-        envelope["_meta"] = clean_output_record(meta)
+    stripped = null_stripped_fields(records)
+    if meta is not None or stripped:
+        merged: dict[str, Any] = dict(meta) if meta is not None else {}
+        if stripped:
+            merged["null_stripped_fields"] = stripped
+        envelope["_meta"] = clean_output_record(merged)
     return envelope
