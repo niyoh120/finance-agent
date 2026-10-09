@@ -29,7 +29,7 @@ def make_config(**overrides) -> Config:
         host="127.0.0.1",
         port=8010,
         api_key=None,
-        keepalive_interval_hours=12.0,
+        keepalive_interval_hours=0.4,
     )
     kwargs.update(overrides)
     return Config(**kwargs)

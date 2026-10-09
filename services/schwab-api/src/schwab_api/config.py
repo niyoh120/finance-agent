@@ -12,7 +12,11 @@ DEFAULT_CALLBACK_URL = "https://127.0.0.1"
 DEFAULT_TOKENS_DB = "~/.schwabdev/tokens.db"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8010
-DEFAULT_KEEPALIVE_INTERVAL_HOURS = 12.0
+#: Schwab 实测（2026-09）：refresh token 存在 ≈ access_token TTL（30min）的空闲窗口，
+#: 空闲超过窗口后再刷新直接 invalid_grant（12h 周期首次轮换即失败），窗口内刷新（0.4h 周期）
+#: 则链持续可用。默认与上限都取实测验证过的 0.4h（留 ~6min 给锁竞争与调度抖动）。
+MAX_KEEPALIVE_INTERVAL_HOURS = 0.4
+DEFAULT_KEEPALIVE_INTERVAL_HOURS = MAX_KEEPALIVE_INTERVAL_HOURS
 
 
 @dataclass(frozen=True)
@@ -60,8 +64,12 @@ class Config:
             interval = float(interval_raw) if interval_raw else DEFAULT_KEEPALIVE_INTERVAL_HOURS
         except ValueError as e:
             raise ValueError(f"{ENV_PREFIX}KEEPALIVE_INTERVAL_HOURS must be a number") from e
-        if interval <= 0:
-            raise ValueError(f"{ENV_PREFIX}KEEPALIVE_INTERVAL_HOURS must be > 0")
+        if interval <= 0 or interval > MAX_KEEPALIVE_INTERVAL_HOURS:
+            raise ValueError(
+                f"{ENV_PREFIX}KEEPALIVE_INTERVAL_HOURS must be in "
+                f"(0, {MAX_KEEPALIVE_INTERVAL_HOURS}] hours: Schwab rejects a refresh token "
+                "once it idles past ~30min (access-token TTL), so longer cycles fail at runtime"
+            )
 
         return cls(
             app_key=app_key,

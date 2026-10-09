@@ -109,6 +109,10 @@ function render(status) {
   if (!status.authenticated) {
     badge.className = "badge bad"; badge.textContent = "未认证";
     detail.textContent = "完成下方两步授权后即可使用数据接口。";
+  } else if (status.keepalive && status.keepalive.chain_dead) {
+    badge.className = "badge bad"; badge.textContent = "Refresh token 链已被 Schwab 拒绝";
+    detail.textContent = "token 已被服务端判死（空闲超窗；是否存在 7 天绝对上限待验证），"
+      + "保活已暂停；请立即重新走一遍授权流程，成功后自动恢复。";
   } else if (status.refresh_token_expired) {
     badge.className = "badge warn"; badge.textContent = "Refresh token 已过期";
     detail.textContent = "请重新走一遍授权流程。";
@@ -131,6 +135,7 @@ function render(status) {
   const lines = ["保活周期: 每 " + (ka.interval_hours ?? "?") + " 小时自动轮换 refresh token"];
   if (ka.last_refresh) lines.push("上次轮换: " + new Date(ka.last_refresh).toLocaleString());
   if (ka.last_error) lines.push("⚠ 最近轮换失败: " + ka.last_error);
+  if (ka.chain_dead) lines.push("保活已暂停：重新授权成功后自动恢复轮换。");
   $("keepalive").className = "msg" + (ka.last_error ? " err" : "");
   $("keepalive").textContent = lines.join("\\n");
 }

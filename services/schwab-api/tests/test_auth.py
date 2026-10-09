@@ -51,6 +51,22 @@ def test_status_unauthenticated(client):
     assert payload["authenticated"] is False
     assert payload["credentials_configured"] is True
     assert payload["keepalive"]["last_error"] is None
+    assert payload["keepalive"]["chain_dead"] is False
+    assert payload["keepalive"]["seconds_since_refresh"] is None
+
+
+def test_status_reports_real_expiry_times(client, store):
+    """expires_at 字段必须是真实过期时刻（issued + TTL），修复前填的是 issued 本身。"""
+    issued = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=10)
+    store.write(make_row(issued=issued))
+    payload = client.get("/api/v1/status").json()
+
+    expected_access = (issued + datetime.timedelta(seconds=1800)).isoformat()
+    expected_refresh = (issued + datetime.timedelta(days=7)).isoformat()
+    assert payload["access_token_expires_at"] == expected_access
+    assert payload["refresh_token_expires_at"] == expected_refresh
+    assert 1140 <= payload["access_token_ttl_seconds"] <= 1200  # 30min TTL，已过 ~10min
+    assert payload["keepalive"]["seconds_since_refresh"] is None  # 尚无成功轮换
 
 
 # ---- POST /api/v1/auth/start -------------------------------------------------
@@ -78,6 +94,30 @@ def test_start_allows_expired_tokens(client, store):
     expired = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=8)
     store.write(make_row(issued=expired))
     assert client.post("/api/v1/auth/start").status_code == 200
+
+
+def test_start_bypasses_409_when_chain_dead(client, store):
+    """链死亡时本地时间戳看 token 仍 "活着"，但必须放行重授权路径。"""
+    store.write(make_row())  # issued now -> 本地判定 alive
+    client.app.state.runtime.chain_dead = True
+
+    response = client.post("/api/v1/auth/start")
+    assert response.status_code == 200
+    assert response.json()["chain_dead"] is True
+
+
+def test_callback_resets_chain_dead(client, store, exchange_ok):
+    """重新授权拿到全新链：chain_dead 与 last_error 必须复位，保活恢复轮换。"""
+    store.write(make_row())
+    runtime = client.app.state.runtime
+    runtime.chain_dead = True
+    runtime.last_error = "refresh token rejected by Schwab (chain dead): ..."
+
+    response = client.post("/api/v1/auth/callback", json={"callback": f"{CALLBACK_URL}?code=FIX"})
+    assert response.status_code == 200
+    assert runtime.chain_dead is False
+    assert runtime.last_error is None
+    assert response.json()["keepalive"]["chain_dead"] is False
 
 
 def test_start_requires_credentials(store):

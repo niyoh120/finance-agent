@@ -4,7 +4,7 @@
 
 ## 为什么要独立服务
 
-- **schwabdev 4.x 的 7 天过期缺陷**：schwabdev 每次刷新 access token 时会把轮换出的新 refresh token 入库，但 `refresh_token_issued` 时间戳仍停留在首次授权时刻——7 天后必然强制浏览器重授权。本服务内置保活循环，用 `refresh_token` grant 自行轮换并把**双 issued 时间戳重置为 now**，只要服务活着就无限续命。
+- **schwabdev 4.x 的刷新策略在 Schwab 的空闲窗口模型下必然失败**：实测（2026-09）Schwab 的 refresh token 存在 ≈ access_token TTL（~30min）的空闲窗口——距上次刷新超过窗口后再用，token 端点直接 400 `invalid_grant`（整条链作废，只能重新授权）；而 schwabdev 的按需刷新只在 access token 过期后才发起，必然落在窗口外。其 `refresh_token_issued` 记账也停留在首次授权时刻。本服务内置高频保活循环（默认 0.4h，上限 0.4h），用 `refresh_token` grant 把双 issued 时间戳重置为 now，让刷新始终落在窗口内。
 - **无头容器无法走 schwabdev 内置授权流**：无 token 时 schwabdev 会弹浏览器+stdin 阻塞等待。本服务自实现 authorization_code 交换并写库，通过 Web UI 完成授权；`schwabdev.Client` 只在 token 就绪后 lazy 构造，且注入 `call_on_auth` 阻断任何交互式授权路径。
 - **凭据单点持有**：token 存本服务独占的 sqlite（schema 与 schwabdev 4.x 完全兼容，表 `schwabdev` 8 列单行，可选 Fernet 加密），避免凭据散落多个进程。
 
@@ -57,7 +57,7 @@ OAuth code 落在浏览器地址栏，走人工复制，无需任何公网入口
 | `FA_SCHWAB_HOST` | `127.0.0.1` | 监听地址；容器内运行需设 `0.0.0.0`，对外暴露面由端口映射限制 |
 | `FA_SCHWAB_PORT` | `8010` | 监听端口 |
 | `FA_SCHWAB_API_KEY` | 空 | 可选；设置后 9 个数据接口要求 `X-API-Key` 头，auth/status/health 豁免 |
-| `FA_SCHWAB_KEEPALIVE_INTERVAL_HOURS` | `12` | 保活轮换周期（小时） |
+| `FA_SCHWAB_KEEPALIVE_INTERVAL_HOURS` | `0.4` | 保活轮换周期（小时）；上限 0.4，配置更长会在启动时报错（Schwab 拒绝空闲超过 ~30min 的 refresh token，实测 12h 周期首次轮换即 `invalid_grant`） |
 
 ## API
 
@@ -89,10 +89,13 @@ OAuth code 落在浏览器地址栏，走人工复制，无需任何公网入口
 
 ## 保活机制
 
+**空闲窗口模型（实测）**：refresh token 必须在距上次刷新 ≲30min（access token TTL）内再次使用，链才能保温；空闲超窗后整条链即刻作废（`400 invalid_grant`，网络层重试无效）。因此保活周期上限 0.4h（留 ~6min 给锁竞争与调度抖动），默认即 0.4h。是否还存在从授权起算的 7 天绝对死线仍待观察——若 0.4h 保温仍跨不过授权后第 7 天，需叠加定期重授权；`/api/v1/status` 的 `keepalive.chain_dead` 与 UI 红色徽标会在链死亡时显式暴露。
+
 保活循环（asyncio 后台任务）每个周期检查一次：token 存在且距上次轮换 ≥ 周期时，在 sqlite `BEGIN EXCLUSIVE` 事务内完成"读最新 refresh token → POST token 端点 → 新 token + 双 issued=now 落库"。
 
 - EXCLUSIVE + `busy_timeout=30s` 与 schwabdev 的自动刷新互斥，跨进程安全；schwabdev 侧在锁内先重读库，永远拿到最新轮换值。
-- 轮换请求失败（网络/invalid_grant）：事务回滚，**旧 token 原样保留**，错误记入 `/api/v1/status` 的 `last_error` 并在 UI 展示，按指数退避重试。
+- **`invalid_grant` → 链死亡，快速失败**：立即停止轮换（循环空转），`status.keepalive.chain_dead = true` + `last_error` 展示；重新授权成功后自动复位并恢复轮换。`POST /api/v1/auth/start` 在链死亡时跳过 409 门（本地时间戳看 token "活着"，但服务端已拒绝，必须放行重授权路径）。
+- **超时不盲重试**：token POST 超时意味着服务端可能已完成轮换而响应丢失，旧 token 复用有风险——拉满一个完整周期再试；其余网络错误按 60s 指数退避（上限 1h）。
 - 已知残余风险：POST 成功后、commit 前进程崩溃 → 新旧 refresh token 双双失效，需重新走 UI 授权。窗口极小，UI 重授权兜底。
 
 ## 限流与边界
@@ -136,7 +139,9 @@ OAuth code 落在浏览器地址栏，走人工复制，无需任何公网入口
 
 ### 保活
 
-- 首次轮换实测：授权后 keepalive 触发 `refresh_token` grant，refresh TTL 重置回 604,764s（≈7.0 天）、`last_error` 空、期间数据接口连续可用——**schwabdev 7 天强制重授权缺陷确认修复**。
+- ~~首次轮换实测：授权后 keepalive 触发 `refresh_token` grant，refresh TTL 重置回 604,764s（≈7.0 天）、`last_error` 空、期间数据接口连续可用——schwabdev 7 天强制重授权缺陷确认修复~~。**该结论已推翻**：当时读到的 TTL 是本服务自己写入的本地时间戳（自我证实），与 Schwab 服务端状态无关。
+- **2026-09 修正实测**：默认 12h 周期下，重新授权后 ≤12h 即出现 `refresh-token rotation failed: ... invalid_grant`（第一次轮换就失败）——刷新空闲超过 ~30min 窗口后链已死。改为 `FA_SCHWAB_KEEPALIVE_INTERVAL_HOURS=0.4` 后稳定运行。
+- 运维含义：监控盯 `/api/v1/status` 的 `keepalive.chain_dead` 与 `seconds_since_refresh`（距上次成功轮换秒数，应始终 < 0.4h × 3600 + 抖动余量；为 `None` 表示刚授权尚未轮换过，属正常）；`expires_at` 字段已修正为真实过期时刻。
 
 ## 部署
 
@@ -153,4 +158,4 @@ uv run --package schwab-api pytest services/schwab-api/tests -q   # 服务测试
 uvx ruff check services/schwab-api && uvx ruff format --check services/schwab-api
 ```
 
-测试关键哨兵：`tests/test_store.py` 用 `schwabdev.Tokens` 直接加载本服务写入的 token 库（锁 `schwabdev>=4,<5`，schema 兼容回归）；`tests/test_keepalive.py` 回归轮换后 `refresh_token_issued == now` 与失败回滚路径。
+测试关键哨兵：`tests/test_store.py` 用 `schwabdev.Tokens` 直接加载本服务写入的 token 库（锁 `schwabdev>=4,<5`，schema 兼容回归）；`tests/test_keepalive.py` 回归轮换后 `refresh_token_issued == now`、失败回滚、`invalid_grant` 链死亡快速失败与超时拉满周期路径；`tests/test_config.py` 回归保活周期上界校验；`tests/test_auth.py` 回归链死亡时 409 门放行与重授权复位 `chain_dead`。

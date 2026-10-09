@@ -48,6 +48,16 @@ class SchwabTokenError(Exception):
         self.body = body
         super().__init__(f"schwab oauth token endpoint returned {status_code}: {body}")
 
+    @property
+    def invalid_grant(self) -> bool:
+        """True when Schwab rejected the refresh token itself (chain is dead).
+
+        实测（2026-09）：refresh token 空闲超过 ~30min（access_token TTL）后再刷新，
+        Schwab 返回 400 且 body 内嵌 ``invalid_grant`` —— 整条轮换链已死，只能重新走
+        authorization_code 授权；网络类失败才值得退避重试。
+        """
+        return self.status_code in (400, 401) and "invalid_grant" in self.body
+
 
 # ---- OAuth helpers (kept transport-level so tests can stub them) -------------
 
@@ -110,15 +120,20 @@ def refresh_token_alive(row: TokenRow, now: datetime.datetime | None = None) -> 
 def status_payload(config: "Config", store: "TokenStore", runtime: "RuntimeState | None") -> dict:
     """Token/keepalive state for ``GET /api/v1/status`` and the auth UI."""
     now = now_utc()
+    keepalive: dict = {
+        "interval_hours": config.keepalive_interval_hours,
+        "last_refresh": runtime.last_refresh.isoformat() if runtime and runtime.last_refresh else None,
+        "seconds_since_refresh": (
+            int((now - runtime.last_refresh).total_seconds()) if runtime and runtime.last_refresh else None
+        ),
+        "last_error": runtime.last_error if runtime else None,
+        "chain_dead": bool(runtime.chain_dead) if runtime else False,
+    }
     payload: dict = {
         "authenticated": False,
         "credentials_configured": config.credentials_configured,
         "callback_url": config.callback_url,
-        "keepalive": {
-            "interval_hours": config.keepalive_interval_hours,
-            "last_refresh": runtime.last_refresh.isoformat() if runtime and runtime.last_refresh else None,
-            "last_error": runtime.last_error if runtime else None,
-        },
+        "keepalive": keepalive,
     }
     try:
         row = store.read()
@@ -131,9 +146,9 @@ def status_payload(config: "Config", store: "TokenStore", runtime: "RuntimeState
     refresh_ttl = (row.refresh_token_issued + REFRESH_TOKEN_TTL) - now
     payload.update(
         authenticated=True,
-        access_token_expires_at=row.access_token_issued.isoformat(),
+        access_token_expires_at=(row.access_token_issued + timedelta(seconds=row.expires_in)).isoformat(),
         access_token_ttl_seconds=max(0, int(access_ttl.total_seconds())),
-        refresh_token_expires_at=row.refresh_token_issued.isoformat(),
+        refresh_token_expires_at=(row.refresh_token_issued + REFRESH_TOKEN_TTL).isoformat(),
         refresh_token_ttl_seconds=max(0, int(refresh_ttl.total_seconds())),
         refresh_token_expired=not refresh_token_alive(row, now),
     )
@@ -160,12 +175,17 @@ router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 @router.post("/start")
 def start_authorization(request: Request, force: bool = False) -> dict:
-    """Return the authorize URL; 409 when valid tokens already exist."""
+    """Return the authorize URL; 409 when valid tokens already exist.
+
+    ``keepalive.chain_dead`` 时不判 409：本地时间戳看 token "活着"，但 Schwab 已拒绝
+    整条链，必须放行重授权路径，否则服务会永久卡在无法恢复的状态。
+    """
     config, store, _, runtime = _deps(request)
+    chain_dead = bool(runtime and runtime.chain_dead)
     if not config.credentials_configured:
         raise HTTPException(status_code=503, detail="FA_SCHWAB_APP_KEY/APP_SECRET are not configured")
     row = store.read()
-    if row is not None and not force and refresh_token_alive(row):
+    if row is not None and not force and not chain_dead and refresh_token_alive(row):
         raise HTTPException(
             status_code=409,
             detail={
@@ -179,15 +199,24 @@ def start_authorization(request: Request, force: bool = False) -> dict:
         "callback_url": config.callback_url,
         "auto_redirect": config.callback_url.rstrip("/").endswith("/api/v1/auth/redirect"),
         "code_ttl_seconds": AUTHORIZATION_CODE_TTL_SECONDS,
+        "chain_dead": chain_dead,
         "next": "POST /api/v1/auth/callback with the redirected URL",
     }
 
 
-def exchange_and_store(config: "Config", store: "TokenStore", clients: "ClientManager", code: str) -> dict:
+def exchange_and_store(
+    config: "Config",
+    store: "TokenStore",
+    clients: "ClientManager",
+    code: str,
+    runtime: "RuntimeState | None" = None,
+) -> dict:
     """Exchange an authorization code for tokens and persist them.
 
     Shared by the manual paste flow (POST /api/v1/auth/callback) and the
-    browser-redirect flow (GET /api/v1/auth/redirect).
+    browser-redirect flow (GET /api/v1/auth/redirect). A fresh authorization
+    mints a brand-new refresh chain: clear the keepalive's ``chain_dead`` flag
+    and ``last_error`` so rotation resumes on the next tick.
 
     Raises:
         HTTPException: 422 unparseable, 502 when Schwab rejects the exchange.
@@ -208,6 +237,9 @@ def exchange_and_store(config: "Config", store: "TokenStore", clients: "ClientMa
     row = TokenRow.from_token_response(tokens, previous=store.read(), issued=now_utc())
     store.write(row)
     clients.reset()
+    if runtime is not None:
+        runtime.chain_dead = False
+        runtime.last_error = None
     logger.info("authorization code exchanged; tokens stored")
     return {"access_token_expires_in": row.expires_in}
 
@@ -217,7 +249,7 @@ def complete_authorization(request: Request, body: AuthCallbackRequest) -> dict:
     """Manual flow: exchange a pasted callback URL / raw code, report status."""
     config, store, clients, runtime = _deps(request)
     code = extract_authorization_code(body.callback)
-    exchange_and_store(config, store, clients, code)
+    exchange_and_store(config, store, clients, code, runtime)
     return status_payload(config, store, runtime)
 
 
@@ -229,9 +261,9 @@ def oauth_redirect(request: Request, code: str | None = None) -> "HTMLResponse":
     Point the callback URL registered at Schwab at this route (https, exact
     match, e.g. https://schwab.example.com/api/v1/auth/redirect).
     """
-    config, store, clients, _ = _deps(request)
+    config, store, clients, runtime = _deps(request)
     try:
-        exchange_and_store(config, store, clients, code)
+        exchange_and_store(config, store, clients, code, runtime)
         ok, detail = True, "token 已入库，本窗口可以关闭。"
     except HTTPException as e:
         ok, detail = False, _format_exchange_error(e)
