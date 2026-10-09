@@ -11,6 +11,7 @@ Run with:
 from __future__ import annotations
 
 import os
+from datetime import datetime, timedelta, timezone
 
 import pytest
 from openbb_finance.config import SourceConfig
@@ -80,3 +81,54 @@ async def test_live_options_chain():
     assert record["option_type"] in {"call", "put"}
     assert record["strike"] > 0
     assert record["dte"] <= 10
+
+
+async def test_live_options_chain_date_window():
+    """Date-window mode: absolute from_date/to_date push-down (CLI path).
+
+    Uses a liquid sample and a wide strike budget so the assertion is about
+    the request mode, not upstream strike coverage.
+    """
+    source = _source()
+    today = datetime.now(timezone.utc).date()
+    data = await source.fetch_options_chain(
+        "AAPL", from_date=today, to_date=today + timedelta(days=45), strike_count=50
+    )
+
+    assert data["contract_count"] > 0
+    assert data["records"]
+    for record in data["records"]:
+        assert record["expiration"] >= today
+        assert record["expiration"] <= today + timedelta(days=45)
+
+
+async def test_live_options_chain_date_window_strike_coverage():
+    """Probe whether strike_count=atm pushes down enough candidates for the
+    CLI's local ATM selection on a liquid underlying.
+
+    Compares the distinct-strike count of a strike_count=20 request against a
+    strike_count=60 reference on the same single-day window: if the narrow
+    request already serves >= 20 distinct strikes per covered expiration,
+    the raw pass-through covers the default CLI atm. Gaps are reported (not
+    raised) so the probe documents upstream coverage limits.
+    """
+    source = _source()
+    today = datetime.now(timezone.utc).date()
+    window = (today + timedelta(days=20), today + timedelta(days=20))  # one listed expiration
+
+    narrow = await source.fetch_options_chain("SPY", from_date=window[0], to_date=window[1], strike_count=20)
+    reference = await source.fetch_options_chain("SPY", from_date=window[0], to_date=window[1], strike_count=60)
+
+    narrow_strikes = {r["strike"] for r in narrow["records"]}
+    reference_strikes = {r["strike"] for r in reference["records"]}
+    print(
+        f"strike coverage probe: narrow={len(narrow_strikes)} distinct strikes, "
+        f"reference={len(reference_strikes)}, contract_count={narrow['contract_count']}"
+    )
+    # Informational: the CLI keeps atm=20 as the product cap; upstream shortfall
+    # means fewer candidates than requested and must be surfaced via live runs.
+    if len(narrow_strikes) < 20:
+        pytest.fail(
+            f"upstream strike_count=20 returned only {len(narrow_strikes)} distinct strikes; "
+            "CLI atm selection may be candidate-starved"
+        )

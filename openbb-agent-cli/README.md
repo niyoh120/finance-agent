@@ -151,16 +151,28 @@ openbb-agent-cli derivatives.options.unusual \
   --limit 100
 ```
 
-### 美股期权数据（ConvexValue）
+### 美股期权数据（ConvexValue / Schwab）
 
-需要 `CV_API_KEY` 环境变量（ConvexValue Research Plan，$19/月，覆盖美股权权 + FMP 全量财务数据）。
+部分命令需要 `CV_API_KEY` 环境变量（ConvexValue Research Plan，$19/月，覆盖美股权权 + FMP 全量财务数据）。`derivatives.options.chain` 另需 `SCHWAB_API_BASE_URL`（schwab-api 服务地址）：Schwab 是唯一合约集合来源，未配置或请求失败时查询直接报错；CV 仅作为字段补充。
 
 ```bash
-# 期权链（默认 Schwab 优先聚合 + CV 兑底；--dte/--strike-count 必填）
-openbb-agent-cli derivatives.options.chain SPY --dte 30 --strike-count 20 --limit 50
-openbb-agent-cli derivatives.options.chain SPY --dte 30 --strike-count 20 --expiration 2026-07-17  # 单到期日
-openbb-agent-cli derivatives.options.chain SPY --dte 30 --strike-count 20 --option-type put --sort-by implied_volatility
-openbb-agent-cli derivatives.options.chain SPY --dte 10 --strike-count 30 --source cv  # 强制 CV 单源
+# 期权链（Schwab 唯一合约源 + CV 补空字段；--expiration 与 --dte-min/--dte-max 二选一）
+openbb-agent-cli derivatives.options.chain SPY --dte-min 0 --dte-max 45 --atm 20 --limit 50
+openbb-agent-cli derivatives.options.chain SPY --expiration 2028-01-21 --atm 10
+openbb-agent-cli derivatives.options.chain SPY --dte-min 700 --dte-max 1000 --atm 20  # 远期窗口
+openbb-agent-cli derivatives.options.chain SPY --dte-min 0 --dte-max 0 --limit 0  # 当日到期，全部过滤后合约
+openbb-agent-cli derivatives.options.chain SPY --option-type put --sort-by implied_volatility
+```
+
+`derivatives.options.chain` 行为要点：
+
+- 查询模式互斥：`--expiration YYYY-MM-DD`（今天或未来，精确单日）或 `--dte-min/--dte-max`（省略时默认 0..45，跨度 ≤ 365，端点包含；推荐显式成对提供）。
+- `--atm N`（默认 20，范围 1..100）每到期日保留距统一参考价最近的 N 个行权价档位，call/put 共用档位集合；之后才应用 `--option-type`。
+- 合约集合完全来自 Schwab；CV 只补匹配合约中缺失/为 null 的字段（报价、Greeks、统计等），CV 独有合约全部忽略。
+- `--source`、`--dte`、`--strike-count`、`--min-dte`、`--range`、`--strategy` 已移除；batch 中继续传这些字段会报迁移错误（`source` 传 null 也报错）。
+- `_meta.total` 为 Schwab 本次请求报告的合约数；`filtered` 为筛选后、limit 前数量；`returned` 为最终输出数（如 `total=120, filtered=40, returned=20` = Schwab 报告 120，查询匹配 40，limit 截取 20）。
+- `_meta.window` 回显解析后的查询窗口（mode/as_of_date/timezone/from_date/to_date/span 及 dte 或 expiration）；`_meta.cv_enrichment` 取值 `success/failed/disabled/skipped_empty`；`_meta.sources_used` 列出成功参与请求的源。
+- 批量查询复用同一执行路径，batch 的 `limit` 省略/null 时默认 100，显式 `0` 返回全部。
 
 # 跨标的筛选
 openbb-agent-cli derivatives.options.screener --min-open-interest 100000 --min-iv 0.5 --limit 20
@@ -237,6 +249,7 @@ openbb-agent-cli batch --queries '[
 | `news.company` | `symbol` | `start-date`, `end-date`, `limit` |
 | `news.world` | - | `start-date`, `end-date`, `limit` |
 | `derivatives.options.unusual` | - | `symbol`, `start-date`, `end-date`, `side`, `option-type`, `min-premium`, `min-vol-oi`, `limit` |
+| `derivatives.options.chain` | `symbol`，且 `expiration` 与 `dte-min`/`dte-max` 二选一 | `atm`, `option-type`, `sort-by`, `sort-dir`, `limit` |
 | `batch` | `queries` 或 `template` | `symbol`, `region`, `country`, `start-date`, `end-date`, `limit`, `news-limit`, `options-limit`, `interval`, `max-workers` |
 
 ## 批量模板

@@ -245,30 +245,50 @@ class SchwabSource:
         self,
         symbol: str,
         *,
-        dte: int,
-        strike_count: int,
+        dte: int | None = None,
+        strike_count: int | None = None,
         range_: str | None = None,
         strategy: str | None = None,
+        from_date: date | None = None,
+        to_date: date | None = None,
     ) -> dict[str, Any]:
         """Filtered option chain as flat records.
 
         dte/strike_count are mandatory: unfiltered big chains (SPY) overflow
         Schwab's gateway buffer (the service surfaces that as 502).
 
+        Two mutually exclusive request modes:
+        - legacy ``dte`` mode (dashboard contract): ``dte`` + positive
+          ``strike_count``, optional ``range_``/``strategy``;
+        - date-window mode (agent CLI): both ``from_date``/``to_date`` as
+          absolute dates, positive ``strike_count``, no ``dte`` (and no
+          ``range_``/``strategy``) — the service forwards fromDate/toDate.
+
         Returns {"records": [...], "contract_count": N} where contract_count
         is Schwab's server-reported total.
         """
-        if not dte or not strike_count:
-            raise SourceError("Schwab option chain requires dte and strike_count filters")
-        params: dict[str, Any] = {
-            "symbol": symbol.strip().upper(),
-            "dte": int(dte),
-            "strike_count": int(strike_count),
-        }
-        if range_:
-            params["range"] = range_
-        if strategy:
-            params["strategy"] = strategy
+        params: dict[str, Any] = {"symbol": symbol.strip().upper()}
+        if from_date is not None or to_date is not None:
+            if dte is not None:
+                raise SourceError("Schwab option chain date-window mode is mutually exclusive with dte")
+            if from_date is None or to_date is None:
+                raise SourceError("Schwab option chain date-window mode requires both from_date and to_date")
+            if range_ or strategy:
+                raise SourceError("Schwab option chain date-window mode does not support range_/strategy")
+            if not strike_count or int(strike_count) <= 0:
+                raise SourceError("Schwab option chain date-window mode requires a positive strike_count")
+            params["from_date"] = from_date.isoformat()
+            params["to_date"] = to_date.isoformat()
+            params["strike_count"] = int(strike_count)
+        else:
+            if not dte or not strike_count:
+                raise SourceError("Schwab option chain requires dte and strike_count filters")
+            params["dte"] = int(dte)
+            params["strike_count"] = int(strike_count)
+            if range_:
+                params["range"] = range_
+            if strategy:
+                params["strategy"] = strategy
         raw = await self._get("/api/v1/options/chains", params)
         from openbb_finance.models.schwab_options_chain import flatten_schwab_chain
 

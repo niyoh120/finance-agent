@@ -6,7 +6,7 @@ camelCase fields. Field conventions must match the CV chain model because the
 CLI aggregates both sources on (expiration, strike, option_type).
 """
 
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from types import SimpleNamespace
 
 import pytest
@@ -166,27 +166,34 @@ def test_flatten_normalizes_negative_iv_sentinel_to_none():
     assert records[0]["implied_volatility"] is None
 
 
-# ---- aggregation (_options_chain_execute in openbb-agent-cli) -------------------
+# ---- chain execution (_options_chain_execute in openbb-agent-cli) --------------
+
+
+def _near_exp(days: int = 3) -> date:
+    """Expiration a few days after the frozen UTC as_of (deterministic in-window)."""
+    return datetime.now(timezone.utc).date() + timedelta(days=days)
 
 
 def _schwab_chain_rows() -> list[dict]:
-    """In-window Schwab rows: pricing always populated, vwap unknown."""
+    """Schwab rows: pricing always populated, vwap unknown, upstream dte poisoned."""
+    exp = _near_exp(3)
     return [
         {
             "symbol": "SPY",
-            "expiration": date(2026, 9, 9),
+            "expiration": exp,
             "strike": 500.0,
             "option_type": "call",
             "bid": 5.0,
             "ask": 5.3,
             "delta": 0.6,
             "vwap": None,
-            "dte": 3,
+            "dte": 999,
             "open_interest": 1000.0,
+            "underlying_price": 501.0,
         },
         {
             "symbol": "SPY",
-            "expiration": date(2026, 9, 9),
+            "expiration": exp,
             "strike": 505.0,
             "option_type": "call",
             "bid": 3.0,
@@ -195,16 +202,19 @@ def _schwab_chain_rows() -> list[dict]:
             "vwap": None,
             "dte": 3,
             "open_interest": 900.0,
+            "underlying_price": 501.0,
         },
     ]
 
 
 def _cv_chain_rows() -> list[dict]:
-    """CV rows: bid/ask null (subscription gap), plus an out-of-window row."""
+    """CV rows: bid/ask null (subscription gap), plus a CV-only contract that
+    sits inside the query window and must be IGNORED."""
+    exp = _near_exp(3)
     return [
         {
             "symbol": "SPY",
-            "expiration": date(2026, 9, 9),
+            "expiration": exp,
             "strike": 500.0,
             "option_type": "call",
             "bid": None,
@@ -213,41 +223,42 @@ def _cv_chain_rows() -> list[dict]:
             "vwap": 5.1,
             "dte": 3,
             "open_interest": 1001.0,
-            "underlying_price": 501.0,
+            "underlying_price": None,
         },
         {
-            # far-dated CV-only contract (outside the Schwab window)
+            # in-window CV-only contract: never enters the result
             "symbol": "SPY",
-            "expiration": date(2026, 12, 18),
-            "strike": 700.0,
+            "expiration": _near_exp(4),
+            "strike": 502.0,
             "option_type": "call",
             "bid": 2.0,
             "ask": 2.5,
             "delta": 0.1,
             "vwap": 2.2,
-            "dte": 100,
+            "dte": 4,
             "open_interest": 5000.0,
             "underlying_price": 501.0,
         },
     ]
 
 
-def _patch_aggregation(
+def _patch_chain(
     monkeypatch: pytest.MonkeyPatch,
     *,
     schwab_records: list[dict] | None = None,
+    contract_count: int = 120,
     cv_records: list[dict] | None = None,
-    cv_total: int = 0,
     cv_enabled: bool = True,
     schwab_enabled: bool = True,
+    schwab_error: Exception | None = None,
     cv_error: Exception | None = None,
 ) -> dict:
-    """Wire fakes into _aggregate_options_chain / _options_chain_execute."""
+    """Wire fakes into _fetch_options_chain_with_enrichment / _options_chain_execute."""
     import openbb_agent_cli.executors as executors_module
     import openbb_finance.registry as registry_module
     from openbb_finance.models.equity_options_chain import FinanceOptionsChainFetcher
 
-    calls: dict = {}
+    calls: dict = {"cv_requests": 0}
 
     class FakeRegistry:
         def __init__(self):
@@ -257,24 +268,20 @@ def _patch_aggregation(
                 fetch_options_chain=self._fetch_schwab_chain,
             )
 
-        async def _fetch_schwab_chain(self, symbol, *, dte, strike_count, range_=None, strategy=None):
-            calls["schwab"] = {
-                "symbol": symbol,
-                "dte": dte,
-                "strike_count": strike_count,
-                "range": range_,
-                "strategy": strategy,
-            }
-            return {"records": list(schwab_records or []), "contract_count": len(schwab_records or [])}
+        async def _fetch_schwab_chain(self, symbol, **kwargs):
+            calls["schwab"] = {"symbol": symbol, **kwargs}
+            if schwab_error is not None:
+                raise schwab_error
+            return {"records": list(schwab_records or []), "contract_count": contract_count}
 
         def get(self, name):
             return self._schwab if name == "schwab" else None
 
     async def fake_aextract(query, credentials, **kwargs):
-        calls["cv"] = True
+        calls["cv_requests"] += 1
         if cv_error is not None:
             raise cv_error
-        return {"records": list(cv_records or []), "contract_count": cv_total}
+        return {"records": list(cv_records or []), "contract_count": 99999}
 
     monkeypatch.setattr(registry_module, "build_default_registry", FakeRegistry)
     monkeypatch.setattr(FinanceOptionsChainFetcher, "aextract_data", fake_aextract)
@@ -282,190 +289,304 @@ def _patch_aggregation(
     return calls
 
 
-def test_aggregate_schwab_wins_fields_cv_fills_nulls(monkeypatch: pytest.MonkeyPatch):
+def test_chain_schwab_anchors_keys_and_cv_only_fills_missing_fields(monkeypatch: pytest.MonkeyPatch):
     from openbb_agent_cli.executors import _options_chain_execute
 
-    _patch_aggregation(
+    calls = _patch_chain(
         monkeypatch,
         schwab_records=_schwab_chain_rows(),
+        contract_count=120,
         cv_records=_cv_chain_rows(),
-        cv_total=12345,
     )
-
-    records, meta = _options_chain_execute(
-        {"symbol": "SPY", "dte": 10, "strike_count": 30, "sort_by": "open_interest", "sort_dir": "desc", "limit": 0}
-    )
-
-    by_key = {(r["expiration"], r["strike"], r["option_type"]): r for r in records}
-    assert set(by_key) == {
-        (date(2026, 9, 9), 500.0, "call"),
-        (date(2026, 9, 9), 505.0, "call"),
-        (date(2026, 12, 18), 700.0, "call"),  # CV-only out-of-window row survives
-    }
-
-    in_window = by_key[(date(2026, 9, 9), 500.0, "call")]
-    # CV bid/ask are null -> filled from schwab
-    assert in_window["bid"] == 5.0
-    assert in_window["ask"] == 5.3
-    # both sources populated -> schwab (first source) wins delta/OI
-    assert in_window["delta"] == 0.6
-    assert in_window["open_interest"] == 1000.0
-    # schwab left vwap null -> CV fills it
-    assert in_window["vwap"] == 5.1
-
-    cv_only = by_key[(date(2026, 12, 18), 700.0, "call")]
-    assert cv_only["bid"] == 2.0
-    assert cv_only["open_interest"] == 5000.0
-
-    # Zero source annotations: shape identical to the single-source output.
-    annotated = [key for row in records for key in row if key.endswith("_source")]
-    assert annotated == []
-
-    assert meta["total"] == 12345  # CV server-reported count
-    assert meta["sources_used"] == ["schwab", "convexvalue"]
-
-
-def test_aggregate_cv_failure_degrades_to_schwab_only(monkeypatch: pytest.MonkeyPatch):
-    from openbb_agent_cli.executors import _options_chain_execute
-
-    _patch_aggregation(
-        monkeypatch,
-        schwab_records=_schwab_chain_rows(),
-        cv_records=_cv_chain_rows(),
-        cv_error=RuntimeError("CV down"),
-    )
-
-    records, meta = _options_chain_execute({"symbol": "SPY", "dte": 10, "strike_count": 30, "limit": 0})
-
-    assert len(records) == 2
-    assert meta["sources_used"] == ["schwab"]
-    # CV server total unavailable -> honest fallback to the merged row count
-    assert meta["total"] == 2
-
-
-def test_aggregate_schwab_disabled_degrades_to_cv_only(monkeypatch: pytest.MonkeyPatch):
-    from openbb_agent_cli.executors import _options_chain_execute
-
-    _patch_aggregation(
-        monkeypatch,
-        schwab_records=_schwab_chain_rows(),
-        cv_records=_cv_chain_rows(),
-        cv_total=2,
-        schwab_enabled=False,
-    )
-
-    records, meta = _options_chain_execute({"symbol": "SPY", "dte": 10, "strike_count": 30, "limit": 0})
-
-    assert len(records) == 2  # full CV chain, unfiltered
-    assert meta["sources_used"] == ["convexvalue"]
-
-
-def test_aggregate_clips_loose_schwab_dte(monkeypatch: pytest.MonkeyPatch):
-    """Schwab's server-side daysToExpiration is loose; the declared window is
-    enforced locally so in-window rows always satisfy dte <= --dte."""
-    from openbb_agent_cli.executors import _options_chain_execute
-
-    schwab_rows = [
-        *_schwab_chain_rows(),
-        {**_schwab_chain_rows()[0], "strike": 400.0, "dte": 131, "open_interest": 99999.0},
-    ]
-    _patch_aggregation(
-        monkeypatch,
-        schwab_records=schwab_rows,
-        cv_records=_cv_chain_rows(),
-        cv_total=12345,
-    )
-
-    records, meta = _options_chain_execute(
-        {"symbol": "SPY", "dte": 10, "strike_count": 30, "source": "schwab", "limit": 0}
-    )
-
-    assert all(r["dte"] <= 10 for r in records)
-    assert len(records) == 2
-    assert meta["sources_used"] == ["schwab"]
-
-
-def test_source_schwab_single_source_skips_cv(monkeypatch: pytest.MonkeyPatch):
-    from openbb_agent_cli.executors import _options_chain_execute
-
-    calls = _patch_aggregation(monkeypatch, schwab_records=_schwab_chain_rows(), cv_records=_cv_chain_rows())
 
     records, meta = _options_chain_execute(
         {
             "symbol": "SPY",
-            "dte": 7,
-            "strike_count": 10,
-            "source": "schwab",
-            "range_": "ITM",
-            "strategy": "VERTICAL",
+            "dte_min": 0,
+            "dte_max": 45,
+            "atm": 20,
+            "sort_by": "open_interest",
+            "sort_dir": "desc",
             "limit": 0,
         }
     )
 
-    assert "cv" not in calls
-    assert calls["schwab"] == {
-        "symbol": "SPY",
-        "dte": 7,
-        "strike_count": 10,
-        "range": "ITM",
-        "strategy": "VERTICAL",
+    exp = _near_exp(3)
+    by_key = {(r["expiration"], r["strike"], r["option_type"]): r for r in records}
+    # The result key set is a subset of the Schwab keys: the in-window CV-only
+    # contract (exp+4, strike 502) never survives.
+    assert set(by_key) == {
+        (exp, 500.0, "call"),
+        (exp, 505.0, "call"),
     }
-    assert len(records) == 2
-    assert meta["sources_used"] == ["schwab"]
+
+    matched = by_key[(exp, 500.0, "call")]
+    # CV bid/ask are null on the matched row, but Schwab values stay untouched.
+    assert matched["bid"] == 5.0
+    assert matched["ask"] == 5.3
+    # Both sides populated -> Schwab keeps delta/OI.
+    assert matched["delta"] == 0.6
+    assert matched["open_interest"] == 1000.0
+    # Schwab left vwap null -> CV fills it.
+    assert matched["vwap"] == 5.1
+    # Upstream dte was poisoned (999) -> recomputed from expiration/as_of.
+    assert matched["dte"] == 3
+
+    # The Schwab request pushed down the absolute window and raw atm (no dte).
+    assert calls["schwab"]["from_date"] == datetime.now(timezone.utc).date()
+    assert calls["schwab"]["to_date"] == datetime.now(timezone.utc).date() + timedelta(days=45)
+    assert calls["schwab"]["strike_count"] == 20
+    assert "dte" not in calls["schwab"]
+
+    # total comes from Schwab; CV's huge full-chain count is irrelevant.
+    assert meta["total"] == 120
+    assert meta["sources_used"] == ["schwab", "convexvalue"]
+    assert meta["cv_enrichment"] == "success"
+    assert meta["atm_reference_price"] == 501.0
+    assert meta["window"]["mode"] == "dte"
+    assert meta["window"]["dte_min"] == 0
+    assert meta["window"]["dte_max"] == 45
+    assert meta["window"]["span"] == 45
+    assert meta["atm"] == 20
 
 
-def test_source_cv_single_source_applies_local_window(monkeypatch: pytest.MonkeyPatch):
+def test_chain_cv_failure_keeps_schwab_rows_and_reports_failed(monkeypatch: pytest.MonkeyPatch):
     from openbb_agent_cli.executors import _options_chain_execute
 
-    calls = _patch_aggregation(
+    _patch_chain(
         monkeypatch,
+        schwab_records=_schwab_chain_rows(),
+        contract_count=2,
         cv_records=_cv_chain_rows(),
-        cv_total=456,
+        cv_error=RuntimeError("CV down"),
     )
 
-    records, meta = _options_chain_execute({"symbol": "SPY", "dte": 10, "strike_count": 1, "source": "cv", "limit": 0})
+    records, meta = _options_chain_execute({"symbol": "SPY", "limit": 0})
 
-    assert calls["cv"] is True
-    # dte=100 row filtered out; strike_count=1 keeps the single nearest level
-    # to underlying_price=501 (strike 500) per expiration.
-    assert [(r["strike"], r["dte"]) for r in records] == [(500.0, 3)]
-    assert meta["total"] == 456
-    assert meta["sources_used"] == ["convexvalue"]
+    assert len(records) == 2
+    assert all(record.get("vwap") is None for record in records)  # untouched Schwab rows
+    assert meta["sources_used"] == ["schwab"]
+    assert meta["cv_enrichment"] == "failed"
+    assert meta["total"] == 2
 
 
-def test_options_chain_requires_dte_and_strike_count():
+def test_chain_schwab_disabled_fails_without_cv_requests(monkeypatch: pytest.MonkeyPatch):
+    from openbb_agent_cli.executors import _options_chain_execute
+    from openbb_finance.sources.base import SourceError
+
+    calls = _patch_chain(
+        monkeypatch,
+        schwab_records=_schwab_chain_rows(),
+        cv_records=_cv_chain_rows(),
+        schwab_enabled=False,
+    )
+
+    with pytest.raises(SourceError, match="schwab source is required"):
+        _options_chain_execute({"symbol": "SPY", "limit": 0})
+
+    assert "schwab" not in calls
+    assert calls["cv_requests"] == 0
+
+
+def test_chain_schwab_request_error_propagates_without_cv_requests(monkeypatch: pytest.MonkeyPatch):
+    from openbb_agent_cli.executors import _options_chain_execute
+    from openbb_finance.sources.base import SourceError
+
+    calls = _patch_chain(
+        monkeypatch,
+        schwab_records=_schwab_chain_rows(),
+        cv_records=_cv_chain_rows(),
+        schwab_error=SourceError("schwab-api unreachable"),
+    )
+
+    with pytest.raises(SourceError, match="schwab-api unreachable"):
+        _options_chain_execute({"symbol": "SPY", "limit": 0})
+
+    assert calls["cv_requests"] == 0
+
+
+def test_chain_empty_schwab_chain_succeeds_and_skips_cv(monkeypatch: pytest.MonkeyPatch):
     from openbb_agent_cli.executors import _options_chain_execute
 
-    with pytest.raises(ValueError, match="dte"):
-        _options_chain_execute({"symbol": "SPY"})
-    with pytest.raises(ValueError, match="dte"):
-        _options_chain_execute({"symbol": "SPY", "dte": 10})
-    with pytest.raises(ValueError, match="strike_count"):
-        _options_chain_execute({"symbol": "SPY", "dte": 10, "strike_count": None})
+    calls = _patch_chain(
+        monkeypatch,
+        schwab_records=[],
+        contract_count=0,
+        cv_records=_cv_chain_rows(),
+    )
+
+    records, meta = _options_chain_execute({"symbol": "SPY", "limit": 0})
+
+    assert records == []
+    assert meta["total"] == 0
+    assert meta["cv_enrichment"] == "skipped_empty"
+    assert meta["sources_used"] == ["schwab"]
+    assert calls["cv_requests"] == 0
 
 
-def test_filter_cv_chain_window_keeps_nearest_strikes_per_expiration():
-    from openbb_agent_cli.executors import _filter_cv_chain_window
+def test_chain_local_date_filter_drops_out_of_window_rows(monkeypatch: pytest.MonkeyPatch):
+    """Schwab's server-side window filter is loose; rows outside the resolved
+    absolute window are dropped locally, and a fully-filtered-out chain is an
+    EMPTY SUCCESS (not an error) that skips CV."""
+    from openbb_agent_cli.executors import _options_chain_execute
 
-    def row(expiration, strike, dte, underlying):
-        return {
-            "expiration": expiration,
-            "strike": strike,
-            "dte": dte,
-            "underlying_price": underlying,
+    far = _near_exp(400)
+    out_of_window = [
+        {
+            "symbol": "SPY",
+            "expiration": far,
+            "strike": 400.0,
             "option_type": "call",
-        }
-
-    records = [
-        row(date(2026, 9, 9), 400.0, 3, 501.0),
-        row(date(2026, 9, 9), 500.0, 3, 501.0),
-        row(date(2026, 9, 9), 600.0, 3, 501.0),
-        row(date(2026, 12, 18), 700.0, 100, None),  # dte beyond window -> dropped
+            "dte": 400,
+            "underlying_price": 501.0,
+            "open_interest": 99999.0,
+        },
     ]
+    _patch_chain(
+        monkeypatch,
+        schwab_records=_schwab_chain_rows() + out_of_window,
+        contract_count=3,
+        cv_records=_cv_chain_rows(),
+    )
 
-    kept = _filter_cv_chain_window(records, dte=10, strike_count=1)
+    records, meta = _options_chain_execute({"symbol": "SPY", "dte_min": 0, "dte_max": 45, "limit": 0})
 
-    assert [(r["strike"], r["dte"]) for r in kept] == [(500.0, 3)]
+    assert [record["expiration"] for record in records] == [_near_exp(3)] * 2
+    assert meta["total"] == 3  # Schwab's own count, pre-filter
+
+    only_far = _patch_chain(
+        monkeypatch,
+        schwab_records=out_of_window,
+        contract_count=1,
+        cv_records=_cv_chain_rows(),
+    )
+    records, meta = _options_chain_execute({"symbol": "SPY", "dte_min": 0, "dte_max": 45, "limit": 0})
+    assert records == []
+    assert meta["cv_enrichment"] == "skipped_empty"
+    assert only_far["cv_requests"] == 0
+
+
+def test_chain_expiration_mode_pushes_single_day_window(monkeypatch: pytest.MonkeyPatch):
+    from openbb_agent_cli.executors import _options_chain_execute
+
+    exp = _near_exp(3)
+    calls = _patch_chain(
+        monkeypatch,
+        schwab_records=_schwab_chain_rows(),
+        contract_count=120,
+        cv_records=_cv_chain_rows(),
+        cv_enabled=False,
+    )
+
+    records, meta = _options_chain_execute({"symbol": "SPY", "expiration": exp.isoformat(), "limit": 0})
+
+    assert calls["schwab"]["from_date"] == exp
+    assert calls["schwab"]["to_date"] == exp
+    assert meta["window"]["mode"] == "expiration"
+    assert meta["window"]["expiration"] == exp.isoformat()
+    assert meta["window"]["span"] == 0
+    assert meta["sources_used"] == ["schwab"]
+    assert meta["cv_enrichment"] == "disabled"
+    assert len(records) == 2
+
+
+def test_chain_missing_reference_price_raises_integrity_error(monkeypatch: pytest.MonkeyPatch):
+    from openbb_agent_cli.executors import _options_chain_execute
+    from openbb_finance.sources.base import SourceError
+
+    rows = [{**row, "underlying_price": None} for row in _schwab_chain_rows()]
+    _patch_chain(
+        monkeypatch,
+        schwab_records=rows,
+        contract_count=2,
+        cv_records=[],
+        cv_enabled=False,
+    )
+
+    with pytest.raises(SourceError, match="underlying_price"):
+        _options_chain_execute({"symbol": "SPY", "limit": 0})
+
+
+def test_chain_reference_price_falls_back_to_cv_enrichment(monkeypatch: pytest.MonkeyPatch):
+    from openbb_agent_cli.executors import _options_chain_execute
+
+    exp = _near_exp(3)
+    rows = [{**row, "underlying_price": None} for row in _schwab_chain_rows()]
+    cv_rows = [
+        {
+            "symbol": "SPY",
+            "expiration": exp,
+            "strike": 500.0,
+            "option_type": "call",
+            "underlying_price": 503.0,
+        },
+    ]
+    _patch_chain(
+        monkeypatch,
+        schwab_records=rows,
+        contract_count=2,
+        cv_records=cv_rows,
+    )
+
+    _records, meta = _options_chain_execute({"symbol": "SPY", "limit": 0})
+
+    # Schwab has no price; the matched CV fill provides the reference.
+    assert meta["atm_reference_price"] == 503.0
+
+
+def test_chain_atm_selects_shared_nearest_strikes_per_expiration(monkeypatch: pytest.MonkeyPatch):
+    from openbb_agent_cli.executors import _options_chain_execute
+
+    exp = _near_exp(3)
+    # Strikes 400/450/500/501/600 around reference 500, both sides at 500/501.
+    rows = []
+    for strike in (400.0, 450.0, 500.0, 501.0, 600.0):
+        for option_type in ("call", "put"):
+            rows.append(
+                {
+                    "symbol": "SPY",
+                    "expiration": exp,
+                    "strike": strike,
+                    "option_type": option_type,
+                    "underlying_price": 500.5,
+                    "open_interest": strike,
+                }
+            )
+    # Tie case: 500 and 501 are equidistant from 500.5; the LOWER strike wins.
+    _patch_chain(monkeypatch, schwab_records=rows, contract_count=10, cv_enabled=False)
+
+    records, _meta = _options_chain_execute({"symbol": "SPY", "atm": 2, "limit": 0})
+
+    kept = {(record["strike"], record["option_type"]) for record in records}
+    assert kept == {(500.0, "call"), (500.0, "put"), (501.0, "call"), (501.0, "put")}
+
+
+def test_chain_option_type_filter_applies_after_atm(monkeypatch: pytest.MonkeyPatch):
+    from openbb_agent_cli.executors import _options_chain_execute
+
+    exp = _near_exp(3)
+    rows = []
+    for strike in (500.0, 501.0):
+        for option_type in ("call", "put"):
+            rows.append(
+                {
+                    "symbol": "SPY",
+                    "expiration": exp,
+                    "strike": strike,
+                    "option_type": option_type,
+                    "underlying_price": 500.5,
+                }
+            )
+    _patch_chain(monkeypatch, schwab_records=rows, contract_count=4, cv_enabled=False)
+
+    records, meta = _options_chain_execute({"symbol": "SPY", "atm": 2, "option_type": "put", "limit": 0})
+
+    assert {(record["strike"], record["option_type"]) for record in records} == {
+        (500.0, "put"),
+        (501.0, "put"),
+    }
+    assert meta["filtered"] == 2
+    assert meta["returned"] == 2
 
 
 # ---- SchwabSource.fetch_options_chain -------------------------------------------
@@ -505,6 +626,44 @@ async def test_fetch_options_chain_passes_filters_and_returns_contract_count():
     assert data["contract_count"] == 4  # server-reported numberOfContracts
     assert len(data["records"]) == 3
     assert data["records"][0]["expiration"] == date(2026, 9, 9)
+
+
+async def test_fetch_options_chain_date_window_mode_pushes_absolute_dates():
+    source = FakeChainSchwab()
+
+    data = await source.fetch_options_chain(
+        "AAPL", from_date=date(2026, 9, 9), to_date=date(2026, 11, 23), strike_count=20
+    )
+
+    assert source.calls == [
+        (
+            "/api/v1/options/chains",
+            {
+                "symbol": "AAPL",
+                "from_date": "2026-09-09",
+                "to_date": "2026-11-23",
+                "strike_count": 20,
+            },
+        )
+    ]
+    assert data["contract_count"] == 4
+
+
+async def test_fetch_options_chain_date_mode_rejects_legacy_contract():
+    source = FakeChainSchwab()
+
+    with pytest.raises(SourceError, match="mutually exclusive"):
+        await source.fetch_options_chain(
+            "AAPL", dte=10, from_date=date(2026, 9, 9), to_date=date(2026, 9, 9), strike_count=20
+        )
+    with pytest.raises(SourceError, match="from_date and to_date"):
+        await source.fetch_options_chain("AAPL", from_date=date(2026, 9, 9), strike_count=20)
+    with pytest.raises(SourceError, match="positive strike_count"):
+        await source.fetch_options_chain("AAPL", from_date=date(2026, 9, 9), to_date=date(2026, 9, 9), strike_count=0)
+    with pytest.raises(SourceError, match="range_/strategy"):
+        await source.fetch_options_chain(
+            "AAPL", from_date=date(2026, 9, 9), to_date=date(2026, 9, 9), strike_count=20, range_="ITM"
+        )
 
 
 async def test_fetch_options_chain_forwards_range_and_strategy():

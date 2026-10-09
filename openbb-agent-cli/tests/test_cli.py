@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import inspect
 import json
 import sys
+from datetime import date, timedelta
 from typing import Any
 
 import pytest
 from openbb_agent_cli import cli, executors, output
+from openbb_agent_cli import options_chain as oc
 
 
 class DummyResult:
@@ -1262,3 +1265,314 @@ def test_execute_provider_model_strips_query_markers(monkeypatch: pytest.MonkeyP
     assert captured["standard"] == {}
     assert captured["extra"] == {"symbol": "rb.SHFE", "expiration": None}
     assert not any(type(value).__name__ == "Query" for value in captured["extra"].values())
+
+
+# ---- derivatives.options.chain: query validation (pure functions) --------------
+
+_CHAIN_AS_OF = date(2026, 10, 9)
+
+
+def test_options_chain_command_signature_drops_legacy_flags() -> None:
+    """The public command surface must not carry the retired window/source flags."""
+    params = set(inspect.signature(cli.derivatives_options_chain).parameters)
+    assert {"dte", "strike_count", "min_dte", "source", "range_", "strategy"}.isdisjoint(params)
+    legacy_free = {"symbol", "expiration", "dte_min", "dte_max", "atm", "option_type", "sort_by", "sort_dir", "limit"}
+    assert legacy_free <= params
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected_mode", "expected_from", "expected_to"),
+    [
+        ({}, "dte", _CHAIN_AS_OF, _CHAIN_AS_OF + timedelta(days=45)),  # defaults 0..45
+        ({"dte_max": 30}, "dte", _CHAIN_AS_OF, _CHAIN_AS_OF + timedelta(days=30)),  # only upper bound
+        ({"dte_min": 40}, "dte", _CHAIN_AS_OF + timedelta(days=40), _CHAIN_AS_OF + timedelta(days=45)),
+        ({"dte_min": 0, "dte_max": 0}, "dte", _CHAIN_AS_OF, _CHAIN_AS_OF),
+        (
+            {"dte_min": 700, "dte_max": 1000},
+            "dte",
+            _CHAIN_AS_OF + timedelta(days=700),
+            _CHAIN_AS_OF + timedelta(days=1000),
+        ),
+        (
+            {"dte_min": 700, "dte_max": 1065},
+            "dte",
+            _CHAIN_AS_OF + timedelta(days=700),
+            _CHAIN_AS_OF + timedelta(days=1065),
+        ),  # span exactly 365
+        ({"expiration": "2026-10-09"}, "expiration", _CHAIN_AS_OF, _CHAIN_AS_OF),  # today is accepted
+        ({"expiration": "2028-01-21"}, "expiration", date(2028, 1, 21), date(2028, 1, 21)),
+    ],
+)
+def test_resolve_date_window_valid_windows(
+    kwargs: dict[str, Any], expected_mode: str, expected_from: date, expected_to: date
+) -> None:
+    window = oc.resolve_date_window(as_of_date=_CHAIN_AS_OF, **kwargs)
+
+    assert window.mode == expected_mode
+    assert window.from_date == expected_from
+    assert window.to_date == expected_to
+    assert window.span == (expected_to - expected_from).days
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"expiration": "2026-10-10", "dte_min": 3}, "mutually exclusive"),
+        ({"expiration": "2026-10-10", "dte_max": 3}, "mutually exclusive"),
+        ({"dte_min": 700}, "dte_min must be <= dte_max"),  # 700 above default dte_max=45
+        ({"dte_min": 30, "dte_max": 10}, "dte_min must be <= dte_max"),
+        ({"dte_min": 0, "dte_max": 366}, "span must be <= 365"),
+        ({"dte_min": 700, "dte_max": 1066}, "span must be <= 365"),
+        ({"dte_min": -1}, "non-negative"),
+        ({"dte_max": -5}, "non-negative"),
+        ({"dte_min": 1.5}, "must be an integer"),
+        ({"dte_max": True}, "must be an integer"),
+        ({"expiration": "2026-10-8"}, "YYYY-MM-DD"),
+        ({"expiration": "20261009"}, "YYYY-MM-DD"),
+        ({"expiration": "2026-13-01"}, "YYYY-MM-DD"),
+        ({"expiration": "2026-10-08"}, "today or later"),  # one day before as_of
+        ({"expiration": "2020-01-01"}, "today or later"),
+        ({"dte_min": 100_000_000, "dte_max": 100_000_365}, "overflows"),
+    ],
+)
+def test_resolve_date_window_invalid_windows(kwargs: dict[str, Any], match: str) -> None:
+    with pytest.raises(ValueError, match=match):
+        oc.resolve_date_window(as_of_date=_CHAIN_AS_OF, **kwargs)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "match"),
+    [
+        ({"symbol": ""}, "symbol is required"),
+        ({"symbol": "   "}, "symbol is required"),
+        ({"symbol": "SPY", "atm": 0}, "atm must be between"),
+        ({"symbol": "SPY", "atm": 101}, "atm must be between"),
+        ({"symbol": "SPY", "atm": True}, "must be an integer"),
+        ({"symbol": "SPY", "atm": 2.5}, "must be an integer"),
+        ({"symbol": "SPY", "limit": -1}, "non-negative"),
+        ({"symbol": "SPY", "limit": 2.5}, "must be an integer"),
+        ({"symbol": "SPY", "limit": False}, "must be an integer"),
+        ({"symbol": "SPY", "option_type": "Call"}, "option_type must be one of"),
+        ({"symbol": "SPY", "sort_by": "foo"}, "sort_by must be one of"),
+        ({"symbol": "SPY", "sort_dir": "ASC"}, "sort_dir must be one of"),
+    ],
+)
+def test_build_options_chain_request_rejects_invalid_scalars(kwargs: dict[str, Any], match: str) -> None:
+    with pytest.raises(ValueError, match=match):
+        oc.build_options_chain_request(as_of_date=_CHAIN_AS_OF, **kwargs)
+
+
+@pytest.mark.parametrize(
+    ("limit_kwarg", "expected"),
+    [
+        (None, None),
+        (0, None),  # explicit 0 = all filtered contracts
+        (5, 5),
+    ],
+)
+def test_build_options_chain_request_limit_semantics(limit_kwarg: int | None, expected: int | None) -> None:
+    request = oc.build_options_chain_request(symbol="SPY", limit=limit_kwarg, as_of_date=_CHAIN_AS_OF)
+    assert request.limit is expected
+    # ATM boundaries: 1 and 100 are valid, defaults apply otherwise.
+    assert oc.build_options_chain_request(symbol="SPY", atm=1, as_of_date=_CHAIN_AS_OF).atm == 1
+    assert oc.build_options_chain_request(symbol="SPY", atm=100, as_of_date=_CHAIN_AS_OF).atm == 100
+    assert oc.build_options_chain_request(symbol="SPY", as_of_date=_CHAIN_AS_OF).atm == 20
+    assert oc.build_options_chain_request(symbol="SPY", as_of_date=_CHAIN_AS_OF).limit is None
+    assert oc.build_options_chain_request(symbol="SPY", as_of_date=_CHAIN_AS_OF).sort_by == "open_interest"
+    assert oc.build_options_chain_request(symbol="SPY", as_of_date=_CHAIN_AS_OF).sort_dir == "desc"
+
+
+def test_options_chain_batch_executor_rejects_legacy_unknown_and_source_fields() -> None:
+    from openbb_agent_cli.executors import _options_chain_batch_executor
+
+    with pytest.raises(ValueError, match="source is no longer supported"):
+        _options_chain_batch_executor({"symbol": "SPY", "source": None})  # even explicit null
+    with pytest.raises(ValueError, match="source is no longer supported"):
+        _options_chain_batch_executor({"symbol": "SPY", "source": "cv"})
+    with pytest.raises(ValueError, match=r"\['dte'\].*use dte_min/dte_max"):
+        _options_chain_batch_executor({"symbol": "SPY", "dte": 10})
+    with pytest.raises(ValueError, match=r"\['strike_count'\].*use atm"):
+        _options_chain_batch_executor({"symbol": "SPY", "strike_count": 10})
+    with pytest.raises(ValueError, match=r"\['min_dte'\].*use dte_min"):
+        _options_chain_batch_executor({"symbol": "SPY", "min_dte": 10})
+    with pytest.raises(ValueError, match=r"\['range', 'strategy'\]"):
+        _options_chain_batch_executor({"symbol": "SPY", "range": "ITM", "strategy": "VERTICAL"})
+    with pytest.raises(ValueError, match="unknown or removed"):
+        _options_chain_batch_executor({"symbol": "SPY", "foo": 1})
+
+
+def test_options_chain_batch_executor_rejects_non_integer_scalars_before_network() -> None:
+    from openbb_agent_cli.executors import _options_chain_batch_executor
+
+    with pytest.raises(ValueError, match="atm must be an integer"):
+        _options_chain_batch_executor({"symbol": "SPY", "atm": True})
+    with pytest.raises(ValueError, match="dte_min must be an integer"):
+        _options_chain_batch_executor({"symbol": "SPY", "dte_min": 1.5})
+    with pytest.raises(ValueError, match="limit must be an integer"):
+        _options_chain_batch_executor({"symbol": "SPY", "limit": 10.5})
+    with pytest.raises(ValueError, match="expiration must use the strict YYYY-MM-DD format"):
+        _options_chain_batch_executor({"symbol": "SPY", "expiration": "20261010"})
+
+
+def test_options_chain_batch_executor_limit_defaults_and_explicit_zero(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_execute(params: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        captured.update(params)
+        return [], {"returned": 0}
+
+    monkeypatch.setattr(executors, "_options_chain_execute", fake_execute)
+
+    from openbb_agent_cli.executors import _options_chain_batch_executor
+
+    _options_chain_batch_executor({"symbol": "SPY"})  # omitted -> default 100
+    assert captured["limit"] == 100
+    captured.clear()
+    _options_chain_batch_executor({"symbol": "SPY", "limit": None})  # null == omitted
+    assert captured["limit"] == 100
+    captured.clear()
+    _options_chain_batch_executor({"symbol": "SPY", "limit": 0})  # explicit 0 = all
+    assert captured["limit"] == 0
+
+
+# ---- derivatives.options.chain: CLI command and batch integration ---------------
+
+
+def test_options_chain_command_routes_new_params_and_meta_envelope(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    captured: dict[str, Any] = {}
+
+    def fake_execute(params: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        captured.update(params)
+        return (
+            [{"symbol": "SPY", "strike": 500.0, "delta": None}],
+            {
+                "returned": 1,
+                "filtered": 40,
+                "total": 120,
+                "truncated": False,
+                "sort_by": "open_interest",
+                "sort_dir": "desc",
+                "sources_used": ["schwab", "convexvalue"],
+                "cv_enrichment": "success",
+                "window": {"mode": "dte", "as_of_date": "2026-10-09", "timezone": "UTC"},
+                "atm": 10,
+                "atm_reference_price": 500.0,
+            },
+        )
+
+    monkeypatch.setattr(cli, "_options_chain_execute", fake_execute)
+    monkeypatch.setattr(output, "model_field_descriptions", lambda name: {"symbol": "Symbol", "strike": "Strike"})
+
+    cli.derivatives_options_chain(
+        "SPY", dte_min=5, dte_max=30, atm=10, option_type="put", sort_by="delta", sort_dir="asc", limit=25
+    )
+
+    assert captured == {
+        "symbol": "SPY",
+        "expiration": None,
+        "dte_min": 5,
+        "dte_max": 30,
+        "atm": 10,
+        "option_type": "put",
+        "sort_by": "delta",
+        "sort_dir": "asc",
+        "limit": 25,
+    }
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["results"] == [{"symbol": "SPY", "strike": 500.0}]  # null delta stripped
+    assert payload["_meta"]["total"] == 120
+    assert payload["_meta"]["filtered"] == 40
+    assert payload["_meta"]["returned"] == 1
+    assert payload["_meta"]["sources_used"] == ["schwab", "convexvalue"]
+    assert payload["_meta"]["cv_enrichment"] == "success"
+    assert payload["_meta"]["window"]["mode"] == "dte"
+    assert payload["_meta"]["atm"] == 10
+    assert payload["_meta"]["atm_reference_price"] == 500.0
+
+
+def test_options_chain_command_param_error_outputs_json(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    def fake_execute(params: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        raise ValueError("--expiration is mutually exclusive with --dte-min/--dte-max; choose one query mode")
+
+    monkeypatch.setattr(cli, "_options_chain_execute", fake_execute)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.derivatives_options_chain("SPY", expiration="2026-10-10", dte_min=3)
+
+    assert exc_info.value.code == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["code"] == "VALUEERROR"
+    assert "mutually exclusive" in payload["error"]
+
+
+def test_options_chain_command_schwab_missing_outputs_source_error(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    from openbb_finance.sources.base import SourceError
+
+    def fake_execute(params: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+        raise SourceError("schwab source is required for derivatives.options.chain but is disabled")
+
+    monkeypatch.setattr(cli, "_options_chain_execute", fake_execute)
+
+    with pytest.raises(SystemExit) as exc_info:
+        cli.derivatives_options_chain("SPY", dte_min=0, dte_max=45)
+
+    assert exc_info.value.code == 1
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["code"] == "SOURCEERROR"
+    assert "schwab source is required" in payload["error"]
+
+
+def test_batch_chain_subquery_legacy_param_is_isolated_error(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setitem(
+        cli.COMMAND_EXECUTORS,
+        "equity.price.quote",
+        lambda params: [{"symbol": params["symbol"]}],
+    )
+    monkeypatch.setattr(output, "model_field_descriptions", lambda name: {"symbol": "Symbol"})
+
+    payload = cli._run_batch_queries(
+        [
+            {"name": "chain", "command": "derivatives.options.chain", "params": {"symbol": "SPY", "source": None}},
+            {"name": "quote", "command": "equity.price.quote", "params": {"symbol": "AAPL"}},
+        ],
+        max_workers=2,
+    )
+
+    assert "chain" in payload["errors"]
+    assert "no longer supported" in payload["errors"]["chain"]["error"]
+    assert payload["results"]["quote"] == {"results": [{"symbol": "AAPL"}], "_schema": {"symbol": "Symbol"}}
+
+
+def test_batch_chain_subquery_success_envelope_drops_chain_meta(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_chain_executor(params: dict[str, Any]) -> list[dict[str, Any]]:
+        return [{"symbol": "SPY", "strike": 500.0}]
+
+    monkeypatch.setitem(cli.COMMAND_EXECUTORS, "derivatives.options.chain", fake_chain_executor)
+    monkeypatch.setattr(output, "model_field_descriptions", lambda name: {"symbol": "Symbol"})
+
+    payload = cli._run_batch_queries(
+        [{"name": "chain", "command": "derivatives.options.chain", "params": {"symbol": "SPY"}}],
+        max_workers=2,
+    )
+
+    # The batch envelope keeps {results, _schema}; chain meta stays CLI-only.
+    assert payload["results"]["chain"] == {
+        "results": [{"symbol": "SPY", "strike": 500.0}],
+        "_schema": {"symbol": "Symbol", "strike": "strike"},  # strike falls back to its own name
+    }
+    assert payload["errors"] == {}

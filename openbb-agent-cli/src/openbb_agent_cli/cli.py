@@ -8,13 +8,13 @@ below so command call sites and tests can keep resolving them on this module.
 
 from __future__ import annotations
 
-from typing import Annotated, Any, Literal
+from typing import Any, Literal
 
-import cyclopts
 from cyclopts import App
 from cyclopts.exceptions import CycloptsError
 
 from openbb_agent_cli import __version__
+from openbb_agent_cli import options_chain as _options_chain_constants
 
 # 以下 re-export 供测试与旧调用方在 cli 模块上继续解析；命令本体不直接使用。
 from openbb_agent_cli.batch import (  # noqa: E402, F401
@@ -749,42 +749,36 @@ def derivatives_options_unusual(
 @app.command(name="derivatives.options.chain")
 def derivatives_options_chain(
     symbol: str,
-    dte: int,
-    strike_count: int,
+    *,
     expiration: str | None = None,
+    dte_min: int | None = None,
+    dte_max: int | None = None,
+    atm: int = _options_chain_constants.DEFAULT_ATM,
     option_type: Literal["call", "put"] | None = None,
-    min_dte: int | None = None,
-    source: Literal["cv", "schwab"] | None = None,
-    range_: Annotated[str | None, cyclopts.Parameter(name="--range")] = None,
-    strategy: str | None = None,
     sort_by: Literal[
         "expiration", "strike", "open_interest", "volume", "implied_volatility", "delta", "bid", "ask", "vwap"
     ] = "open_interest",
     sort_dir: Literal["asc", "desc"] = "desc",
-    limit: int = 50,
+    limit: int = _options_chain_constants.CLI_DEFAULT_LIMIT,
 ) -> None:
-    """Get option contracts (Schwab-first aggregate with CV fallback).
+    """Get option contracts (Schwab contract set + CV field enrichment).
 
-    --dte/--strike-count are mandatory: they declare the query window served
-    to Schwab (and emulated locally for CV). Aggregate mode (no --source)
-    merges both sources field-by-field, Schwab wins populated fields, CV adds
-    null-filled fields and out-of-window contracts. Returns {results, _schema,
-    _meta} where _meta.total is the contract count and _meta.sources_used
-    lists the participating sources. --range/--strategy only affect the
-    Schwab side.
+    Two mutually exclusive query modes: --expiration YYYY-MM-DD, or a DTE
+    window via --dte-min/--dte-max (defaults 0..45, span <= 365, far windows
+    like 700..1000 allowed). --atm N keeps the N strike levels nearest the
+    underlying price per expiration (call/put share the strike set). Schwab
+    is the only contract source; ConvexValue only fills missing fields.
+    Returns {results, _schema, _meta}.
     """
     try:
         records, meta = _options_chain_execute(
             {
                 "symbol": symbol,
-                "dte": dte,
-                "strike_count": strike_count,
                 "expiration": expiration,
+                "dte_min": dte_min,
+                "dte_max": dte_max,
+                "atm": atm,
                 "option_type": option_type,
-                "min_dte": min_dte,
-                "source": source,
-                "range_": range_,
-                "strategy": strategy,
                 "sort_by": sort_by,
                 "sort_dir": sort_dir,
                 "limit": limit,

@@ -311,14 +311,15 @@ async def _fetch_chain_schwab(source: Any, symbol: str) -> list[dict[str, Any]]:
 async def _aggregate_chain(symbol: str) -> list[dict[str, Any]]:
     """Merge the Schwab and ConvexValue chains field-by-field.
 
-    Source order IS the priority (schwab first), mirroring the openbb-agent-cli
-    aggregate: in-window contracts take every populated field from Schwab
-    (unified pricing/greeks conventions, trusted quote timestamps); CV fills
-    fields Schwab leaves null and contributes out-of-window contracts
-    (far-dated / deep-OTM) on its own. Any single source failure is swallowed
-    by ``aggregate_records`` and degrades to the other source alone.
-    ``*_source`` annotations are kept so the page can attribute values and
-    hint when a source is missing.
+    Dashboard-local strategy (the agent CLI now runs its own Schwab-anchored
+    chain path and no longer shares this aggregation): source order IS the
+    priority (schwab first), so in-window contracts take every populated
+    field from Schwab (unified pricing/greeks conventions, trusted quote
+    timestamps); CV fills fields Schwab leaves null and contributes
+    out-of-window contracts (far-dated / deep-OTM) on its own. Any single
+    source failure is swallowed by ``aggregate_records`` and degrades to the
+    other source alone. ``*_source`` annotations are kept so the page can
+    attribute values and hint when a source is missing.
     """
     from types import SimpleNamespace
 
