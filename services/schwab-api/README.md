@@ -158,4 +158,4 @@ uv run --package schwab-api pytest services/schwab-api/tests -q   # 服务测试
 uvx ruff check services/schwab-api && uvx ruff format --check services/schwab-api
 ```
 
-测试关键哨兵：`tests/test_store.py` 用 `schwabdev.Tokens` 直接加载本服务写入的 token 库（锁 `schwabdev>=4,<5`，schema 兼容回归）；`tests/test_keepalive.py` 回归轮换后 `refresh_token_issued == now`、失败回滚、`invalid_grant` 链死亡快速失败与超时拉满周期路径；`tests/test_config.py` 回归保活周期上界校验；`tests/test_auth.py` 回归链死亡时 409 门放行与重授权复位 `chain_dead`。
+测试关键哨兵：`tests/test_store.py` 用 `schwabdev.Tokens` 直接加载本服务写入的 token 库（锁 `schwabdev>=4,<5`，schema 兼容回归）；`tests/test_keepalive.py` 回归轮换后 `refresh_token_issued == now`、失败回滚、`invalid_grant` 链死亡快速失败与超时拉满周期路径；`tests/test_schwab_config.py` 回归保活周期上界校验；`tests/test_auth.py` 回归链死亡时 409 门放行与重授权复位 `chain_dead`。
