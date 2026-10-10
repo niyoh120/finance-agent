@@ -320,6 +320,9 @@ def test_earnings_crush_panel_shows_strategy_price_difference() -> None:
     """Post-earnings valuation shows before/after strategy model prices."""
     at = AppTest.from_file(str(APP_PATH), default_timeout=30)
     at.session_state["od_symbol"] = "AAPL"
+    # 腿的到期日相对今天生成（today+60 > 估值日 today+30 > 财报日 today+7），
+    # 保证财报前/后估值都落在到期前，场景不随日历漂移而退化为纯内在价值。
+    expiry = date.today() + timedelta(days=60)
     # 估值日期设在未来财报之后（today+30 > today+7），保证 IV Crush 情景可估值。
     at.session_state["ctx_val_date"] = date.today() + timedelta(days=30)
     at.session_state[STRATEGY_LEGS_KEY] = [
@@ -327,10 +330,10 @@ def test_earnings_crush_panel_shows_strategy_price_difference() -> None:
             "kind": "option",
             "direction": "buy",
             "quantity": 1.0,
-            "kind_symbol": "O:AAPL260918C00100000",
+            "kind_symbol": f"O:AAPL{expiry.strftime('%y%m%d')}C00100000",
             "underlying": "AAPL",
             "strike": 100.0,
-            "expiration": "2026-09-18",
+            "expiration": expiry.isoformat(),
             "option_side": "call",
             "style": "american",
             "iv": 0.3,
