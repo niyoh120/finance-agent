@@ -41,6 +41,20 @@ CREATE TABLE IF NOT EXISTS schwabdev (
 );
 """
 
+#: 本服务私有的链元数据表（键值对），与 schwabdev 兼容的 8 列主表分离：
+#: 轮换写主表时永不触碰它，schwabdev 读库也看不见它。
+_META_SCHEMA = """
+CREATE TABLE IF NOT EXISTS schwab_api_meta (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
+"""
+
+#: 链元数据键：最后一次完整登录（authorization_code 交换）的时刻。
+#: schwab 死线锚定这个时刻 —— refresh_token grant 只发新 access token，
+#: 不重置这条 7 天线（Schwab 客服确认 + 社区共识，名义 7 天、实测可能提前）。
+CHAIN_STARTED_AT_KEY = "chain_started_at"
+
 _SELECT_COLUMNS = (
     "access_token_issued, refresh_token_issued, access_token, refresh_token, id_token, expires_in, token_type, scope"
 )
@@ -117,6 +131,7 @@ class TokenStore:
             os.makedirs(db_dir, exist_ok=True)
         with self._connect() as conn:
             conn.execute(_SCHEMA)
+            conn.execute(_META_SCHEMA)
             conn.commit()
 
     @property
@@ -199,6 +214,30 @@ class TokenStore:
                 row.scope,
             ),
         )
+
+    # ---- chain metadata ( schwab_api_meta ) --------------------------------
+
+    def get_meta(self, key: str) -> str | None:
+        with self._connect() as conn:
+            row = conn.execute("SELECT value FROM schwab_api_meta WHERE key = ?", (key,)).fetchone()
+        return row[0] if row else None
+
+    def set_meta(self, key: str, value: str) -> None:
+        with self._connect() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO schwab_api_meta (key, value) VALUES (?, ?)",
+                (key, value),
+            )
+            conn.commit()
+
+    def read_chain_started_at(self) -> datetime.datetime | None:
+        """链诞生时刻（最后一次完整登录）；无元数据（旧库升级/被清）返回 None。"""
+        raw = self.get_meta(CHAIN_STARTED_AT_KEY)
+        return _parse_dt(raw) if raw else None
+
+    def write_chain_started_at(self, issued: datetime.datetime) -> None:
+        """记录新链诞生；只在 authorization_code 交换时调用，轮换永不更新它。"""
+        self.set_meta(CHAIN_STARTED_AT_KEY, issued.isoformat())
 
     # ---- encryption (schwabdev-compatible "enc:" prefix) ------------------
 

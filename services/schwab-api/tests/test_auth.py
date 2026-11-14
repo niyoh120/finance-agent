@@ -120,6 +120,46 @@ def test_callback_resets_chain_dead(client, store, exchange_ok):
     assert response.json()["keepalive"]["chain_dead"] is False
 
 
+# ---- chain deadline countdown（重授权倒计时） --------------------------------
+
+
+def test_callback_writes_chain_started_at(client, store, exchange_ok):
+    """完整登录开新链：chain_started_at 必须写入（绝对死线锚点）。"""
+    client.post("/api/v1/auth/callback", json={"callback": f"{CALLBACK_URL}?code=NEW"})
+    started = store.read_chain_started_at()
+    assert started is not None
+    assert abs((datetime.datetime.now(datetime.timezone.utc) - started).total_seconds()) < 30
+
+
+def test_status_reports_chain_countdown(client, store):
+    """status 必须暴露倒计时字段，剩余量随链龄递减。"""
+    started = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=5)
+    store.write(make_row())
+    store.write_chain_started_at(started)
+
+    payload = client.get("/api/v1/status").json()
+    assert payload["chain_meta_missing"] is False
+    assert payload["chain_started_at"] == started.isoformat()
+    assert 2 * 86400 - 60 < payload["chain_remaining_seconds"] <= 2 * 86400
+    assert payload["chain_expiring_soon"] is True  # 剩余 ~2 天，已进入预警窗口
+
+
+def test_status_chain_not_expiring_soon_when_fresh(client, store):
+    store.write(make_row())
+    store.write_chain_started_at(datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=1))
+    payload = client.get("/api/v1/status").json()
+    assert payload["chain_expiring_soon"] is False
+    assert payload["chain_remaining_seconds"] > 5 * 86400
+
+
+def test_status_reports_chain_meta_missing_for_legacy_db(client, store):
+    """旧库升级（无元数据）：chain_meta_missing=true，监控退回保守策略。"""
+    store.write(make_row())
+    payload = client.get("/api/v1/status").json()
+    assert payload["chain_meta_missing"] is True
+    assert "chain_remaining_seconds" not in payload
+
+
 def test_start_requires_credentials(store):
     config = make_config(app_key=None, app_secret=None)
     with TestClient(create_app(config=config, store=store)) as client:

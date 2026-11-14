@@ -35,6 +35,12 @@ SCHWAB_OAUTH_AUTHORIZE_URL = "https://api.schwabapi.com/v1/oauth/authorize"
 
 #: Schwab hard-expires refresh tokens 7 days after issue; rotation renews the window.
 REFRESH_TOKEN_TTL = timedelta(days=7)
+#: 实证：这条 7 天线锚定最后一次完整登录（authorization_code 交换）时刻，
+#: refresh_token grant 轮换不重置它（Schwab 客服确认 + 社区共识；名义值，
+#: 可能提前）。服务用 chain_started_at 元数据暴露重授权倒计时。
+CHAIN_DEADLINE = REFRESH_TOKEN_TTL
+#: 剩余有效期低于该阈值时 status 标记 chain_expiring_soon，提示安排重授权。
+CHAIN_EXPIRY_WARNING = timedelta(days=2)
 #: Authorization codes from the authorize redirect live for 30 seconds.
 AUTHORIZATION_CODE_TTL_SECONDS = 30
 TOKEN_HTTP_TIMEOUT_SECONDS = 30
@@ -152,7 +158,36 @@ def status_payload(config: "Config", store: "TokenStore", runtime: "RuntimeState
         refresh_token_ttl_seconds=max(0, int(refresh_ttl.total_seconds())),
         refresh_token_expired=not refresh_token_alive(row, now),
     )
+    payload.update(_chain_payload(store, now))
     return payload
+
+
+def _chain_payload(store: "TokenStore", now: datetime.datetime) -> dict:
+    """重授权倒计时（监控真正该盯的字段）。
+
+    注意与 ``refresh_token_ttl_seconds`` 的区别：后者是本地记账值（每次轮换
+    重置为满 7 天），反映主表 ``refresh_token_issued``；而 Schwab 的绝对死线
+    锚定最后一次完整登录，轮换无法延长 —— 只能看这里的 chain 字段。
+    ``chain_started_at`` 缺失（旧库升级/被清）时置 ``chain_meta_missing=true``，
+    监控应退回保守策略（按最后已知登录时间估计或尽快重授权）。
+    """
+    chain_started = None
+    try:
+        chain_started = store.read_chain_started_at()
+    except Exception as e:  # noqa: BLE001 - status must report, not fail
+        logger.warning("status: failed to read chain metadata, reporting as missing: %s", e)
+    if chain_started is None:
+        return {"chain_meta_missing": True}
+    expires_at = chain_started + CHAIN_DEADLINE
+    remaining = (expires_at - now).total_seconds()
+    return {
+        "chain_meta_missing": False,
+        "chain_started_at": chain_started.isoformat(),
+        "chain_expires_at": expires_at.isoformat(),
+        "chain_age_seconds": max(0, int((now - chain_started).total_seconds())),
+        "chain_remaining_seconds": max(0, int(remaining)),
+        "chain_expiring_soon": remaining <= CHAIN_EXPIRY_WARNING.total_seconds(),
+    }
 
 
 # ---- HTTP router -------------------------------------------------------------
@@ -236,6 +271,7 @@ def exchange_and_store(
 
     row = TokenRow.from_token_response(tokens, previous=store.read(), issued=now_utc())
     store.write(row)
+    store.write_chain_started_at(now_utc())
     clients.reset()
     if runtime is not None:
         runtime.chain_dead = False

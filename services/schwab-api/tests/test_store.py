@@ -71,6 +71,41 @@ def test_read_returns_none_for_empty_db(tmp_path):
     assert store.read() is None
 
 
+# ---- chain metadata (schwab_api_meta) ----------------------------------------
+
+
+def test_meta_roundtrip_and_upsert(tmp_path):
+    store = TokenStore(str(tmp_path / "tokens.db"))
+    assert store.get_meta("chain_started_at") is None
+
+    store.set_meta("chain_started_at", "2025-01-15T00:00:00+00:00")
+    store.set_meta("chain_started_at", "2025-01-16T00:00:00+00:")  # upsert
+    assert store.get_meta("chain_started_at") == "2025-01-16T00:00:00+00:"
+
+
+def test_chain_started_at_roundtrip(tmp_path):
+    store = TokenStore(str(tmp_path / "tokens.db"))
+    assert store.read_chain_started_at() is None  # 旧库/被清场景
+
+    issued = datetime.datetime(2025, 1, 15, 8, 0, 0, tzinfo=datetime.timezone.utc)
+    store.write_chain_started_at(issued)
+    assert store.read_chain_started_at() == issued
+
+
+def test_meta_table_is_independent_of_token_row(tmp_path):
+    """主表 upsert（轮换路径）不触碰元数据；两表共存同一 db 文件。"""
+    store = TokenStore(str(tmp_path / "tokens.db"))
+    store.write_chain_started_at(datetime.datetime(2025, 1, 15, tzinfo=datetime.timezone.utc))
+    store.write(make_row())
+    store.write(make_row(access_token="rotated"))  # 模拟轮换主表 upsert
+
+    assert store.read_chain_started_at() is not None
+    assert store.read().access_token == "rotated"
+    with sqlite3.connect(tmp_path / "tokens.db") as conn:
+        meta_cols = {r[1] for r in conn.execute("PRAGMA table_info(schwab_api_meta)")}
+    assert meta_cols == {"key", "value"}
+
+
 # ---- encryption --------------------------------------------------------------
 
 

@@ -89,7 +89,9 @@ OAuth code 落在浏览器地址栏，走人工复制，无需任何公网入口
 
 ## 保活机制
 
-**空闲窗口模型（实测）**：refresh token 必须在距上次刷新 ≲30min（access token TTL）内再次使用，链才能保温；空闲超窗后整条链即刻作废（`400 invalid_grant`，网络层重试无效）。因此保活周期上限 0.4h（留 ~6min 给锁竞争与调度抖动），默认即 0.4h。是否还存在从授权起算的 7 天绝对死线仍待观察——若 0.4h 保温仍跨不过授权后第 7 天，需叠加定期重授权；`/api/v1/status` 的 `keepalive.chain_dead` 与 UI 红色徽标会在链死亡时显式暴露。
+**空闲窗口模型（实测）**：refresh token 必须在距上次刷新 ≲30min（access token TTL）内再次使用，链才能保温；空闲超窗后整条链即刻作废（`400 invalid_grant`，网络层重试无效）。因此保活周期上限 0.4h（留 ~6min 给锁竞争与调度抖动），默认即 0.4h。
+
+**7 天绝对死线（已确认）**：Schwab 客服回复与社区共识一致——refresh token 锚定最后一次完整登录，名义 7 天、实测可能提前，refresh_token grant 轮换无法延长。到期前必须人工重授权；`/api/v1/status` 的 `chain_expires_at` / `chain_remaining_seconds` 提供倒计时（基于服务记录的 `chain_started_at`，轮换不更新它），`chain_expiring_soon`（剩余 <2 天）供告警；`keepalive.chain_dead` 与 UI 红色徽标在链死亡时显式暴露。外部 cron 建议每天轮询一次 status，按 `chain_expiring_soon` / `chain_dead` 分级告警。
 
 保活循环（asyncio 后台任务）每个周期检查一次：token 存在且距上次轮换 ≥ 周期时，在 sqlite `BEGIN EXCLUSIVE` 事务内完成"读最新 refresh token → POST token 端点 → 新 token + 双 issued=now 落库"。
 
@@ -141,7 +143,8 @@ OAuth code 落在浏览器地址栏，走人工复制，无需任何公网入口
 
 - ~~首次轮换实测：授权后 keepalive 触发 `refresh_token` grant，refresh TTL 重置回 604,764s（≈7.0 天）、`last_error` 空、期间数据接口连续可用——schwabdev 7 天强制重授权缺陷确认修复~~。**该结论已推翻**：当时读到的 TTL 是本服务自己写入的本地时间戳（自我证实），与 Schwab 服务端状态无关。
 - **2026-09 修正实测**：默认 12h 周期下，重新授权后 ≤12h 即出现 `refresh-token rotation failed: ... invalid_grant`（第一次轮换就失败）——刷新空闲超过 ~30min 窗口后链已死。改为 `FA_SCHWAB_KEEPALIVE_INTERVAL_HOURS=0.4` 后稳定运行。
-- 运维含义：监控盯 `/api/v1/status` 的 `keepalive.chain_dead` 与 `seconds_since_refresh`（距上次成功轮换秒数，应始终 < 0.4h × 3600 + 抖动余量；为 `None` 表示刚授权尚未轮换过，属正常）；`expires_at` 字段已修正为真实过期时刻。
+- **7 天死线后续实证**：0.4h 保温周期运行稳定一段时间后，整条链在授权后约 7 天仍失效——与 Schwab 客服确认及社区共识一致：存在锚定最后登录的绝对死线，轮换无法延长，到期前必须人工重新登录。监控以 status 的 `chain_expires_at` 为准。
+- 运维含义：监控盯 `/api/v1/status` 的 `keepalive.chain_dead` 与 `seconds_since_refresh`（距上次成功轮换秒数，应始终 < 0.4h × 3600 + 抖动余量；为 `None` 表示刚授权尚未轮换过，属正常）；重授权倒计时盯 `chain_expires_at` / `chain_expiring_soon`；`expires_at` 字段已修正为真实过期时刻。
 
 ## 部署
 
